@@ -876,17 +876,43 @@ export class RegionSidebarProvider
       throw new Error('No credentials found. Please re-open SAP Tools and log in.');
     }
 
+    const session = await this.resolveQuickScopeSession(credentials, regionCode);
+    const liveOrgs = await fetchOrgs(session);
+
+    // Every fallible async step has now succeeded, so it is safe to commit the
+    // shared scope/session state. Mutating earlier would corrupt provider state
+    // (e.g. clearing a valid session, leaving selectedRegionCode pointing at a
+    // region whose login then threw) on any failure.
     this.selectedRegionId = region.id;
     this.selectedRegionCode = regionCode;
     this.selectedOrgGuid = '';
-    if (this.cfSessionRegionCode !== regionCode) {
-      this.cfSession = null;
-      this.cfSessionRegionCode = '';
-    }
-    const session = await this.ensureRegionSession(credentials);
-    const liveOrgs = await fetchOrgs(session);
+    this.cfSession = session;
+    this.cfSessionRegionCode = regionCode;
+
     const liveMatch = liveOrgs.find((org) => org.name === orgName);
     return liveMatch?.guid ?? '';
+  }
+
+  private async resolveQuickScopeSession(
+    credentials: { readonly email: string; readonly password: string },
+    regionCode: string
+  ): Promise<CfSession> {
+    if (
+      this.cfSession !== null &&
+      this.cfSessionRegionCode === regionCode &&
+      !isCfSessionExpired(this.cfSession)
+    ) {
+      return this.cfSession;
+    }
+
+    const apiEndpoint = getCfApiEndpoint(regionCode);
+    const loginInfo = await fetchCfLoginInfo(apiEndpoint);
+    const token = await cfLogin(
+      loginInfo.authorizationEndpoint,
+      credentials.email,
+      credentials.password
+    );
+    return { token, apiEndpoint };
   }
 
   private async hydrateQuickConfirmedScope(
