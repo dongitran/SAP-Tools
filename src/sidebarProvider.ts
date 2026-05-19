@@ -2303,6 +2303,7 @@ export class RegionSidebarProvider
     this.serviceFolderSelections.clear();
     this.exportInProgress = false;
     this.lastLoadedScope = null;
+    this.hanaSqlWorkbench.invalidateAllAppContexts();
     this.cfLogsPanel.updateApps([], null);
     this.cfLogsPanel.updateScope(buildScopeLabel(region.code, 'select-org', 'select-space'));
     this.postMessage({
@@ -2398,6 +2399,7 @@ export class RegionSidebarProvider
     this.serviceFolderSelections.clear();
     this.exportInProgress = false;
     this.lastLoadedScope = null;
+    this.hanaSqlWorkbench.invalidateAllAppContexts();
     this.postMessage({
       type: MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
       mappings: this.serviceFolderMappings,
