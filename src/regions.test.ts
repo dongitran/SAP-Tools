@@ -10,13 +10,13 @@ function countByArea(area: string): number {
 }
 
 describe('SAP_BTP_REGIONS', () => {
-  it('contains 49 regions', () => {
-    expect(SAP_BTP_REGIONS).toHaveLength(49);
+  it('contains 50 regions', () => {
+    expect(SAP_BTP_REGIONS).toHaveLength(50);
   });
 
   it('keeps grouped distribution across areas', () => {
     expect(countByArea('Americas')).toBe(14);
-    expect(countByArea('Europe')).toBe(16);
+    expect(countByArea('Europe')).toBe(17);
     expect(countByArea('Middle East and Africa')).toBe(4);
     expect(countByArea('Asia Pacific')).toBe(13);
     expect(countByArea('China')).toBe(2);
@@ -78,6 +78,12 @@ describe('SAP_BTP_REGIONS', () => {
       },
       {
         id: 'eu10-005',
+        displayName: 'Europe (Frankfurt) - AWS Extension',
+        area: 'Europe',
+        provider: 'AWS',
+      },
+      {
+        id: 'eu10-006',
         displayName: 'Europe (Frankfurt) - AWS Extension',
         area: 'Europe',
         provider: 'AWS',

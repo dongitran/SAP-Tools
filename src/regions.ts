@@ -76,6 +76,12 @@ export const SAP_BTP_REGIONS: readonly SapBtpRegion[] = [
     provider: 'AWS',
   },
   {
+    id: 'eu10-006',
+    displayName: 'Europe (Frankfurt) - AWS Extension',
+    area: 'Europe',
+    provider: 'AWS',
+  },
+  {
     id: 'eu11',
     displayName: 'Europe (Frankfurt) - AWS Secondary',
     area: 'Europe',

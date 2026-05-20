@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 (stable)
+- Added the `eu10-006` (Europe/Frankfurt, AWS) Cloud Foundry landscape to the region catalog and bumped `@saptools/cf-sync` to `0.4.10`, so the region picker and CF cache sync now cover all 50 SAP BTP regions.
+- Updated the VS Code Activity Bar and panel icon to use a monochrome isometric cube that matches the Marketplace logo.
+
 ## 0.7.56 (pre-release)
 - Updated the Marketplace extension icon to use the new isometric cube PNG asset.
 

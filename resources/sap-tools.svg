@@ -1,37 +1,12 @@
 <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
   <!--
     SAP Tools – Activity Bar Icon (monochrome)
-    Open-end wrench silhouette, rotated -45°.
-    VSCode applies theme colour; only the SHAPE matters here.
-    Bold 18 px handle for legibility at 16 px rendered size.
+    Isometric cube mark adapted from the Marketplace logo.
+    VS Code applies theme colour; only the shape and face gaps matter here.
   -->
-  <g transform="rotate(-45, 64, 64)">
-    <path
-      fill-rule="evenodd"
-      fill="currentColor"
-      d="
-        M 37,22
-        Q 37,18 41,18
-        L 87,18
-        Q 91,18 91,22
-        L 91,52
-        L 73,52
-        L 73,110
-        Q 73,114 69,114
-        L 59,114
-        Q 55,114 55,110
-        L 55,52
-        L 37,52
-        Z
-
-        M 50,8
-        L 78,8
-        L 78,36
-        Q 78,40 74,40
-        L 54,40
-        Q 50,40 50,36
-        Z
-      "
-    />
+  <g fill="currentColor">
+    <path d="M64 10L105 34L64 58L23 34Z" />
+    <path d="M22 40L60 62L60 108L22 84Z" />
+    <path d="M106 40L68 62L68 108L106 84Z" />
   </g>
 </svg>

@@ -2,7 +2,7 @@
   "name": "sap-tools",
   "displayName": "SAP Tools",
   "description": "All-in-one toolbox for SAP BTP development workflows",
-  "version": "0.7.56",
+  "version": "0.8.0",
   "publisher": "dongtran",
   "icon": "resources/icon.png",
   "license": "MIT",
@@ -159,7 +159,7 @@
     "vscode:prepublish": "npm run build"
   },
   "dependencies": {
-    "@saptools/cf-sync": "^0.4.6",
+    "@saptools/cf-sync": "^0.4.10",
     "change-case": "^5.4.4",
     "hdb": "^2.27.1",
     "wordsninja": "^1.1.0"

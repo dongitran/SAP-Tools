@@ -56,19 +56,19 @@ describe('Extension manifest feature surface', () => {
     const cfSyncVersion = String(manifest.dependencies['@saptools/cf-sync'] ?? '');
 
     expect(cfSyncVersion).not.toBe('latest');
-    expect(cfSyncVersion).toBe('^0.4.6');
+    expect(cfSyncVersion).toBe('^0.4.10');
   });
 
-  it('keeps Marketplace pre-release metadata aligned with the release workflow', () => {
+  it('keeps Marketplace stable metadata aligned with the release workflow', () => {
     const manifest = readExtensionManifest();
     const topHeading = readChangelogTopHeading();
-    const publishPreScript = String(manifest.scripts['publish:pre'] ?? '');
+    const publishScript = String(manifest.scripts['publish'] ?? '');
     const minorVersion = Number(manifest.version.split('.')[1] ?? Number.NaN);
 
-    expect(topHeading).toContain(`${manifest.version} (pre-release)`);
+    expect(topHeading).toContain(`${manifest.version} (stable)`);
     expect(Number.isInteger(minorVersion)).toBe(true);
-    expect(minorVersion % 2).toBe(1);
-    expect(publishPreScript).toContain('--pre-release');
+    expect(minorVersion % 2).toBe(0);
+    expect(publishScript).not.toContain('--pre-release');
   });
 
   it('contributes the shared SAP CAP current scope setting', () => {
