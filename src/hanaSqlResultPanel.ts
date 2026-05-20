@@ -1,27 +1,40 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
+import type { HanaQueryResultSet } from './hanaSqlService';
 import {
   buildHanaSqlResultExportFileName,
   buildHanaSqlResultHtml,
   formatHanaSqlResultRowObjectJson,
   formatHanaSqlResultSetCsv,
   formatHanaSqlResultSetJson,
+  formatHanaSqlStatementBatchCsv,
+  formatHanaSqlStatementBatchJson,
   resolveHanaSqlResultCellValue,
   resolveSqlResultTargetColumn,
   type HanaSqlResultExportFormat,
   type RenderSqlResultOptions,
+  type SqlResultStatementView,
 } from './hanaSqlWorkbenchSupport';
 
 const SQL_RESULT_VIEW_TYPE = 'sapTools.hanaSqlResult';
 const SQL_RESULT_EXPORT_ACTION_MESSAGE_TYPE = 'sapTools.sqlResultExportAction';
 
-type SqlResultExportActionName = 'copyCsv' | 'copyJson' | 'exportCsv' | 'exportJson';
+type SqlResultExportActionName =
+  | 'copyCsv'
+  | 'copyJson'
+  | 'exportCsv'
+  | 'exportJson'
+  | 'copyAllCsv'
+  | 'copyAllJson'
+  | 'exportAllCsv'
+  | 'exportAllJson';
 type SqlResultContextCopyActionName = 'copyRowObject' | 'copyCellValue';
 
 interface SqlResultExportAction {
   readonly name: SqlResultExportActionName;
   readonly format: HanaSqlResultExportFormat;
   readonly mode: 'copy' | 'export';
+  readonly scope: 'single' | 'all';
 }
 
 interface SqlResultContextCopyAction {
@@ -91,7 +104,7 @@ export class HanaSqlResultPanelManager implements vscode.Disposable {
     }
     const action = parseExportAction(message['action']);
     if (action !== null) {
-      await this.handleExportAction(options, action);
+      await this.handleExportAction(options, action, message);
       return;
     }
     const copyAction = parseContextCopyAction(message['action']);
@@ -103,12 +116,27 @@ export class HanaSqlResultPanelManager implements vscode.Disposable {
 
   private async handleExportAction(
     options: RenderSqlResultOptions,
-    action: SqlResultExportAction
+    action: SqlResultExportAction,
+    message: Record<string, unknown>
   ): Promise<void> {
-    if (options.result?.kind !== 'resultset') {
+    if (action.scope === 'all') {
+      const statements = options.statements ?? [];
+      if (statements.length === 0) {
+        return;
+      }
+      const content = formatStatementBatch(statements, action.format);
+      if (action.mode === 'copy') {
+        await this.copyResult(options.appName, action, content);
+        return;
+      }
+      await this.exportResult(options, action, content);
       return;
     }
-    const content = formatResultSet(options.result, action.format);
+    const resultSet = resolveTargetResultSet(options, message['statementIndex']);
+    if (resultSet === null) {
+      return;
+    }
+    const content = formatResultSet(resultSet, action.format);
     if (action.mode === 'copy') {
       await this.copyResult(options.appName, action, content);
       return;
@@ -121,12 +149,13 @@ export class HanaSqlResultPanelManager implements vscode.Disposable {
     action: SqlResultContextCopyAction,
     message: Record<string, unknown>
   ): Promise<void> {
-    if (options.result?.kind !== 'resultset') {
+    const resultSet = resolveTargetResultSet(options, message['statementIndex']);
+    if (resultSet === null) {
       return;
     }
     const rowIndex = parseNonNegativeInteger(message['rowIndex']);
     const columnIndex = parseNonNegativeInteger(message['columnIndex']);
-    const content = resolveContextCopyContent(options.result, action, rowIndex, columnIndex);
+    const content = resolveContextCopyContent(resultSet, action, rowIndex, columnIndex);
     if (content === null || rowIndex === null) {
       this.log(`ignored invalid ${action.logLabel} copy request for app ${sanitizeLogValue(options.appName)}`);
       return;
@@ -223,11 +252,45 @@ function resolveResultTargetViewColumn(
 }
 
 function parseExportAction(rawAction: unknown): SqlResultExportAction | null {
-  if (rawAction === 'copyCsv') return { name: rawAction, format: 'csv', mode: 'copy' };
-  if (rawAction === 'copyJson') return { name: rawAction, format: 'json', mode: 'copy' };
-  if (rawAction === 'exportCsv') return { name: rawAction, format: 'csv', mode: 'export' };
-  if (rawAction === 'exportJson') return { name: rawAction, format: 'json', mode: 'export' };
+  if (rawAction === 'copyCsv') return { name: rawAction, format: 'csv', mode: 'copy', scope: 'single' };
+  if (rawAction === 'copyJson') return { name: rawAction, format: 'json', mode: 'copy', scope: 'single' };
+  if (rawAction === 'exportCsv') return { name: rawAction, format: 'csv', mode: 'export', scope: 'single' };
+  if (rawAction === 'exportJson') return { name: rawAction, format: 'json', mode: 'export', scope: 'single' };
+  if (rawAction === 'copyAllCsv') return { name: rawAction, format: 'csv', mode: 'copy', scope: 'all' };
+  if (rawAction === 'copyAllJson') return { name: rawAction, format: 'json', mode: 'copy', scope: 'all' };
+  if (rawAction === 'exportAllCsv') return { name: rawAction, format: 'csv', mode: 'export', scope: 'all' };
+  if (rawAction === 'exportAllJson') return { name: rawAction, format: 'json', mode: 'export', scope: 'all' };
   return null;
+}
+
+function resolveTargetResultSet(
+  options: RenderSqlResultOptions,
+  rawStatementIndex: unknown
+): HanaQueryResultSet | null {
+  const statements = options.statements ?? [];
+  if (statements.length > 0) {
+    const index = parseNonNegativeInteger(rawStatementIndex);
+    const fallbackIndex =
+      index ?? statements.findIndex((statement) => statement.result?.kind === 'resultset');
+    if (fallbackIndex < 0 || fallbackIndex >= statements.length) {
+      return null;
+    }
+    const result = statements[fallbackIndex]?.result;
+    return result?.kind === 'resultset' ? result : null;
+  }
+  if (options.result?.kind === 'resultset') {
+    return options.result;
+  }
+  return null;
+}
+
+function formatStatementBatch(
+  statements: readonly SqlResultStatementView[],
+  format: HanaSqlResultExportFormat
+): string {
+  return format === 'csv'
+    ? formatHanaSqlStatementBatchCsv(statements)
+    : formatHanaSqlStatementBatchJson(statements);
 }
 
 function parseContextCopyAction(rawAction: unknown): SqlResultContextCopyAction | null {
@@ -237,12 +300,12 @@ function parseContextCopyAction(rawAction: unknown): SqlResultContextCopyAction 
 }
 
 function resolveContextCopyContent(
-  result: NonNullable<RenderSqlResultOptions['result']>,
+  result: HanaQueryResultSet,
   action: SqlResultContextCopyAction,
   rowIndex: number | null,
   columnIndex: number | null
 ): string | null {
-  if (result.kind !== 'resultset' || rowIndex === null) {
+  if (rowIndex === null) {
     return null;
   }
   if (action.name === 'copyRowObject') {
@@ -255,12 +318,9 @@ function resolveContextCopyContent(
 }
 
 function formatResultSet(
-  result: NonNullable<RenderSqlResultOptions['result']>,
+  result: HanaQueryResultSet,
   format: HanaSqlResultExportFormat
 ): string {
-  if (result.kind !== 'resultset') {
-    return '';
-  }
   return format === 'csv'
     ? formatHanaSqlResultSetCsv(result)
     : formatHanaSqlResultSetJson(result);

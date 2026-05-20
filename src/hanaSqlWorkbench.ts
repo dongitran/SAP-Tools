@@ -3,12 +3,16 @@ import {
   HanaQueryError,
   classifyHanaSqlStatement,
   executeHanaQuery,
-  normalizeSingleHanaStatement,
+  executeHanaQueryBatch,
   sanitizeHanaErrorMessage,
+  type HanaBatchExecutionSummary,
   type HanaConnection,
   type HanaQueryResult,
   type HanaSqlStatementKind,
+  type HanaStatementInput,
+  type HanaStatementOutcome,
 } from './hanaSqlService';
+import { splitHanaSqlStatements } from './hanaSqlStatementSplitter';
 import { HANA_SQL_DEFAULT_SELECT_LIMIT, applyDefaultHanaSelectLimit } from './hanaSqlLimitGuard';
 import { resolveHanaConnectionFromApp, type HanaSqlScopeSession } from './hanaSqlConnectionResolver';
 import {
@@ -20,6 +24,7 @@ import {
   buildHanaTableReferenceResolutionMissLog,
   buildQuickTableSelectSql,
   buildTableDiscoveryQueries,
+  buildTestModeBatchOutcomes,
   buildTestModeQueryResult,
   buildRawHanaTableDisplayEntries,
   createTestModeTableNames,
@@ -30,6 +35,10 @@ import {
   resolveHanaDisplayTableReferences,
   sanitizeUntitledFileName,
   type HanaTableDisplayEntry,
+  type RenderSqlResultOptions,
+  type SqlResultBatchSummary,
+  type SqlResultStatementStatus,
+  type SqlResultStatementView,
 } from './hanaSqlWorkbenchSupport';
 import {
   delayE2eQuickSelectIfConfigured,
@@ -67,6 +76,25 @@ export interface RunQuickTableSelectRequest {
   readonly session: HanaSqlScopeSession | null;
   readonly tableName: string;
 }
+interface PreparedStatement {
+  readonly executionSql: string;
+  readonly statementKind: HanaSqlStatementKind;
+  readonly tableName: string;
+}
+
+function describeBatchCounts(views: readonly SqlResultStatementView[]): string {
+  const totals = { success: 0, error: 0, skipped: 0, pending: 0 };
+  for (const view of views) {
+    totals[view.status] += 1;
+  }
+  const parts: string[] = [];
+  if (totals.success > 0) parts.push(`OK: ${String(totals.success)}`);
+  if (totals.error > 0) parts.push(`Failed: ${String(totals.error)}`);
+  if (totals.skipped > 0) parts.push(`Skipped: ${String(totals.skipped)}`);
+  if (totals.pending > 0) parts.push(`Pending: ${String(totals.pending)}`);
+  return parts.join(', ');
+}
+
 function isSameHanaSqlScope(
   previous: HanaSqlScopeSession | null,
   next: HanaSqlScopeSession
@@ -356,9 +384,9 @@ export class HanaSqlWorkbench
     const selectedSql = editor.selection.isEmpty ? '' : editor.document.getText(editor.selection);
     const sqlInput = selectedSql.trim().length > 0 ? selectedSql : editor.document.getText();
 
-    let normalizedSql = '';
+    let splitStatements;
     try {
-      normalizedSql = normalizeSingleHanaStatement(sqlInput);
+      splitStatements = splitHanaSqlStatements(sqlInput);
     } catch (error) {
       const message = this.toSafeErrorMessage(error, context);
       void vscode.window.showErrorMessage(message);
@@ -375,28 +403,16 @@ export class HanaSqlWorkbench
       return;
     }
 
-    if (normalizedSql.length === 0) {
+    if (splitStatements.length === 0) {
       void vscode.window.showWarningMessage('Query is empty.');
       return;
     }
 
-    const statementKind = classifyHanaSqlStatement(normalizedSql);
-    const guardedSql = statementKind === 'readonly'
-      ? applyDefaultHanaSelectLimit(normalizedSql)
-      : { sql: normalizedSql, applied: false, limit: HANA_SQL_DEFAULT_SELECT_LIMIT };
-    let executionSql = guardedSql.sql;
-
-    if (guardedSql.applied) {
-      this.logSql(
-        `applied default LIMIT ${String(guardedSql.limit)} for app ${sanitizeSqlLogValue(context.appName)}`
-      );
-    }
-
-    let tableName = resolveSqlResultTableName(executionSql);
+    let tableName = resolveSqlResultTableName(splitStatements[0]?.sql ?? '');
     const resultPanel = this.openLoadingResultPanel(
       context.appName,
       tableName,
-      executionSql,
+      sqlInput,
       toPositiveViewColumnNumber(editor.viewColumn)
     );
 
@@ -406,44 +422,85 @@ export class HanaSqlWorkbench
       this.logSql(
         `manual statement table context app ${sanitizeSqlLogValue(context.appName)} schema ${sanitizeSqlLogValue(context.schema)} loadedTables=${String(tableEntries.length)}`
       );
-      const resolution = resolveHanaDisplayTableReferences(
-        executionSql,
-        tableEntries,
-        context.schema
-      );
-      executionSql = resolution.sql;
-      tableName = resolveSqlResultTableName(executionSql);
-      if (resolution.replacements.length > 0) {
-        const preview = resolution.replacements.slice(0, 4).map((replacement) => {
-          return `${sanitizeSqlLogValue(replacement.displayName)} -> ${sanitizeSqlLogValue(replacement.identifier)}`;
-        });
-        const suffix = resolution.replacements.length > preview.length
-          ? `, +${String(resolution.replacements.length - preview.length)} more`
-          : '';
-        this.logSql(
-          `resolved ${String(resolution.replacements.length)} table display reference(s) for app ${sanitizeSqlLogValue(context.appName)}: ${preview.join(', ')}${suffix}`
-        );
-      } else {
-        const missLog = buildHanaTableReferenceResolutionMissLog(executionSql, tableEntries);
-        if (missLog !== null) {
-          this.logSql(sanitizeSqlLogValue(missLog));
-        }
-      }
-      this.updateLoadingResultPanel(resultPanel, context.appName, tableName, executionSql);
-      this.logSql(
-        `run ${statementKind} statement for app ${sanitizeSqlLogValue(context.appName)} table ${sanitizeSqlLogValue(tableName)}: ${sanitizeSqlCommandLogValue(executionSql)}`
-      );
-      const result = await this.executeSqlForContext(context, executionSql, statementKind);
-      this.logSql(
-        `statement completed for app ${sanitizeSqlLogValue(context.appName)} table ${sanitizeSqlLogValue(tableName)} result ${result.kind}`
-      );
+
+      const prepared = splitStatements.map((entry) => this.prepareStatement(context, entry.sql, tableEntries));
+      tableName = resolveSqlResultTableName(prepared[0]?.executionSql ?? '');
+
+      const pendingViews: SqlResultStatementView[] = prepared.map((statement) => ({
+        sql: statement.executionSql,
+        status: 'pending' as SqlResultStatementStatus,
+        tableName: statement.tableName,
+      }));
+
       resultPanel.update({
         appName: context.appName,
         tableName,
-        sql: executionSql,
+        sql: sqlInput,
         executedAt: new Date().toISOString(),
-        result,
+        isLoading: prepared.length === 1,
+        statements: pendingViews,
       });
+
+      const batchLabel = prepared.length > 1 ? `batch (${String(prepared.length)} stmts)` : prepared[0]?.statementKind ?? 'statement';
+      this.logSql(
+        `run ${batchLabel} for app ${sanitizeSqlLogValue(context.appName)} first-table ${sanitizeSqlLogValue(tableName)}`
+      );
+      for (const [index, statement] of prepared.entries()) {
+        this.logSql(
+          `  [${String(index + 1)}/${String(prepared.length)}] ${statement.statementKind} ${sanitizeSqlCommandLogValue(statement.executionSql)}`
+        );
+      }
+
+      const batchOutcome = await this.executeBatchForContext(context, prepared, (statementIndex, outcome) => {
+        pendingViews[statementIndex] = this.toStatementView(prepared[statementIndex], outcome);
+        if (prepared.length === 1) {
+          return;
+        }
+        resultPanel.update({
+          appName: context.appName,
+          tableName,
+          sql: sqlInput,
+          executedAt: new Date().toISOString(),
+          statements: pendingViews.slice(),
+        });
+      });
+
+      const finalViews = batchOutcome.outcomes.map((outcome, index) =>
+        this.toStatementView(prepared[index], outcome)
+      );
+      const summary: SqlResultBatchSummary = batchOutcome.transactionUnavailableReason === undefined
+        ? {
+            usedTransaction: batchOutcome.usedTransaction,
+            committed: batchOutcome.committed,
+            rolledBack: batchOutcome.rolledBack,
+          }
+        : {
+            usedTransaction: batchOutcome.usedTransaction,
+            committed: batchOutcome.committed,
+            rolledBack: batchOutcome.rolledBack,
+            transactionUnavailableReason: batchOutcome.transactionUnavailableReason,
+          };
+
+      this.logSql(
+        `batch completed for app ${sanitizeSqlLogValue(context.appName)} (${describeBatchCounts(finalViews)})`
+      );
+
+      const finalOptions: RenderSqlResultOptions = {
+        appName: context.appName,
+        tableName,
+        sql: sqlInput,
+        executedAt: new Date().toISOString(),
+        statements: finalViews,
+        batchSummary: summary,
+      };
+      const onlyView = finalViews.length === 1 ? finalViews[0] : undefined;
+      if (onlyView?.result !== undefined) {
+        (finalOptions as { result?: HanaQueryResult }).result = onlyView.result;
+      }
+      if (onlyView?.errorMessage !== undefined) {
+        (finalOptions as { errorMessage?: string }).errorMessage = onlyView.errorMessage;
+      }
+      resultPanel.update(finalOptions);
     } catch (error) {
       const message = this.toSafeErrorMessage(error, context);
       this.logSql(
@@ -453,11 +510,85 @@ export class HanaSqlWorkbench
       resultPanel.update({
         appName: context.appName,
         tableName,
-        sql: executionSql,
+        sql: sqlInput,
         executedAt: new Date().toISOString(),
         errorMessage: message,
       });
     }
+  }
+
+  private prepareStatement(
+    context: HanaSqlAppContext,
+    rawSql: string,
+    tableEntries: readonly HanaTableDisplayEntry[]
+  ): PreparedStatement {
+    const statementKind = classifyHanaSqlStatement(rawSql);
+    const guarded =
+      statementKind === 'readonly'
+        ? applyDefaultHanaSelectLimit(rawSql)
+        : { sql: rawSql, applied: false, limit: HANA_SQL_DEFAULT_SELECT_LIMIT };
+    if (guarded.applied) {
+      this.logSql(
+        `applied default LIMIT ${String(guarded.limit)} for app ${sanitizeSqlLogValue(context.appName)}`
+      );
+    }
+    const resolution = resolveHanaDisplayTableReferences(guarded.sql, tableEntries, context.schema);
+    const executionSql = resolution.sql;
+    if (resolution.replacements.length > 0) {
+      const preview = resolution.replacements.slice(0, 4).map((replacement) => {
+        return `${sanitizeSqlLogValue(replacement.displayName)} -> ${sanitizeSqlLogValue(replacement.identifier)}`;
+      });
+      const suffix = resolution.replacements.length > preview.length
+        ? `, +${String(resolution.replacements.length - preview.length)} more`
+        : '';
+      this.logSql(
+        `resolved ${String(resolution.replacements.length)} table display reference(s) for app ${sanitizeSqlLogValue(context.appName)}: ${preview.join(', ')}${suffix}`
+      );
+    } else {
+      const missLog = buildHanaTableReferenceResolutionMissLog(executionSql, tableEntries);
+      if (missLog !== null) {
+        this.logSql(sanitizeSqlLogValue(missLog));
+      }
+    }
+    return {
+      executionSql,
+      statementKind,
+      tableName: resolveSqlResultTableName(executionSql),
+    };
+  }
+
+  private toStatementView(
+    prepared: PreparedStatement | undefined,
+    outcome: HanaStatementOutcome
+  ): SqlResultStatementView {
+    const tableName = prepared?.tableName ?? resolveSqlResultTableName(outcome.sql);
+    const base = {
+      sql: outcome.sql,
+      tableName,
+    };
+    if (outcome.status === 'success') {
+      const success: SqlResultStatementView = {
+        ...base,
+        status: 'success',
+        elapsedMs: outcome.elapsedMs ?? 0,
+      };
+      if (outcome.result !== undefined) {
+        (success as { result?: HanaQueryResult }).result = outcome.result;
+      }
+      return success;
+    }
+    if (outcome.status === 'error') {
+      return {
+        ...base,
+        status: 'error',
+        errorMessage: outcome.errorMessage ?? 'Query execution failed.',
+        elapsedMs: outcome.elapsedMs ?? 0,
+      };
+    }
+    return {
+      ...base,
+      status: 'skipped',
+    };
   }
 
   private async executeSqlForContext(
@@ -475,6 +606,30 @@ export class HanaSqlWorkbench
     }
 
     return executeHanaQuery(context.connection, sql, { statementKind });
+  }
+
+  private async executeBatchForContext(
+    context: HanaSqlAppContext,
+    prepared: readonly PreparedStatement[],
+    onStatementComplete: (statementIndex: number, outcome: HanaStatementOutcome) => void
+  ): Promise<HanaBatchExecutionSummary> {
+    if (this.isTestMode) {
+      return buildTestModeBatchOutcomes(context.appName, prepared, onStatementComplete);
+    }
+
+    await this.ensureConnection(context);
+    if (context.connection === null) {
+      throw new Error('Unable to resolve HANA connection.');
+    }
+
+    const inputs: HanaStatementInput[] = prepared.map((statement) => ({
+      sql: statement.executionSql,
+      statementKind: statement.statementKind,
+    }));
+
+    return executeHanaQueryBatch(context.connection, inputs, {
+      onStatementComplete,
+    });
   }
 
   private async prefetchTableNames(appId: string): Promise<void> {

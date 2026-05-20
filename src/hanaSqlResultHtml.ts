@@ -1,5 +1,23 @@
 import type { HanaQueryResult, HanaQueryResultSet } from './hanaSqlService';
 
+export type SqlResultStatementStatus = 'pending' | 'success' | 'error' | 'skipped';
+
+export interface SqlResultStatementView {
+  readonly sql: string;
+  readonly status: SqlResultStatementStatus;
+  readonly tableName?: string;
+  readonly result?: HanaQueryResult;
+  readonly errorMessage?: string;
+  readonly elapsedMs?: number;
+}
+
+export interface SqlResultBatchSummary {
+  readonly usedTransaction: boolean;
+  readonly committed: boolean;
+  readonly rolledBack: boolean;
+  readonly transactionUnavailableReason?: string;
+}
+
 export interface RenderSqlResultOptions {
   readonly appName: string;
   readonly tableName?: string;
@@ -9,6 +27,8 @@ export interface RenderSqlResultOptions {
   readonly nonce?: string;
   readonly result?: HanaQueryResult;
   readonly errorMessage?: string;
+  readonly statements?: readonly SqlResultStatementView[];
+  readonly batchSummary?: SqlResultBatchSummary;
 }
 
 const SHARED_THEME_STYLE = `
@@ -244,31 +264,244 @@ const RESULT_SET_STYLE = `${SHARED_THEME_STYLE}
       .result-context-menu button:hover { background: var(--saptools-surface-strong); }
 `;
 
+const RESULT_BATCH_STYLE = `${SHARED_THEME_STYLE}
+      :root {
+        --saptools-success: var(--vscode-testing-iconPassed, #2ea043);
+        --saptools-error: var(--vscode-testing-iconFailed, #f85149);
+        --saptools-skip: var(--saptools-muted);
+        --saptools-row-hover: var(--vscode-list-hoverBackground, var(--saptools-surface-strong));
+        --saptools-accent: var(--vscode-progressBar-background, var(--vscode-focusBorder, #0078d4));
+      }
+      .result-batch-layout {
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 0;
+      }
+      .result-batch-summary {
+        padding: 6px;
+        border-bottom: 1px solid var(--saptools-border);
+        background: var(--saptools-surface);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        position: sticky;
+        top: 0;
+        z-index: 3;
+      }
+      .result-chip {
+        border: 1px solid var(--saptools-border);
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 12px;
+        color: var(--saptools-fg);
+        background: var(--saptools-surface-strong);
+      }
+      .result-chip-success { color: var(--saptools-success); border-color: var(--saptools-success); }
+      .result-chip-error { color: var(--saptools-error); border-color: var(--saptools-error); }
+      .result-chip-skip { color: var(--saptools-skip); }
+      .result-chip-warn { color: var(--saptools-error); border-color: var(--saptools-error); background: transparent; }
+      .result-toolbar-spacer { flex: 1 1 auto; }
+      .result-batch-sections {
+        display: grid;
+        gap: 8px;
+        padding: 8px 6px;
+      }
+      .result-statement-section {
+        border: 1px solid var(--saptools-border);
+        border-radius: 6px;
+        background: var(--saptools-bg);
+        overflow: hidden;
+      }
+      .result-statement-section.status-pending { opacity: 0.85; }
+      .result-statement-section.status-skipped { opacity: 0.7; }
+      .result-statement-section.status-error { border-color: var(--saptools-error); }
+      .result-statement-section.status-success { border-color: color-mix(in oklab, var(--saptools-success) 60%, var(--saptools-border)); }
+      .result-statement-header {
+        padding: 6px 8px;
+        background: var(--saptools-surface);
+        border-bottom: 1px solid var(--saptools-border);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        font-size: 12px;
+      }
+      .result-statement-title { font-weight: 600; }
+      .result-statement-body { padding: 0; }
+      .result-statement-body .result-table-wrap { max-height: 360px; overflow: auto; }
+      .result-statement-body .result-toolbar { padding: 6px 8px; }
+      .result-statement-body .state-layout {
+        display: grid;
+        gap: 6px;
+        padding: 6px 8px;
+      }
+      .result-statement-body .state-card {
+        border: 1px solid var(--saptools-border);
+        border-radius: 6px;
+        background: var(--saptools-surface);
+        padding: 6px 8px;
+      }
+      .result-statement-body .state-message,
+      .result-statement-body .state-sql {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .result-statement-body .state-success h1 { color: var(--saptools-success); margin: 0; font-size: 13px; }
+      .result-statement-body .state-error h1 { color: var(--saptools-error); margin: 0; font-size: 13px; }
+      .result-statement-body .state-skipped h1 { color: var(--saptools-skip); margin: 0; font-size: 13px; }
+      .result-statement-body .state-pending {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px;
+        color: var(--saptools-muted);
+        font-size: 12px;
+      }
+      .result-statement-body .result-loading-spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid color-mix(in oklab, var(--saptools-border) 70%, transparent);
+        border-top-color: var(--saptools-accent);
+        border-radius: 999px;
+        animation: saptools-result-spin 780ms linear infinite;
+      }
+      @keyframes saptools-result-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        .result-statement-body .result-loading-spinner { animation: none; }
+      }
+      table { width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; font-size: 12px; }
+      tbody tr { transition: background-color 120ms ease; }
+      tbody tr:hover td { background: var(--saptools-row-hover); }
+      th,
+      td {
+        border-bottom: 1px solid var(--saptools-border);
+        padding: 6px 8px;
+        text-align: left;
+        vertical-align: top;
+        white-space: pre;
+        overflow: visible;
+        text-overflow: clip;
+      }
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        color: var(--saptools-fg);
+        background: var(--saptools-bg);
+        font-weight: 600;
+      }
+      tbody tr:nth-child(even) { background: var(--saptools-surface); }
+      .row-number { width: 52px; color: var(--saptools-muted); }
+      .result-export-menu { position: relative; flex: 0 0 auto; }
+      .result-export-trigger,
+      .result-export-list button { font: inherit; }
+      .result-export-trigger {
+        border: 1px solid var(--saptools-border);
+        border-radius: 6px;
+        padding: 3px 9px;
+        color: var(--saptools-fg);
+        background: var(--saptools-surface-strong);
+        cursor: pointer;
+      }
+      .result-export-trigger:hover { border-color: var(--vscode-focusBorder, var(--saptools-border)); }
+      .result-export-list {
+        position: absolute;
+        z-index: 4;
+        top: calc(100% + 5px);
+        right: 0;
+        display: grid;
+        min-width: 132px;
+        padding: 5px;
+        border: 1px solid var(--saptools-border);
+        border-radius: 6px;
+        background: var(--saptools-bg);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+      }
+      .result-export-list[hidden] { display: none; }
+      .result-export-list button {
+        border: 0;
+        border-radius: 4px;
+        padding: 6px 8px;
+        color: var(--saptools-fg);
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+      }
+      .result-export-list button:hover { background: var(--saptools-surface-strong); }
+      .result-context-menu {
+        position: fixed;
+        z-index: 5;
+        display: grid;
+        min-width: 148px;
+        padding: 5px;
+        border: 1px solid var(--saptools-border);
+        border-radius: 6px;
+        background: var(--saptools-bg);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+      }
+      .result-context-menu[hidden] { display: none; }
+      .result-context-menu button {
+        border: 0;
+        border-radius: 4px;
+        padding: 6px 8px;
+        color: var(--saptools-fg);
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+        font: inherit;
+      }
+      .result-context-menu button:hover { background: var(--saptools-surface-strong); }
+`;
+
 const RESULT_ACTION_SCRIPT = `
 (() => {
   const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
-  const trigger = document.querySelector('[data-role="result-export-trigger"]');
-  const list = document.querySelector('[data-role="result-export-list"]');
+  const triggers = Array.from(document.querySelectorAll('[data-role="result-export-trigger"]'));
   const contextMenu = document.querySelector('[data-role="sql-result-context-menu"]');
-  if (
-    !(trigger instanceof HTMLButtonElement) ||
-    !(list instanceof HTMLElement) ||
-    !(contextMenu instanceof HTMLElement)
-  ) return;
+  if (triggers.length === 0 || !(contextMenu instanceof HTMLElement)) return;
+  let openTrigger = null;
   let selectedContext = null;
-  const setMenuOpen = (isOpen) => {
-    list.hidden = !isOpen;
-    trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  const closeExportMenu = () => {
+    if (openTrigger === null) return;
+    const list = openTrigger.parentElement?.querySelector('[data-role="result-export-list"]');
+    if (list instanceof HTMLElement) list.hidden = true;
+    openTrigger.setAttribute('aria-expanded', 'false');
+    openTrigger = null;
+  };
+  const toggleExportMenu = (trigger) => {
+    const list = trigger.parentElement?.querySelector('[data-role="result-export-list"]');
+    if (!(list instanceof HTMLElement)) return;
+    if (openTrigger === trigger) {
+      list.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+      openTrigger = null;
+      return;
+    }
+    closeExportMenu();
+    list.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    openTrigger = trigger;
   };
   const closeContextMenu = () => {
     selectedContext = null;
     contextMenu.hidden = true;
     contextMenu.removeAttribute('data-row-index');
     contextMenu.removeAttribute('data-column-index');
+    contextMenu.removeAttribute('data-statement-index');
   };
   const readIndex = (value) => {
     const parsed = Number.parseInt(value ?? '', 10);
     return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+  };
+  const resolveStatementIndex = (element) => {
+    const owner = element.closest('[data-statement-index]');
+    if (!(owner instanceof HTMLElement)) return null;
+    return readIndex(owner.dataset.statementIndex);
   };
   const positionContextMenu = (event) => {
     contextMenu.hidden = false;
@@ -289,18 +522,21 @@ const RESULT_ACTION_SCRIPT = `
     const columnIndex = readIndex(cell.dataset.columnIndex);
     if (rowIndex === null || columnIndex === null) return;
     event.preventDefault();
-    setMenuOpen(false);
-    selectedContext = { rowIndex, columnIndex };
+    closeExportMenu();
+    const statementIndex = resolveStatementIndex(cell);
+    selectedContext = { rowIndex, columnIndex, statementIndex };
     contextMenu.dataset.rowIndex = String(rowIndex);
     contextMenu.dataset.columnIndex = String(columnIndex);
+    if (statementIndex !== null) contextMenu.dataset.statementIndex = String(statementIndex);
     positionContextMenu(event);
   });
   document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
-    if (target === trigger || trigger.contains(target)) {
+    const triggerCandidate = target.closest('[data-role="result-export-trigger"]');
+    if (triggerCandidate instanceof HTMLButtonElement) {
       closeContextMenu();
-      setMenuOpen(list.hidden);
+      toggleExportMenu(triggerCandidate);
       return;
     }
     const actionButton = target.closest('[data-action]');
@@ -308,29 +544,37 @@ const RESULT_ACTION_SCRIPT = `
       const action = actionButton.dataset.action ?? '';
       if (action === 'copyRowObject' || action === 'copyCellValue') {
         if (selectedContext !== null) {
-          vscode?.postMessage({ type: 'sapTools.sqlResultExportAction', action, ...selectedContext });
+          const payload = { type: 'sapTools.sqlResultExportAction', action, rowIndex: selectedContext.rowIndex, columnIndex: selectedContext.columnIndex };
+          if (selectedContext.statementIndex !== null) payload.statementIndex = selectedContext.statementIndex;
+          vscode?.postMessage(payload);
         }
         closeContextMenu();
-        setMenuOpen(false);
+        closeExportMenu();
         return;
       }
-      setMenuOpen(false);
+      const statementIndex = resolveStatementIndex(actionButton);
+      const payload = { type: 'sapTools.sqlResultExportAction', action };
+      if (statementIndex !== null) payload.statementIndex = statementIndex;
+      closeExportMenu();
       closeContextMenu();
-      vscode?.postMessage({ type: 'sapTools.sqlResultExportAction', action });
+      vscode?.postMessage(payload);
       return;
     }
-    setMenuOpen(false);
+    closeExportMenu();
     closeContextMenu();
   });
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
-    setMenuOpen(false);
+    closeExportMenu();
     closeContextMenu();
   });
 })();
 `;
 
 export function buildHanaSqlResultHtml(options: RenderSqlResultOptions): string {
+  if (isBatchView(options)) {
+    return buildBatchResultHtml(options);
+  }
   if (options.isLoading === true) {
     return buildLoadingResultHtml(options);
   }
@@ -338,6 +582,10 @@ export function buildHanaSqlResultHtml(options: RenderSqlResultOptions): string 
     return buildResultSetHtml(options, options.result);
   }
   return buildStateResultHtml(options);
+}
+
+function isBatchView(options: RenderSqlResultOptions): boolean {
+  return (options.statements?.length ?? 0) > 1;
 }
 
 function buildStateResultHtml(options: RenderSqlResultOptions): string {
@@ -507,6 +755,199 @@ function renderResultContextMenu(): string {
         <button type="button" role="menuitem" data-action="copyRowObject">Copy row object</button>
         <button type="button" role="menuitem" data-action="copyCellValue">Copy cell value</button>
       </div>`;
+}
+
+function buildBatchResultHtml(options: RenderSqlResultOptions): string {
+  const statements = options.statements ?? [];
+  const summary = options.batchSummary;
+  return wrapResultDocument(
+    options.nonce,
+    RESULT_BATCH_STYLE,
+    `
+    <main class="result-batch-layout">
+      ${renderBatchSummaryToolbar(statements, summary)}
+      <div class="result-batch-sections">
+        ${statements
+          .map((statement, index) => renderStatementSection(statement, index, statements.length))
+          .join('')}
+      </div>
+      ${renderResultContextMenu()}
+    </main>
+    ${buildResultActionScript(options.nonce)}
+  `
+  );
+}
+
+function renderBatchSummaryToolbar(
+  statements: readonly SqlResultStatementView[],
+  summary: SqlResultBatchSummary | undefined
+): string {
+  const counts = countStatementStatuses(statements);
+  const totalElapsed = statements.reduce(
+    (sum, statement) => sum + (statement.elapsedMs ?? 0),
+    0
+  );
+  const transactionChip = renderTransactionChip(summary);
+  const showExportAll = counts.success > 0;
+  return `<header class="result-batch-summary">
+        <span class="result-chip">Statements: ${String(statements.length)}</span>
+        <span class="result-chip result-chip-success">OK: ${String(counts.success)}</span>
+        ${counts.error > 0 ? `<span class="result-chip result-chip-error">Failed: ${String(counts.error)}</span>` : ''}
+        ${counts.skipped > 0 ? `<span class="result-chip result-chip-skip">Skipped: ${String(counts.skipped)}</span>` : ''}
+        ${counts.pending > 0 ? `<span class="result-chip">Pending: ${String(counts.pending)}</span>` : ''}
+        <span class="result-chip">Elapsed: ${String(totalElapsed)} ms</span>
+        ${transactionChip}
+        <span class="result-toolbar-spacer" aria-hidden="true"></span>
+        ${showExportAll ? renderBatchExportAllMenu() : ''}
+      </header>`;
+}
+
+function renderTransactionChip(summary: SqlResultBatchSummary | undefined): string {
+  if (summary === undefined) return '';
+  if (summary.rolledBack) {
+    return '<span class="result-chip result-chip-warn" title="Transaction was rolled back">Rolled back</span>';
+  }
+  if (summary.committed) {
+    return '<span class="result-chip result-chip-success" title="Transaction committed">Committed</span>';
+  }
+  if (summary.usedTransaction) {
+    return '<span class="result-chip">Transactional</span>';
+  }
+  if (summary.transactionUnavailableReason !== undefined) {
+    return `<span class="result-chip result-chip-warn" title="${escapeHtml(summary.transactionUnavailableReason)}">Transaction unavailable</span>`;
+  }
+  return '';
+}
+
+function renderBatchExportAllMenu(): string {
+  return `<div class="result-export-menu" data-role="result-export-menu">
+          <button type="button" class="result-export-trigger" data-role="result-export-trigger" aria-haspopup="menu" aria-expanded="false">Export all</button>
+          <div class="result-export-list" data-role="result-export-list" role="menu" hidden>
+            <button type="button" role="menuitem" data-action="copyAllCsv">Copy all CSV</button>
+            <button type="button" role="menuitem" data-action="copyAllJson">Copy all JSON</button>
+            <button type="button" role="menuitem" data-action="exportAllCsv">Export all CSV</button>
+            <button type="button" role="menuitem" data-action="exportAllJson">Export all JSON</button>
+          </div>
+        </div>`;
+}
+
+function countStatementStatuses(
+  statements: readonly SqlResultStatementView[]
+): { success: number; error: number; skipped: number; pending: number } {
+  const totals = { success: 0, error: 0, skipped: 0, pending: 0 };
+  for (const statement of statements) {
+    totals[statement.status] += 1;
+  }
+  return totals;
+}
+
+function renderStatementSection(
+  statement: SqlResultStatementView,
+  index: number,
+  total: number
+): string {
+  const statusClass = `status-${statement.status}`;
+  const trimmedTableName = (statement.tableName ?? '').trim();
+  const tableName = trimmedTableName.length > 0 ? trimmedTableName : 'SQL statement';
+  const elapsed = statement.elapsedMs ?? 0;
+  const elapsedChip = statement.status === 'success' || statement.status === 'error'
+    ? `<span class="result-chip">Elapsed: ${String(elapsed)} ms</span>`
+    : '';
+  const statusBadge = renderStatementStatusBadge(statement.status);
+  const tableChip = `<span class="result-chip">Table: ${escapeHtml(tableName)}</span>`;
+  const exportMenu =
+    statement.status === 'success' && statement.result?.kind === 'resultset'
+      ? renderResultExportMenu()
+      : '';
+
+  return `
+      <section class="result-statement-section ${statusClass}" data-statement-index="${String(index)}">
+        <header class="result-statement-header">
+          <span class="result-statement-title">Statement ${String(index + 1)} / ${String(total)}</span>
+          ${statusBadge}
+          ${tableChip}
+          ${elapsedChip}
+          <span class="result-toolbar-spacer" aria-hidden="true"></span>
+          ${exportMenu}
+        </header>
+        <div class="result-statement-body">
+          ${renderStatementBody(statement)}
+        </div>
+      </section>
+    `;
+}
+
+function renderStatementStatusBadge(status: SqlResultStatementStatus): string {
+  if (status === 'success') {
+    return '<span class="result-chip result-chip-success">Success</span>';
+  }
+  if (status === 'error') {
+    return '<span class="result-chip result-chip-error">Failed</span>';
+  }
+  if (status === 'skipped') {
+    return '<span class="result-chip result-chip-skip">Skipped</span>';
+  }
+  return '<span class="result-chip">Pending</span>';
+}
+
+function renderStatementBody(statement: SqlResultStatementView): string {
+  if (statement.status === 'pending') {
+    return `
+      <div class="state-pending" role="status" aria-live="polite">
+        <span class="result-loading-spinner" aria-hidden="true"></span>
+        <span>Queued…</span>
+      </div>
+    `;
+  }
+  if (statement.status === 'skipped') {
+    return `
+      <section class="state-layout">
+        <section class="state-card state-skipped">
+          <h1>Skipped</h1>
+          <p class="state-message">Skipped due to a preceding statement failure. The transaction was rolled back.</p>
+        </section>
+        <section class="state-card">
+          <pre class="state-sql">${escapeHtml(statement.sql)}</pre>
+        </section>
+      </section>
+    `;
+  }
+  if (statement.status === 'error') {
+    return `
+      <section class="state-layout">
+        <section class="state-card state-error">
+          <h1>Execution Error</h1>
+          <p class="state-message">${escapeHtml(statement.errorMessage ?? 'Query execution failed.')}</p>
+        </section>
+        <section class="state-card">
+          <pre class="state-sql">${escapeHtml(statement.sql)}</pre>
+        </section>
+      </section>
+    `;
+  }
+  const result = statement.result;
+  if (result === undefined) {
+    return '';
+  }
+  if (result.kind === 'status') {
+    return `
+      <section class="state-layout">
+        <section class="state-card state-success">
+          <h1>Statement Executed</h1>
+          <p class="state-message">${escapeHtml(result.message)}</p>
+          <p class="state-meta-line">Elapsed: ${String(result.elapsedMs)} ms</p>
+        </section>
+        <section class="state-card">
+          <pre class="state-sql">${escapeHtml(statement.sql)}</pre>
+        </section>
+      </section>
+    `;
+  }
+  return `
+    <div class="result-table-wrap">
+      ${renderResultTable(result.columns, result.rows)}
+    </div>
+  `;
 }
 
 export function escapeHtml(value: string): string {

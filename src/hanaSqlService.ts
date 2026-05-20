@@ -74,6 +74,9 @@ export interface HdbClient {
   disconnect(callback?: (err: HdbCallbackError) => void): void;
   close(): void;
   on?(event: 'error', listener: (error: Error) => void): void;
+  setAutoCommit?(autoCommit: boolean): void;
+  commit?(callback: (err: HdbCallbackError) => void): void;
+  rollback?(callback: (err: HdbCallbackError) => void): void;
 }
 
 export type HdbExecCallback = (
@@ -106,6 +109,41 @@ export interface ExecuteHanaQueryOptions {
   readonly timeoutMs?: number;
   readonly clientFactory?: HdbClientFactory;
   readonly statementKind?: HanaSqlStatementKind;
+}
+
+export type HanaStatementOutcomeStatus = 'success' | 'error' | 'skipped';
+
+export interface HanaStatementInput {
+  readonly sql: string;
+  readonly statementKind: HanaSqlStatementKind;
+}
+
+export interface HanaStatementOutcome {
+  readonly sql: string;
+  readonly statementKind: HanaSqlStatementKind;
+  readonly status: HanaStatementOutcomeStatus;
+  readonly result?: HanaQueryResult;
+  readonly errorMessage?: string;
+  readonly errorKind?: HanaQueryErrorKind;
+  readonly elapsedMs?: number;
+}
+
+export interface HanaBatchExecutionSummary {
+  readonly outcomes: readonly HanaStatementOutcome[];
+  readonly usedTransaction: boolean;
+  readonly committed: boolean;
+  readonly rolledBack: boolean;
+  readonly transactionUnavailableReason?: string;
+  readonly elapsedMs: number;
+}
+
+export interface ExecuteHanaQueryBatchOptions {
+  readonly timeoutMs?: number;
+  readonly clientFactory?: HdbClientFactory;
+  readonly onStatementComplete?: (
+    index: number,
+    outcome: HanaStatementOutcome
+  ) => void;
 }
 
 export async function executeHanaQuery(
@@ -154,6 +192,221 @@ export async function executeHanaQuery(
 
   await safeDisconnect(client);
   return result;
+}
+
+export async function executeHanaQueryBatch(
+  connection: HanaConnection,
+  statements: readonly HanaStatementInput[],
+  options: ExecuteHanaQueryBatchOptions = {}
+): Promise<HanaBatchExecutionSummary> {
+  if (statements.length === 0) {
+    throw new HanaQueryError('empty', 'Query is empty.');
+  }
+
+  const timeoutMs = options.timeoutMs ?? HANA_QUERY_DEFAULT_TIMEOUT_MS;
+  const factory = options.clientFactory ?? createDefaultHdbClient;
+  const hasMutating = statements.some((statement) => statement.statementKind === 'mutating');
+
+  let client: HdbClient;
+  try {
+    client = factory(connection);
+  } catch (error) {
+    throw toHanaQueryError(error, 'create-client');
+  }
+
+  client.on?.('error', () => {
+    /* swallow late errors so they don't crash the host */
+  });
+
+  try {
+    await connectClient(client, timeoutMs);
+  } catch (error) {
+    safeClose(client);
+    throw toHanaQueryError(error, 'connect');
+  }
+
+  let usedTransaction = false;
+  let transactionUnavailableReason: string | undefined;
+  if (hasMutating) {
+    if (typeof client.setAutoCommit === 'function' && typeof client.commit === 'function' && typeof client.rollback === 'function') {
+      try {
+        client.setAutoCommit(false);
+        usedTransaction = true;
+      } catch (error) {
+        usedTransaction = false;
+        transactionUnavailableReason = error instanceof Error ? error.message : 'autocommit toggle failed';
+      }
+    } else {
+      transactionUnavailableReason = 'HDB driver does not expose transaction APIs.';
+    }
+  }
+
+  const outcomes: HanaStatementOutcome[] = [];
+  let committed = false;
+  let rolledBack = false;
+  let errorIndex = -1;
+  const batchStartedAt = Date.now();
+
+  try {
+    for (let index = 0; index < statements.length; index += 1) {
+      const statement = statements[index];
+      if (statement === undefined) {
+        continue;
+      }
+      const statementStartedAt = Date.now();
+      try {
+        const result =
+          statement.statementKind === 'mutating'
+            ? await runDirectStatement(
+                client,
+                statement.sql,
+                timeoutMs,
+                () => Date.now() - statementStartedAt
+              )
+            : await runPreparedStatement(
+                client,
+                statement.sql,
+                timeoutMs,
+                () => Date.now() - statementStartedAt
+              );
+        const outcome: HanaStatementOutcome = {
+          sql: statement.sql,
+          statementKind: statement.statementKind,
+          status: 'success',
+          result,
+          elapsedMs: Date.now() - statementStartedAt,
+        };
+        outcomes.push(outcome);
+        options.onStatementComplete?.(index, outcome);
+      } catch (error) {
+        const mapped = toHanaQueryError(error, 'exec');
+        const outcome: HanaStatementOutcome = {
+          sql: statement.sql,
+          statementKind: statement.statementKind,
+          status: 'error',
+          errorMessage: mapped.message,
+          errorKind: mapped.kind,
+          elapsedMs: Date.now() - statementStartedAt,
+        };
+        outcomes.push(outcome);
+        options.onStatementComplete?.(index, outcome);
+        errorIndex = index;
+        break;
+      }
+    }
+
+    if (errorIndex >= 0) {
+      for (let index = errorIndex + 1; index < statements.length; index += 1) {
+        const statement = statements[index];
+        if (statement === undefined) {
+          continue;
+        }
+        const skipped: HanaStatementOutcome = {
+          sql: statement.sql,
+          statementKind: statement.statementKind,
+          status: 'skipped',
+        };
+        outcomes.push(skipped);
+        options.onStatementComplete?.(index, skipped);
+      }
+    }
+
+    if (usedTransaction) {
+      if (errorIndex >= 0) {
+        await rollbackTransaction(client, timeoutMs).catch(() => {
+          /* best effort */
+        });
+        rolledBack = true;
+      } else {
+        try {
+          await commitTransaction(client, timeoutMs);
+          committed = true;
+        } catch (error) {
+          const mapped = toHanaQueryError(error, 'exec');
+          await rollbackTransaction(client, timeoutMs).catch(() => {
+            /* best effort */
+          });
+          rolledBack = true;
+          const lastOutcomeIndex = outcomes.length - 1;
+          const last = lastOutcomeIndex >= 0 ? outcomes[lastOutcomeIndex] : undefined;
+          if (last?.status === 'success') {
+            outcomes[lastOutcomeIndex] = {
+              ...last,
+              status: 'error',
+              errorMessage: `Commit failed: ${mapped.message}`,
+              errorKind: mapped.kind,
+            };
+          }
+        }
+      }
+    }
+  } finally {
+    await safeDisconnect(client);
+  }
+
+  const summary: HanaBatchExecutionSummary = transactionUnavailableReason === undefined
+    ? {
+        outcomes,
+        usedTransaction,
+        committed,
+        rolledBack,
+        elapsedMs: Date.now() - batchStartedAt,
+      }
+    : {
+        outcomes,
+        usedTransaction,
+        committed,
+        rolledBack,
+        transactionUnavailableReason,
+        elapsedMs: Date.now() - batchStartedAt,
+      };
+  return summary;
+}
+
+function commitTransaction(client: HdbClient, timeoutMs: number): Promise<undefined> {
+  if (typeof client.commit !== 'function') {
+    return Promise.reject(new Error('HDB client does not support commit.'));
+  }
+  return runWithTimeout<undefined>(
+    'Commit',
+    timeoutMs,
+    new Promise<undefined>((resolve, reject) => {
+      try {
+        client.commit?.((err) => {
+          if (hasHdbCallbackError(err)) {
+            reject(err);
+            return;
+          }
+          resolve(undefined);
+        });
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    })
+  );
+}
+
+function rollbackTransaction(client: HdbClient, timeoutMs: number): Promise<undefined> {
+  if (typeof client.rollback !== 'function') {
+    return Promise.reject(new Error('HDB client does not support rollback.'));
+  }
+  return runWithTimeout<undefined>(
+    'Rollback',
+    timeoutMs,
+    new Promise<undefined>((resolve, reject) => {
+      try {
+        client.rollback?.((err) => {
+          if (hasHdbCallbackError(err)) {
+            reject(err);
+            return;
+          }
+          resolve(undefined);
+        });
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    })
+  );
 }
 
 export function classifyHanaSqlStatement(sql: string): HanaSqlStatementKind {
@@ -545,7 +798,7 @@ function isConnectionError(
   );
 }
 
-function stripLeadingSqlComments(sql: string): string {
+export function stripLeadingSqlComments(sql: string): string {
   let remaining = sql.trimStart();
   let didStrip = true;
   while (didStrip) {
@@ -564,7 +817,8 @@ function stripLeadingSqlComments(sql: string): string {
   return remaining;
 }
 
-function hasSqlDelimiterOutsideLiteral(sql: string): boolean {
+export function findTopLevelSqlSemicolons(sql: string): readonly number[] {
+  const positions: number[] = [];
   let inSingleQuote = false;
   let inDoubleQuote = false;
   let inLineComment = false;
@@ -573,16 +827,19 @@ function hasSqlDelimiterOutsideLiteral(sql: string): boolean {
   for (let index = 0; index < sql.length; index += 1) {
     const char = sql[index] ?? '';
     const next = sql[index + 1] ?? '';
-    if (inLineComment && char === '\n') inLineComment = false;
-    else if (inBlockComment && char === '*' && next === '/') {
-      inBlockComment = false;
-      index += 1;
-    } else if (!inSingleQuote && !inDoubleQuote && !inLineComment && !inBlockComment) {
+    if (inLineComment) {
+      if (char === '\n') inLineComment = false;
+    } else if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false;
+        index += 1;
+      }
+    } else if (!inSingleQuote && !inDoubleQuote) {
       if (char === '-' && next === '-') inLineComment = true;
       else if (char === '/' && next === '*') inBlockComment = true;
       else if (char === "'") inSingleQuote = true;
       else if (char === '"') inDoubleQuote = true;
-      else if (char === ';') return true;
+      else if (char === ';') positions.push(index);
     } else if (inSingleQuote && char === "'") {
       if (next === "'") index += 1;
       else inSingleQuote = false;
@@ -591,7 +848,11 @@ function hasSqlDelimiterOutsideLiteral(sql: string): boolean {
     }
   }
 
-  return false;
+  return positions;
+}
+
+function hasSqlDelimiterOutsideLiteral(sql: string): boolean {
+  return findTopLevelSqlSemicolons(sql).length > 0;
 }
 
 let cachedHdbModule: HdbModule | undefined;

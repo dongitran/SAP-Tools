@@ -1,4 +1,5 @@
 import type { HanaQueryResultSet } from './hanaSqlService';
+import type { SqlResultStatementView } from './hanaSqlResultHtml';
 
 export type HanaSqlResultExportFormat = 'csv' | 'json';
 
@@ -90,4 +91,78 @@ export function buildHanaSqlResultExportFileName(
   const timestamp = executedAt.replaceAll(/[^0-9a-z]+/gi, '-').replaceAll(/^-+|-+$/g, '');
   const safeTimestamp = timestamp.length > 0 ? timestamp : 'result';
   return `sap-tools-${safeAppSlug}-${safeTimestamp}.${format}`;
+}
+
+export function formatHanaSqlStatementBatchCsv(
+  statements: readonly SqlResultStatementView[]
+): string {
+  const sections: string[] = [];
+  statements.forEach((statement, index) => {
+    sections.push(buildBatchSectionHeaderCsv(statement, index));
+    if (statement.status === 'success' && statement.result?.kind === 'resultset') {
+      sections.push(formatHanaSqlResultSetCsv(statement.result));
+    }
+    sections.push('');
+  });
+  return sections.join('\n');
+}
+
+export function formatHanaSqlStatementBatchJson(
+  statements: readonly SqlResultStatementView[]
+): string {
+  return JSON.stringify(
+    {
+      statements: statements.map((statement, index) => buildBatchStatementJsonRecord(statement, index)),
+    },
+    null,
+    2
+  );
+}
+
+function buildBatchSectionHeaderCsv(
+  statement: SqlResultStatementView,
+  index: number
+): string {
+  const status = statement.status.toUpperCase();
+  const trimmedTableName = statement.tableName?.trim() ?? '';
+  const tableLabel = trimmedTableName.length > 0 ? trimmedTableName : 'SQL statement';
+  const elapsed = statement.elapsedMs ?? 0;
+  if (statement.status === 'success' && statement.result?.kind === 'resultset') {
+    return `-- Statement ${String(index + 1)} (${status}, ${tableLabel}, ${String(elapsed)} ms)`;
+  }
+  if (statement.status === 'success' && statement.result?.kind === 'status') {
+    return `-- Statement ${String(index + 1)} (${status}, ${tableLabel}, ${String(elapsed)} ms) - ${statement.result.message}`;
+  }
+  if (statement.status === 'error') {
+    return `-- Statement ${String(index + 1)} (${status}, ${tableLabel}, ${String(elapsed)} ms) - ${statement.errorMessage ?? 'error'}`;
+  }
+  return `-- Statement ${String(index + 1)} (${status}, ${tableLabel}) - no result`;
+}
+
+function buildBatchStatementJsonRecord(
+  statement: SqlResultStatementView,
+  index: number
+): Record<string, unknown> {
+  const record: Record<string, unknown> = {
+    index: index + 1,
+    sql: statement.sql,
+    status: statement.status,
+  };
+  if (statement.tableName !== undefined) record['tableName'] = statement.tableName;
+  if (statement.elapsedMs !== undefined) record['elapsedMs'] = statement.elapsedMs;
+  if (statement.errorMessage !== undefined) record['errorMessage'] = statement.errorMessage;
+  const result = statement.result;
+  if (result?.kind === 'resultset') {
+    record['columns'] = result.columns;
+    record['rowCount'] = result.rowCount;
+    record['rows'] = buildResultSetRows(result);
+  } else if (result?.kind === 'status') {
+    record['message'] = result.message;
+  }
+  return record;
+}
+
+function buildResultSetRows(result: HanaQueryResultSet): readonly Record<string, string>[] {
+  const columnKeys = buildUniqueColumnKeys(result.columns);
+  return result.rows.map((row) => buildRowObject(columnKeys, row));
 }

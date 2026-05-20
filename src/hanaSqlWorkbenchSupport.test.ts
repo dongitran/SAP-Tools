@@ -10,11 +10,14 @@ import {
   buildHanaSqlResultHtml,
   buildInitialHanaSqlTemplate,
   buildQuickTableSelectSql,
+  buildTestModeBatchOutcomes,
   buildTestModeQueryResult,
   createTestModeTableNames,
   escapeHtml,
   formatHanaSqlResultSetCsv,
   formatHanaSqlResultSetJson,
+  formatHanaSqlStatementBatchCsv,
+  formatHanaSqlStatementBatchJson,
   formatHanaSqlResultRowObjectJson,
   resolveHanaSqlResultCellValue,
   extractTableNames,
@@ -906,6 +909,292 @@ describe('buildHanaSqlResultHtml result meta layout', () => {
     expect(html).toContain('--vscode-panel-border');
     expect(html).not.toContain('background: #0f141d;');
     expect(html).not.toContain('color-scheme: dark;');
+  });
+});
+
+describe('formatHanaSqlStatementBatchCsv', () => {
+  test('emits per-statement headers separating each successful resultset', () => {
+    const csv = formatHanaSqlStatementBatchCsv([
+      {
+        sql: 'SELECT ID FROM T',
+        status: 'success',
+        tableName: 'T',
+        elapsedMs: 5,
+        result: {
+          kind: 'resultset',
+          columns: ['ID'],
+          rows: [['1'], ['2']],
+          rowCount: 2,
+          elapsedMs: 5,
+        },
+      },
+      {
+        sql: "UPDATE T SET X = 'bad'",
+        status: 'error',
+        tableName: 'T',
+        elapsedMs: 4,
+        errorMessage: 'sql syntax',
+      },
+    ]);
+
+    expect(csv).toContain('-- Statement 1 (SUCCESS, T, 5 ms)');
+    expect(csv).toContain('ID\n1\n2');
+    expect(csv).toContain('-- Statement 2 (ERROR, T, 4 ms) - sql syntax');
+  });
+});
+
+describe('formatHanaSqlStatementBatchJson', () => {
+  test('returns a JSON object listing one record per statement with status metadata', () => {
+    const json = formatHanaSqlStatementBatchJson([
+      {
+        sql: 'SELECT ID FROM T',
+        status: 'success',
+        tableName: 'T',
+        elapsedMs: 5,
+        result: {
+          kind: 'resultset',
+          columns: ['ID'],
+          rows: [['1']],
+          rowCount: 1,
+          elapsedMs: 5,
+        },
+      },
+      {
+        sql: 'UPDATE T SET X = 1',
+        status: 'skipped',
+        tableName: 'T',
+      },
+    ]);
+
+    const parsed = JSON.parse(json) as {
+      statements: {
+        index: number;
+        status: string;
+        sql: string;
+        rowCount?: number;
+      }[];
+    };
+    expect(parsed.statements).toHaveLength(2);
+    expect(parsed.statements[0]?.status).toBe('success');
+    expect(parsed.statements[0]?.rowCount).toBe(1);
+    expect(parsed.statements[1]?.status).toBe('skipped');
+  });
+});
+
+describe('buildTestModeBatchOutcomes', () => {
+  test('returns a success outcome for every statement when no error marker is present', () => {
+    const summary = buildTestModeBatchOutcomes('finance-uat-api', [
+      { executionSql: 'SELECT 1 FROM DUMMY', statementKind: 'readonly' },
+      { executionSql: 'SELECT 2 FROM DUMMY', statementKind: 'readonly' },
+    ]);
+
+    expect(summary.outcomes).toHaveLength(2);
+    expect(summary.outcomes.every((outcome) => outcome.status === 'success')).toBe(true);
+    expect(summary.usedTransaction).toBe(false);
+    expect(summary.committed).toBe(false);
+    expect(summary.rolledBack).toBe(false);
+  });
+
+  test('marks mutating batches as committed when all statements succeed', () => {
+    const summary = buildTestModeBatchOutcomes('finance-uat-api', [
+      { executionSql: 'UPDATE T SET X = 1', statementKind: 'mutating' },
+      { executionSql: 'UPDATE T SET X = 2', statementKind: 'mutating' },
+    ]);
+
+    expect(summary.usedTransaction).toBe(true);
+    expect(summary.committed).toBe(true);
+    expect(summary.rolledBack).toBe(false);
+  });
+
+  test('stops at the first marker error and rolls back when statements are mutating', () => {
+    const summary = buildTestModeBatchOutcomes('finance-uat-api', [
+      { executionSql: 'UPDATE T SET X = 1', statementKind: 'mutating' },
+      {
+        executionSql: 'UPDATE T SET X = SAP_TOOLS_TEST_THROW_ERROR',
+        statementKind: 'mutating',
+      },
+      { executionSql: 'UPDATE T SET X = 3', statementKind: 'mutating' },
+    ]);
+
+    expect(summary.outcomes.map((outcome) => outcome.status)).toEqual([
+      'success',
+      'error',
+      'skipped',
+    ]);
+    expect(summary.usedTransaction).toBe(true);
+    expect(summary.committed).toBe(false);
+    expect(summary.rolledBack).toBe(true);
+  });
+
+  test('emits progress callbacks in order for each statement', () => {
+    const progress: { index: number; status: string }[] = [];
+    buildTestModeBatchOutcomes(
+      'finance-uat-api',
+      [
+        { executionSql: 'SELECT 1 FROM DUMMY', statementKind: 'readonly' },
+        { executionSql: 'SELECT 2 FROM DUMMY', statementKind: 'readonly' },
+        { executionSql: 'SELECT 3 FROM DUMMY', statementKind: 'readonly' },
+      ],
+      (index, outcome) => progress.push({ index, status: outcome.status })
+    );
+
+    expect(progress.map((entry) => entry.index)).toEqual([0, 1, 2]);
+    expect(progress.every((entry) => entry.status === 'success')).toBe(true);
+  });
+});
+
+describe('buildHanaSqlResultHtml batch view', () => {
+  test('renders a stacked layout with one section per statement when there are multiple statements', () => {
+    const html = buildHanaSqlResultHtml({
+      appName: 'finance-uat-api',
+      sql: 'SELECT 1 FROM DUMMY; SELECT 2 FROM DUMMY',
+      executedAt: '2026-04-25T00:00:00Z',
+      nonce: 'test-nonce',
+      statements: [
+        {
+          sql: 'SELECT 1 FROM DUMMY',
+          status: 'success',
+          tableName: 'DUMMY',
+          elapsedMs: 4,
+          result: {
+            kind: 'resultset',
+            columns: ['ID'],
+            rows: [['1']],
+            rowCount: 1,
+            elapsedMs: 4,
+          },
+        },
+        {
+          sql: 'SELECT 2 FROM DUMMY',
+          status: 'success',
+          tableName: 'DUMMY',
+          elapsedMs: 5,
+          result: {
+            kind: 'resultset',
+            columns: ['ID'],
+            rows: [['2']],
+            rowCount: 1,
+            elapsedMs: 5,
+          },
+        },
+      ],
+    });
+
+    expect(html).toContain('result-batch-layout');
+    expect(html).toContain('Statements: 2');
+    expect(html).toContain('OK: 2');
+    expect(html).not.toContain('Failed: ');
+    expect(html).toContain('Statement 1 / 2');
+    expect(html).toContain('Statement 2 / 2');
+    expect(html).toContain('data-statement-index="0"');
+    expect(html).toContain('data-statement-index="1"');
+    expect(html).toContain('Export all');
+  });
+
+  test('renders an error card for the failed statement and skipped sections for the rest', () => {
+    const html = buildHanaSqlResultHtml({
+      appName: 'finance-uat-api',
+      sql: 'INSERT; INSERT BAD; INSERT',
+      executedAt: '2026-04-25T00:00:00Z',
+      nonce: 'test-nonce',
+      statements: [
+        {
+          sql: 'INSERT INTO T VALUES (1)',
+          status: 'success',
+          tableName: 'T',
+          elapsedMs: 4,
+          result: { kind: 'status', message: '1 row affected.', elapsedMs: 4 },
+        },
+        {
+          sql: 'INSERT INTO T VALUES (bad)',
+          status: 'error',
+          tableName: 'T',
+          elapsedMs: 6,
+          errorMessage: 'sql syntax error near bad',
+        },
+        {
+          sql: 'INSERT INTO T VALUES (3)',
+          status: 'skipped',
+          tableName: 'T',
+        },
+      ],
+      batchSummary: {
+        usedTransaction: true,
+        committed: false,
+        rolledBack: true,
+      },
+    });
+
+    expect(html).toContain('Failed: 1');
+    expect(html).toContain('Skipped: 1');
+    expect(html).toContain('OK: 1');
+    expect(html).toContain('Rolled back');
+    expect(html).toContain('Execution Error');
+    expect(html).toContain('sql syntax error near bad');
+    expect(html).toContain('Skipped due to a preceding statement failure');
+    expect(html).toContain('status-skipped');
+    expect(html).toContain('status-error');
+  });
+
+  test('keeps the single-statement layout when there is exactly one statement supplied', () => {
+    const html = buildHanaSqlResultHtml({
+      appName: 'finance-uat-api',
+      tableName: 'DUMMY',
+      sql: 'SELECT 1 FROM DUMMY',
+      executedAt: '2026-04-25T00:00:00Z',
+      nonce: 'test-nonce',
+      result: {
+        kind: 'resultset',
+        columns: ['ID'],
+        rows: [['1']],
+        rowCount: 1,
+        elapsedMs: 4,
+      },
+      statements: [
+        {
+          sql: 'SELECT 1 FROM DUMMY',
+          status: 'success',
+          tableName: 'DUMMY',
+          elapsedMs: 4,
+          result: {
+            kind: 'resultset',
+            columns: ['ID'],
+            rows: [['1']],
+            rowCount: 1,
+            elapsedMs: 4,
+          },
+        },
+      ],
+    });
+
+    expect(html).not.toContain('result-batch-layout');
+    expect(html).toContain('result-layout');
+    expect(html).toContain('Table: DUMMY');
+  });
+
+  test('escapes HTML in batch error messages and SQL fragments', () => {
+    const html = buildHanaSqlResultHtml({
+      appName: 'app',
+      sql: '<script>alert(1)</script>',
+      executedAt: '2026-04-25T00:00:00Z',
+      nonce: 'test-nonce',
+      statements: [
+        {
+          sql: '<script>alert("a")</script>',
+          status: 'error',
+          errorMessage: '<script>alert("err")</script>',
+        },
+        {
+          sql: '<script>alert("b")</script>',
+          status: 'skipped',
+        },
+      ],
+    });
+
+    expect(html).not.toContain('<script>alert("a")</script>');
+    expect(html).not.toContain('<script>alert("err")</script>');
+    expect(html).toContain('&lt;script&gt;alert(&quot;a&quot;)&lt;/script&gt;');
+    expect(html).toContain('&lt;script&gt;alert(&quot;err&quot;)&lt;/script&gt;');
   });
 });
 

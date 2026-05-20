@@ -1,14 +1,18 @@
 import {
   formatHanaCellValue,
+  type HanaBatchExecutionSummary,
   type HanaQueryResult,
   type HanaQueryResultSet,
   type HanaSqlStatementKind,
+  type HanaStatementOutcome,
 } from './hanaSqlService';
 export {
   buildHanaSqlResultExportFileName,
   formatHanaSqlResultRowObjectJson,
   formatHanaSqlResultSetCsv,
   formatHanaSqlResultSetJson,
+  formatHanaSqlStatementBatchCsv,
+  formatHanaSqlStatementBatchJson,
   resolveHanaSqlResultCellValue,
   type HanaSqlResultExportFormat,
 } from './hanaSqlResultExport';
@@ -16,6 +20,9 @@ export {
   buildHanaSqlResultHtml,
   escapeHtml,
   type RenderSqlResultOptions,
+  type SqlResultBatchSummary,
+  type SqlResultStatementStatus,
+  type SqlResultStatementView,
 } from './hanaSqlResultHtml';
 import type { HanaTableDisplayEntry } from './hanaTableDisplayNameFormatter';
 import { resolveHanaSqlTargetTableName } from './hanaSqlTableReferenceResolver';
@@ -155,6 +162,70 @@ export function buildTestModeQueryResult(
 
 function isTestModeSampleJsonPayloadQuery(executedSql: string | undefined): boolean {
   return executedSql !== undefined && /\bSAMPLE_JSON_PAYLOAD\b/i.test(executedSql);
+}
+
+const TEST_MODE_BATCH_ERROR_MARKER = 'SAP_TOOLS_TEST_THROW_ERROR';
+
+export interface TestModeBatchStatement {
+  readonly executionSql: string;
+  readonly statementKind: HanaSqlStatementKind;
+}
+
+export function buildTestModeBatchOutcomes(
+  appName: string,
+  statements: readonly TestModeBatchStatement[],
+  onStatementComplete?: (statementIndex: number, outcome: HanaStatementOutcome) => void
+): HanaBatchExecutionSummary {
+  const outcomes: HanaStatementOutcome[] = [];
+  let errorIndex = -1;
+  const hasMutating = statements.some((statement) => statement.statementKind === 'mutating');
+
+  for (let index = 0; index < statements.length; index += 1) {
+    const statement = statements[index];
+    if (statement === undefined) continue;
+    if (errorIndex >= 0) {
+      const skipped: HanaStatementOutcome = {
+        sql: statement.executionSql,
+        statementKind: statement.statementKind,
+        status: 'skipped',
+      };
+      outcomes.push(skipped);
+      onStatementComplete?.(index, skipped);
+      continue;
+    }
+    if (statement.executionSql.includes(TEST_MODE_BATCH_ERROR_MARKER)) {
+      const error: HanaStatementOutcome = {
+        sql: statement.executionSql,
+        statementKind: statement.statementKind,
+        status: 'error',
+        errorMessage: 'Simulated SAP Tools test-mode failure.',
+        errorKind: 'sql',
+        elapsedMs: 4,
+      };
+      outcomes.push(error);
+      onStatementComplete?.(index, error);
+      errorIndex = index;
+      continue;
+    }
+    const result = buildTestModeQueryResult(appName, statement.statementKind, statement.executionSql);
+    const success: HanaStatementOutcome = {
+      sql: statement.executionSql,
+      statementKind: statement.statementKind,
+      status: 'success',
+      result,
+      elapsedMs: 5,
+    };
+    outcomes.push(success);
+    onStatementComplete?.(index, success);
+  }
+
+  return {
+    outcomes,
+    usedTransaction: hasMutating,
+    committed: hasMutating && errorIndex < 0,
+    rolledBack: hasMutating && errorIndex >= 0,
+    elapsedMs: outcomes.reduce((sum, outcome) => sum + (outcome.elapsedMs ?? 0), 0),
+  };
 }
 
 export function createTestModeTableNames(appName: string): readonly string[] {
