@@ -2599,6 +2599,8 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
 
 .sql-result-statement-body .sql-result-preview-table-wrap {
   max-height: 168px;
+  /* Keep the horizontal scrollbar off the last row so it stays easy to grab. */
+  padding-bottom: 14px;
   border-radius: 0;
 }
 
