@@ -1091,6 +1091,35 @@ describe('buildHanaSqlResultHtml batch view', () => {
     expect(html).toContain('Export all');
   });
 
+  test('keeps the batch table horizontal scrollbar clear of the last row', () => {
+    const html = buildHanaSqlResultHtml({
+      appName: 'finance-uat-api',
+      sql: 'SELECT 1 FROM DUMMY; SELECT 2 FROM DUMMY',
+      executedAt: '2026-04-25T00:00:00Z',
+      nonce: 'test-nonce',
+      statements: [
+        {
+          sql: 'SELECT 1 FROM DUMMY',
+          status: 'success',
+          tableName: 'DUMMY',
+          elapsedMs: 4,
+          result: { kind: 'resultset', columns: ['ID'], rows: [['1']], rowCount: 1, elapsedMs: 4 },
+        },
+        {
+          sql: 'SELECT 2 FROM DUMMY',
+          status: 'success',
+          tableName: 'DUMMY',
+          elapsedMs: 5,
+          result: { kind: 'resultset', columns: ['ID'], rows: [['2']], rowCount: 1, elapsedMs: 5 },
+        },
+      ],
+    });
+
+    expect(html).toMatch(
+      /\.result-statement-body \.result-table-wrap \{[^}]*padding-bottom:[^}]*\}/
+    );
+  });
+
   test('renders an error card for the failed statement and skipped sections for the rest', () => {
     const html = buildHanaSqlResultHtml({
       appName: 'finance-uat-api',

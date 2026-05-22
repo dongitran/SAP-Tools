@@ -331,7 +331,12 @@ const RESULT_BATCH_STYLE = `${SHARED_THEME_STYLE}
       }
       .result-statement-title { font-weight: 600; }
       .result-statement-body { padding: 0; }
-      .result-statement-body .result-table-wrap { max-height: 360px; overflow: auto; }
+      .result-statement-body .result-table-wrap {
+        max-height: 360px;
+        overflow: auto;
+        /* Keep the horizontal scrollbar off the last row so it stays easy to grab. */
+        padding-bottom: 14px;
+      }
       .result-statement-body .result-toolbar { padding: 6px 8px; }
       .result-statement-body .state-layout {
         display: grid;

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.8.3 (stable)
+- Added bottom spacing inside multi-statement SQL Workbench result tables so the horizontal scrollbar no longer sits flush against the last row and stays easy to grab.
+
 ## 0.8.2 (stable)
 - Cached HANA table lists per user, endpoint, org, space, and app so SQL Workbench table suggestions reopen quickly without leaking scope data.
 - Added explicit table refresh behavior that reloads HANA metadata and updates the scoped cache when users need fresh table lists.
