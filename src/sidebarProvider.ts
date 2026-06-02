@@ -350,6 +350,15 @@ export class RegionSidebarProvider
     }
   }
 
+  /**
+   * The CF scope session for the region/org/space currently confirmed in the
+   * sidebar, or null when no scope is active. The HANA SQL workbench pulls this
+   * at query time so a reused SQL file always runs against the active scope.
+   */
+  public getActiveScopeSession(): CfLogSessionSeed | null {
+    return this.currentLogSessionSeed;
+  }
+
   // ── Message dispatcher ───────────────────────────────────────────────────
 
   private async handleWebviewMessage(message: unknown): Promise<void> {

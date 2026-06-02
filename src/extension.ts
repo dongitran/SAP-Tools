@@ -34,6 +34,10 @@ export function activate(context: vscode.ExtensionContext): void {
     hanaSqlWorkbench
   );
 
+  hanaSqlWorkbench.setActiveScopeSessionProvider(() =>
+    regionSidebarProvider.getActiveScopeSession()
+  );
+
   void getEffectiveCredentials(context)
     .then(async (credentials) => cacheSyncService.initialize(credentials))
     .catch(() => undefined);

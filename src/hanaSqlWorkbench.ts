@@ -180,6 +180,7 @@ export class HanaSqlWorkbench
   private readonly resultPanelManager: HanaSqlResultPanelManager;
   private readonly forceTableRefreshAppIds = new Set<string>();
   private appContextCacheVersion = 0;
+  private activeScopeSessionProvider: (() => HanaSqlScopeSession | null) | null = null;
 
   constructor(
     private readonly outputChannel: vscode.OutputChannel,
@@ -226,6 +227,18 @@ export class HanaSqlWorkbench
     }
   }
 
+  /**
+   * Wire a provider that returns the currently confirmed CF scope session. The
+   * keybinding-triggered Run command has no scope argument of its own, so it
+   * relies on this to execute against the scope that is active *now* rather than
+   * the scope captured when the SQL file was first opened.
+   */
+  setActiveScopeSessionProvider(
+    provider: (() => HanaSqlScopeSession | null) | null
+  ): void {
+    this.activeScopeSessionProvider = provider;
+  }
+
   private resetAppContextCache(context: HanaSqlAppContext): void {
     this.appContextCacheVersion += 1;
     context.cacheVersion = this.appContextCacheVersion;
@@ -234,6 +247,35 @@ export class HanaSqlWorkbench
     context.tableNames = [];
     context.tableEntries = [];
     context.tableNamesPromise = null;
+  }
+
+  /**
+   * Re-point an app context at the scope that is active right now. A single SQL
+   * file is reused across scopes (its name is derived from the app name only),
+   * so after a region/org/space switch the context may still hold the previous
+   * scope's credentials. Rebinding here guarantees a query runs against the
+   * current scope, and dropping a now-orphaned session forces a clear "confirm
+   * scope again" error instead of silently hitting the old region.
+   */
+  private applyActiveScopeSessionToContext(context: HanaSqlAppContext): void {
+    if (this.isTestMode) {
+      return;
+    }
+    const activeSession = this.activeScopeSessionProvider?.() ?? null;
+    if (activeSession === null) {
+      if (context.session !== null) {
+        this.resetAppContextCache(context);
+        context.session = null;
+      }
+      return;
+    }
+    if (!isSameHanaSqlScope(context.session, activeSession)) {
+      this.resetAppContextCache(context);
+      context.session = activeSession;
+      this.logSql(
+        `rebound app ${sanitizeSqlLogValue(context.appName)} to active scope ${sanitizeSqlLogValue(activeSession.orgName)}/${sanitizeSqlLogValue(activeSession.spaceName)}`
+      );
+    }
   }
 
   async openSqlDocumentForApp(options: OpenHanaSqlFileRequest): Promise<void> {
@@ -434,6 +476,8 @@ export class HanaSqlWorkbench
       );
       return;
     }
+
+    this.applyActiveScopeSessionToContext(context);
 
     const selectedSql = editor.selection.isEmpty ? '' : editor.document.getText(editor.selection);
     const sqlInput = selectedSql.trim().length > 0 ? selectedSql : editor.document.getText();

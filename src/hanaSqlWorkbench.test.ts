@@ -74,6 +74,7 @@ interface HanaSqlWorkbenchTestAccess {
   readonly appContextsByAppId: Map<string, HanaSqlAppContextForTest>;
   readonly appIdByDocumentUri: Map<string, string>;
   invalidateAllAppContexts(): void;
+  applyActiveScopeSessionToContext(context: HanaSqlAppContextForTest): void;
   prepareStatement(
     context: HanaSqlAppContextForTest,
     rawSql: string,
@@ -530,5 +531,88 @@ describe('HanaSqlWorkbench SQL result table display names', () => {
 
     expect(updates.map((update) => update.tableName)).toEqual(['Demo_App', 'Demo_App', 'Demo_App']);
     expect(updates.at(-1)?.sql).toBe('SELECT * FROM "TEST_SCHEMA"."DEMO_APP" LIMIT 100');
+  });
+});
+
+describe('HanaSqlWorkbench active scope rebinding', () => {
+  beforeEach(() => {
+    delete process.env['SAP_TOOLS_TEST_MODE'];
+    delete process.env['SAP_TOOLS_E2E'];
+    executeCommandMock.mockClear();
+    onDidChangeActiveTextEditorMock.mockClear();
+    onDidCloseTextDocumentMock.mockClear();
+    registerCommandMock.mockClear();
+    registerCompletionItemProviderMock.mockClear();
+  });
+
+  function seedContext(
+    access: HanaSqlWorkbenchTestAccess,
+    session: HanaSqlScopeSession | null
+  ): HanaSqlAppContextForTest {
+    const context: HanaSqlAppContextForTest = {
+      appId: 'finance-api',
+      appName: 'finance-api',
+      session,
+      connection: {
+        host: 'old-host',
+        port: 30015,
+        user: 'old-user',
+        password: 'old-password',
+      },
+      schema: 'OLD_SCHEMA',
+      sqlDocumentUri: 'untitled:saptools-finance-api.sql',
+      sqlDocumentFileUri: 'file:///workspace/saptools-finance-api.sql',
+      tableNames: ['T1'],
+      tableEntries: [{ name: 'T1', displayName: 'T1' }],
+      tableNamesPromise: null,
+      cacheVersion: 0,
+    };
+    access.appContextsByAppId.set(context.appId, context);
+    return context;
+  }
+
+  test('rebinds a reused SQL file to the active scope before running', () => {
+    const workbench = createWorkbench();
+    const access = workbench as unknown as HanaSqlWorkbenchTestAccess;
+    const activeSession = createScopeSession({
+      orgName: 'finance-services-prod-2',
+      spaceName: 'prod',
+    });
+    const context = seedContext(access, createScopeSession());
+    workbench.setActiveScopeSessionProvider(() => activeSession);
+
+    access.applyActiveScopeSessionToContext(context);
+
+    expect(context.session).toEqual(activeSession);
+    expect(context.connection).toBeNull();
+    expect(context.schema).toBe('');
+    expect(context.tableNames).toEqual([]);
+    expect(context.cacheVersion).toBeGreaterThan(0);
+  });
+
+  test('drops a stale session when no scope is active so the run fails loudly', () => {
+    const workbench = createWorkbench();
+    const access = workbench as unknown as HanaSqlWorkbenchTestAccess;
+    const context = seedContext(access, createScopeSession());
+    workbench.setActiveScopeSessionProvider(() => null);
+
+    access.applyActiveScopeSessionToContext(context);
+
+    expect(context.session).toBeNull();
+    expect(context.connection).toBeNull();
+    expect(context.cacheVersion).toBeGreaterThan(0);
+  });
+
+  test('keeps the cached connection when the active scope is unchanged', () => {
+    const workbench = createWorkbench();
+    const access = workbench as unknown as HanaSqlWorkbenchTestAccess;
+    const context = seedContext(access, createScopeSession());
+    workbench.setActiveScopeSessionProvider(() => createScopeSession());
+
+    access.applyActiveScopeSessionToContext(context);
+
+    expect(context.session).toEqual(createScopeSession());
+    expect(context.connection).not.toBeNull();
+    expect(context.cacheVersion).toBe(0);
   });
 });
