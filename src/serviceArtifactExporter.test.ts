@@ -5,11 +5,13 @@ const {
   prepareCfCliSessionMock,
   fetchDefaultEnvJsonFromTargetMock,
   fetchPnpmLockFromTargetMock,
+  findRemotePackageJsonPathsFromTargetMock,
 } = vi.hoisted(() => ({
   writeFileMock: vi.fn(),
   prepareCfCliSessionMock: vi.fn(),
   fetchDefaultEnvJsonFromTargetMock: vi.fn(),
   fetchPnpmLockFromTargetMock: vi.fn(),
+  findRemotePackageJsonPathsFromTargetMock: vi.fn(),
 }));
 
 vi.mock('node:fs/promises', () => ({
@@ -20,6 +22,7 @@ vi.mock('./cfClient', () => ({
   prepareCfCliSession: prepareCfCliSessionMock,
   fetchDefaultEnvJsonFromTarget: fetchDefaultEnvJsonFromTargetMock,
   fetchPnpmLockFromTarget: fetchPnpmLockFromTargetMock,
+  findRemotePackageJsonPathsFromTarget: findRemotePackageJsonPathsFromTargetMock,
 }));
 
 import { exportServiceArtifacts } from './serviceArtifactExporter';
@@ -42,6 +45,7 @@ beforeEach(() => {
   prepareCfCliSessionMock.mockReset();
   fetchDefaultEnvJsonFromTargetMock.mockReset();
   fetchPnpmLockFromTargetMock.mockReset();
+  findRemotePackageJsonPathsFromTargetMock.mockReset();
 });
 
 describe('exportServiceArtifacts', () => {
@@ -147,5 +151,80 @@ describe('exportServiceArtifacts', () => {
     expect(result).toEqual({
       writtenFiles: ['/tmp/workspace/finance-uat-api/pnpm-lock.yaml'],
     });
+  });
+
+  it('passes a literal remoteRoot setting straight through to the lock fetch', async () => {
+    fetchPnpmLockFromTargetMock.mockResolvedValueOnce('lockfileVersion: 9.0\n');
+
+    await exportServiceArtifacts({
+      ...baseOptions,
+      includeDefaultEnv: false,
+      includePnpmLock: true,
+      remoteRootSetting: '/home/vcap/app/gen/srv',
+    });
+
+    expect(findRemotePackageJsonPathsFromTargetMock).not.toHaveBeenCalled();
+    expect(fetchPnpmLockFromTargetMock).toHaveBeenCalledWith({
+      appName: baseOptions.appName,
+      cfHomeDir: baseOptions.session.cfHomeDir,
+      remoteRoot: '/home/vcap/app/gen/srv',
+    });
+  });
+
+  it('resolves a regex remoteRoot via the container package.json listing', async () => {
+    findRemotePackageJsonPathsFromTargetMock.mockResolvedValueOnce([
+      '/home/vcap/app/package.json',
+      '/home/vcap/app/gen/srv/package.json',
+    ]);
+    fetchPnpmLockFromTargetMock.mockResolvedValueOnce('lockfileVersion: 9.0\n');
+
+    await exportServiceArtifacts({
+      ...baseOptions,
+      includeDefaultEnv: false,
+      includePnpmLock: true,
+      remoteRootSetting: 'regex:gen/srv$',
+    });
+
+    expect(findRemotePackageJsonPathsFromTargetMock).toHaveBeenCalledWith({
+      appName: baseOptions.appName,
+      cfHomeDir: baseOptions.session.cfHomeDir,
+    });
+    expect(fetchPnpmLockFromTargetMock).toHaveBeenCalledWith({
+      appName: baseOptions.appName,
+      cfHomeDir: baseOptions.session.cfHomeDir,
+      remoteRoot: '/home/vcap/app/gen/srv',
+    });
+  });
+
+  it('falls back to default locations when the regex matches nothing', async () => {
+    findRemotePackageJsonPathsFromTargetMock.mockResolvedValueOnce([
+      '/home/vcap/app/package.json',
+    ]);
+    fetchPnpmLockFromTargetMock.mockResolvedValueOnce('lockfileVersion: 9.0\n');
+
+    await exportServiceArtifacts({
+      ...baseOptions,
+      includeDefaultEnv: false,
+      includePnpmLock: true,
+      remoteRootSetting: 'regex:no-match$',
+    });
+
+    expect(fetchPnpmLockFromTargetMock).toHaveBeenCalledWith({
+      appName: baseOptions.appName,
+      cfHomeDir: baseOptions.session.cfHomeDir,
+    });
+  });
+
+  it('throws on an invalid remoteRoot regex before fetching', async () => {
+    await expect(
+      exportServiceArtifacts({
+        ...baseOptions,
+        includeDefaultEnv: false,
+        includePnpmLock: true,
+        remoteRootSetting: 'regex:(unterminated',
+      })
+    ).rejects.toThrow('Invalid remoteRoot regex in shared CAP debug config');
+
+    expect(fetchPnpmLockFromTargetMock).not.toHaveBeenCalled();
   });
 });

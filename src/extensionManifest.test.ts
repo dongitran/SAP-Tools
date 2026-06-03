@@ -88,4 +88,21 @@ describe('Extension manifest feature surface', () => {
       })
     );
   });
+
+  it('contributes the shared CAP debug remoteRoot setting for artifact export', () => {
+    const manifest = readExtensionManifest();
+    const configuration = manifest.contributes['configuration'];
+    expect(Array.isArray(configuration)).toBe(true);
+
+    const properties = configuration
+      .filter(isRecord)
+      .map((entry) => readRecord(entry['properties']))
+      .find((entry) => entry['sapTools.sharedCapDebugConfig'] !== undefined);
+
+    const sharedConfig = readRecord(properties?.['sapTools.sharedCapDebugConfig']);
+    expect(sharedConfig).toEqual(
+      expect.objectContaining({ scope: 'application', type: 'object' })
+    );
+    expect(Object.keys(readRecord(sharedConfig['properties']))).toContain('remoteRoot');
+  });
 });

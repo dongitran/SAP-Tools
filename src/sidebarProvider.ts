@@ -26,6 +26,7 @@ import {
   exportServiceArtifacts,
   type ServiceExportSession,
 } from './serviceArtifactExporter';
+import { readSharedRemoteRoot } from './sharedDebugConfig';
 import { exportSqlToolsConfig } from './sqlToolsConfigExporter';
 import {
   resolveMockApps,
@@ -1837,12 +1838,14 @@ export class RegionSidebarProvider
     });
 
     try {
+      const remoteRootSetting = readSharedRemoteRoot();
       const result = await exportServiceArtifacts({
         appName: payload.appName,
         targetFolderPath: mapping.folderPath,
         session: exportSession,
         includeDefaultEnv: options.includeDefaultEnv,
         includePnpmLock: options.includePnpmLock,
+        ...(remoteRootSetting !== undefined ? { remoteRootSetting } : {}),
       });
 
       const filesLabel = result.writtenFiles

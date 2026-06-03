@@ -13,6 +13,24 @@ const execFileAsync = promisify(execFile);
 
 const CF_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 const CF_COMMAND_TIMEOUT_MS = 30_000;
+
+/**
+ * Lists every package.json inside the running app container (excluding noisy mount
+ * points and node_modules). Shared in shape with the cds-debug extension so a regex
+ * `remoteRoot` resolves to the same folder in both tools.
+ */
+const REMOTE_PACKAGE_JSON_FIND_COMMAND = [
+  'find / -maxdepth 7',
+  "\\( -path '*/node_modules' -o -path /proc -o -path /sys -o -path /dev \\) -prune -o",
+  '-type f',
+  '-name package.json',
+  '-print 2>/dev/null',
+].join(' ');
+
+const DEFAULT_PNPM_LOCK_COMMANDS = [
+  'cat /home/vcap/app/pnpm-lock.yaml',
+  'cat pnpm-lock.yaml',
+] as const;
 const CF_API_REQUEST_TIMEOUT_MS = 20_000;
 const CF_V3_PAGE_SIZE = 200;
 const CF_RETRY_MAX_ATTEMPTS = 3;
@@ -299,18 +317,41 @@ export async function fetchDefaultEnvJsonFromTarget(params: {
 }
 
 /**
+ * List the absolute paths of every package.json inside the running app container.
+ * Requires CF CLI to be already targeted to the intended org/space. Used to resolve
+ * a regex `remoteRoot` to a concrete container folder.
+ */
+export async function findRemotePackageJsonPathsFromTarget(params: {
+  readonly appName: string;
+  readonly cfHomeDir?: string;
+}): Promise<string[]> {
+  const cfHomeOptions = buildCfHomeOptions(params.cfHomeDir);
+  const stdout = await runCfCommand(
+    ['ssh', params.appName, '-c', REMOTE_PACKAGE_JSON_FIND_COMMAND],
+    {
+      ...cfHomeOptions,
+      failureMessage: `Failed to list package.json paths for app "${params.appName}".`,
+    }
+  );
+
+  return stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+/**
  * Fetch pnpm-lock.yaml from the app container via CF SSH.
  * Requires CF CLI to be already targeted to the intended org/space.
+ * When `remoteRoot` is provided it is tried first, then the standard locations.
  */
 export async function fetchPnpmLockFromTarget(params: {
   readonly appName: string;
   readonly cfHomeDir?: string;
+  readonly remoteRoot?: string;
 }): Promise<string> {
   const cfHomeOptions = buildCfHomeOptions(params.cfHomeDir);
-  const lockFileCommands = [
-    'cat /home/vcap/app/pnpm-lock.yaml',
-    'cat pnpm-lock.yaml',
-  ];
+  const lockFileCommands = buildPnpmLockCommands(params.remoteRoot);
 
   const errors: string[] = [];
   for (const command of lockFileCommands) {
@@ -421,6 +462,20 @@ function extractSafeCliDetail(error: unknown): string {
   }
 
   return `(cli: ${normalized.slice(0, 180)})`;
+}
+
+function buildPnpmLockCommands(remoteRoot: string | undefined): string[] {
+  const commands: string[] = [];
+  const normalizedRoot = remoteRoot?.trim().replace(/\/+$/, '');
+  if (normalizedRoot !== undefined && normalizedRoot.length > 0) {
+    commands.push(`cat ${normalizedRoot}/pnpm-lock.yaml`);
+  }
+  for (const fallback of DEFAULT_PNPM_LOCK_COMMANDS) {
+    if (!commands.includes(fallback)) {
+      commands.push(fallback);
+    }
+  }
+  return commands;
 }
 
 function buildCfHomeOptions(cfHomeDir: string | undefined): Pick<CfCliExecutionOptions, 'cfHomeDir'> {

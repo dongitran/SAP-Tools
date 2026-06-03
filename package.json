@@ -2,7 +2,7 @@
   "name": "sap-tools",
   "displayName": "SAP Tools",
   "description": "All-in-one toolbox for SAP BTP development workflows",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "publisher": "dongtran",
   "icon": "resources/icon.png",
   "license": "MIT",
@@ -43,6 +43,18 @@
               },
               "spaceName": {
                 "type": "string"
+              }
+            }
+          },
+          "sapTools.sharedCapDebugConfig": {
+            "type": "object",
+            "scope": "application",
+            "default": {},
+            "markdownDescription": "Shared remote-source hints for artifact export. SAP Tools reads this first and falls back to `cdsDebug.sharedCapDebugConfig` (the CDS Debug extension), so a single configuration serves both extensions.",
+            "properties": {
+              "remoteRoot": {
+                "type": "string",
+                "markdownDescription": "Remote source root inside the CF app container used to locate exported artifacts such as `pnpm-lock.yaml`. Use a fixed path like `/home/vcap/app`, or a regex with `regex:<pattern>` or `/pattern/flags`; regex values are resolved per CF app through `cf ssh` (matched against the folders that contain a `package.json`). When unset or unmatched, SAP Tools falls back to the standard `/home/vcap/app` location."
               }
             }
           }

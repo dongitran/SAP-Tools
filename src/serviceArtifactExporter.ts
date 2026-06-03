@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import {
   fetchDefaultEnvJsonFromTarget,
   fetchPnpmLockFromTarget,
+  findRemotePackageJsonPathsFromTarget,
   prepareCfCliSession,
 } from './cfClient';
+import { resolveRemoteRootForApp } from './remoteRootResolver';
 
 export interface ServiceExportSession {
   readonly apiEndpoint: string;
@@ -22,6 +24,12 @@ export interface ServiceArtifactExportOptions {
   readonly session: ServiceExportSession;
   readonly includeDefaultEnv: boolean;
   readonly includePnpmLock: boolean;
+  /**
+   * Optional shared `remoteRoot` hint (literal path or `regex:`/`/pattern/flags`).
+   * Resolved per app to locate pnpm-lock.yaml when it does not live at the standard
+   * `/home/vcap/app` location.
+   */
+  readonly remoteRootSetting?: string;
 }
 
 export interface ServiceArtifactExportResult {
@@ -57,9 +65,11 @@ export async function exportServiceArtifacts(
   }
 
   if (options.includePnpmLock) {
+    const remoteRoot = await resolvePnpmLockRemoteRoot(options);
     const pnpmLockContent = await fetchPnpmLockFromTarget({
       appName: options.appName,
       cfHomeDir: options.session.cfHomeDir,
+      ...(remoteRoot !== undefined ? { remoteRoot } : {}),
     });
     const outputPath = join(options.targetFolderPath, 'pnpm-lock.yaml');
     await writeFile(outputPath, pnpmLockContent, 'utf8');
@@ -67,4 +77,36 @@ export async function exportServiceArtifacts(
   }
 
   return { writtenFiles };
+}
+
+/**
+ * Resolves the configured shared remoteRoot for the app, or `undefined` when no
+ * setting is present or the regex matches nothing (callers then fall back to the
+ * standard container locations).
+ */
+async function resolvePnpmLockRemoteRoot(
+  options: ServiceArtifactExportOptions
+): Promise<string | undefined> {
+  const setting = options.remoteRootSetting?.trim();
+  if (setting === undefined || setting.length === 0) {
+    return undefined;
+  }
+
+  const resolution = await resolveRemoteRootForApp(options.appName, setting, {
+    findPackageJsonPaths: (appName) =>
+      findRemotePackageJsonPathsFromTarget({
+        appName,
+        cfHomeDir: options.session.cfHomeDir,
+      }),
+  });
+
+  if (resolution.status === 'invalid-regex') {
+    throw new Error(
+      `Invalid remoteRoot regex in shared CAP debug config: ${resolution.error}`
+    );
+  }
+
+  return resolution.status === 'literal' || resolution.status === 'resolved'
+    ? resolution.remoteRoot
+    : undefined;
 }

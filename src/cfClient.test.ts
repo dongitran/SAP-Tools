@@ -29,6 +29,7 @@ import {
   fetchDefaultEnvJsonFromTarget,
   fetchOrgs,
   fetchPnpmLockFromTarget,
+  findRemotePackageJsonPathsFromTarget,
   fetchRecentAppLogs,
   fetchSpaces,
   fetchStartedAppsViaCfCli,
@@ -513,6 +514,49 @@ describe('fetchPnpmLockFromTarget', () => {
     );
   });
 
+  it('tries the configured remote root before the standard locations', async () => {
+    execFileAsyncMock.mockResolvedValueOnce({ stdout: 'lockfileVersion: 9.0\n' });
+
+    const content = await fetchPnpmLockFromTarget({
+      appName: 'finance-uat-api',
+      remoteRoot: '/home/vcap/app/gen/srv/',
+    });
+
+    expect(content).toContain('lockfileVersion: 9.0');
+    expect(execFileAsyncMock).toHaveBeenNthCalledWith(
+      1,
+      'cf',
+      ['ssh', 'finance-uat-api', '-c', 'cat /home/vcap/app/gen/srv/pnpm-lock.yaml'],
+      expect.any(Object)
+    );
+  });
+
+  it('does not duplicate a remote root that equals the default location', async () => {
+    execFileAsyncMock
+      .mockRejectedValueOnce({ stderr: 'No such file' })
+      .mockResolvedValueOnce({ stdout: 'lockfileVersion: 9.0\n' });
+
+    await fetchPnpmLockFromTarget({
+      appName: 'finance-uat-api',
+      remoteRoot: '/home/vcap/app',
+    });
+
+    // /home/vcap/app collapses into the first default command, leaving 2 total.
+    expect(execFileAsyncMock).toHaveBeenCalledTimes(2);
+    expect(execFileAsyncMock).toHaveBeenNthCalledWith(
+      1,
+      'cf',
+      ['ssh', 'finance-uat-api', '-c', 'cat /home/vcap/app/pnpm-lock.yaml'],
+      expect.any(Object)
+    );
+    expect(execFileAsyncMock).toHaveBeenNthCalledWith(
+      2,
+      'cf',
+      ['ssh', 'finance-uat-api', '-c', 'cat pnpm-lock.yaml'],
+      expect.any(Object)
+    );
+  });
+
   it('tries fallback command when primary ssh command fails', async () => {
     execFileAsyncMock
       .mockRejectedValueOnce({ stderr: 'No such file' })
@@ -544,6 +588,32 @@ describe('fetchPnpmLockFromTarget', () => {
     ).rejects.toThrow(
       'Unable to read pnpm-lock.yaml from app "finance-uat-api". Ensure SSH is enabled and the file exists in the app container.'
     );
+  });
+});
+
+describe('findRemotePackageJsonPathsFromTarget', () => {
+  beforeEach(() => {
+    execFileAsyncMock.mockReset();
+  });
+
+  it('runs the find command via cf ssh and returns trimmed non-empty lines', async () => {
+    execFileAsyncMock.mockResolvedValueOnce({
+      stdout: '/home/vcap/app/package.json\n  /home/vcap/app/srv/package.json  \n\n',
+    });
+
+    const paths = await findRemotePackageJsonPathsFromTarget({
+      appName: 'finance-uat-api',
+      cfHomeDir: '/tmp/sap-tools-cf-home',
+    });
+
+    expect(paths).toEqual([
+      '/home/vcap/app/package.json',
+      '/home/vcap/app/srv/package.json',
+    ]);
+    const [command, args] = execFileAsyncMock.mock.calls[0] ?? [];
+    expect(command).toBe('cf');
+    expect(args?.slice(0, 3)).toEqual(['ssh', 'finance-uat-api', '-c']);
+    expect(String(args?.[3])).toContain('-name package.json');
   });
 });
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.4 (stable)
+- Added a shared `sapTools.sharedCapDebugConfig.remoteRoot` setting so service artifact export can locate `pnpm-lock.yaml` when it does not live at the standard `/home/vcap/app` path.
+- `remoteRoot` accepts a fixed path or a regex (`regex:<pattern>` or `/pattern/flags`) that is resolved per CF app via `cf ssh` against the container's `package.json` folders.
+- Reused the CDS Debug extension's `cdsDebug.sharedCapDebugConfig` as an automatic fallback, so a single configuration serves both extensions; SAP Tools-only installs can configure it standalone.
+
 ## 0.8.3 (stable)
 - Added bottom spacing inside multi-statement SQL Workbench result tables so the horizontal scrollbar no longer sits flush against the last row and stays easy to grab.
 - Removed the multi-statement SQL batch summary row and per-statement elapsed chips so batch results focus on individual statement output.
