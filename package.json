@@ -2,7 +2,7 @@
   "name": "sap-tools",
   "displayName": "SAP Tools",
   "description": "All-in-one toolbox for SAP BTP development workflows",
-  "version": "0.8.6",
+  "version": "0.8.8",
   "publisher": "dongtran",
   "icon": "resources/icon.png",
   "license": "MIT",

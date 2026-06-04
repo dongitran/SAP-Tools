@@ -6,7 +6,6 @@ import {
   fetchCfLoginInfo,
   fetchOrgs,
   fetchSpaces,
-  fetchStartedAppsViaCfCli,
   getCfApiEndpoint,
   isCfSessionExpired,
 } from './cfClient';
@@ -38,6 +37,7 @@ import {
 import { SAP_BTP_REGIONS, toHyphenatedRegionCode } from './regions';
 import {
   EMPTY_CF_TOPOLOGY,
+  getAppsFromTopologySync,
   getCfTopologySnapshot,
   getCfTopologySnapshotSync,
   type CfTopology,
@@ -2559,11 +2559,24 @@ export class RegionSidebarProvider
       return;
     }
 
-    const cachedApps = await this.cacheSyncService.getCachedApps(
-      this.selectedRegionId,
-      payload.orgGuid,
-      payload.spaceName
-    );
+    const apiEndpoint = getCfApiEndpoint(regionCode);
+
+    // Primary source: the shared ~/.saptools/cf-structure.json (synced by the cf-sync
+    // engine, shared with the CDS Debug extension). It lists every app — running,
+    // scaled-to-zero, and stopped — so the dashboard matches CDS Debug instantly, even
+    // on a fresh install where this extension's own globalState cache is still empty.
+    const topologyApps = getAppsFromTopologySync(apiEndpoint, payload.orgName, payload.spaceName);
+
+    // Fall back to the legacy per-extension globalState cache only when the shared
+    // structure has nothing for this scope (e.g. a SAP-Tools-only install before a sync).
+    const cachedApps =
+      topologyApps === null
+        ? await this.cacheSyncService.getCachedApps(
+            this.selectedRegionId,
+            payload.orgGuid,
+            payload.spaceName
+          )
+        : null;
     if (!this.isCurrentSpaceRequest(requestId)) {
       return;
     }
@@ -2572,57 +2585,71 @@ export class RegionSidebarProvider
       return;
     }
 
-    const cachedSidebarApps =
-      cachedApps === null
+    const immediateApps: SidebarAppEntry[] | null =
+      topologyApps ??
+      (cachedApps === null
         ? null
         : cachedApps.map((app) => ({
             id: app.id,
             name: app.name,
             runningInstances: app.runningInstances,
-          }));
+          })));
 
-    if (cachedSidebarApps !== null) {
-      await this.postAppsLoaded(cachedSidebarApps, payload, credentials, cfHomeDir, regionCode);
+    if (immediateApps !== null) {
+      await this.postAppsLoaded(immediateApps, payload, credentials, cfHomeDir, regionCode);
     }
 
+    // Refresh the shared structure for this single space, then re-read it so the list
+    // stays current and SAP-Tools-only installs populate on first open.
     try {
-      const session = await this.ensureRegionSession(credentials);
-      if (!this.isCurrentSpaceRequest(requestId)) {
-        return;
-      }
-      const runningApps = await fetchStartedAppsViaCfCli({
-        apiEndpoint: session.apiEndpoint,
-        email: credentials.email,
-        password: credentials.password,
+      const refresh = await refreshCfSyncSpace({
+        apiEndpoint,
         orgName: payload.orgName,
         spaceName: payload.spaceName,
-        cfHomeDir,
+        email: credentials.email,
+        password: credentials.password,
       });
-      const apps = runningApps.map((app) => ({
-        id: app.name,
-        name: app.name,
-        runningInstances: app.runningInstances,
-      }));
       if (!this.isCurrentSpaceRequest(requestId)) {
         return;
       }
-      if (cachedSidebarApps === null || !areSidebarAppsEqual(cachedSidebarApps, apps)) {
-        await this.postAppsLoaded(apps, payload, credentials, cfHomeDir, regionCode);
+
+      if (refresh.status === 'refreshed') {
+        const freshApps =
+          getAppsFromTopologySync(apiEndpoint, payload.orgName, payload.spaceName) ?? [];
+        if (immediateApps === null || !areSidebarAppsEqual(immediateApps, freshApps)) {
+          await this.postAppsLoaded(freshApps, payload, credentials, cfHomeDir, regionCode);
+        }
+        return;
+      }
+
+      if (immediateApps === null) {
+        const reason =
+          refresh.status === 'failed'
+            ? refresh.error instanceof Error
+              ? refresh.error.message
+              : 'Failed to refresh apps from Cloud Foundry.'
+            : 'Could not resolve the Cloud Foundry region for this scope.';
+        this.outputChannel.appendLine(
+          `[apps] Refresh ${refresh.status} for ${sanitizeForLog(payload.spaceName)}: ${sanitizeForLog(reason)}`
+        );
+        this.postAppsError(reason);
+      } else {
+        this.outputChannel.appendLine(
+          `[apps] Refresh ${refresh.status} for ${sanitizeForLog(payload.spaceName)}; keeping current app list.`
+        );
       }
     } catch (error) {
       if (!this.isCurrentSpaceRequest(requestId)) {
         return;
       }
-      if (cachedSidebarApps !== null) {
-        const errorMessage =
-          error instanceof Error ? error.message : 'Failed to refresh live apps from CF CLI.';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to fetch apps from Cloud Foundry.';
+      if (immediateApps !== null) {
         this.outputChannel.appendLine(
           `[apps] Live refresh failed for ${sanitizeForLog(payload.spaceName)}: ${sanitizeForLog(errorMessage)}`
         );
         return;
       }
-      const errorMessage =
-        error instanceof Error ? error.message : 'Failed to fetch apps from CF CLI.';
       this.postAppsError(errorMessage);
     }
   }

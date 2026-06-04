@@ -7,6 +7,18 @@ const HANA_QUERY_DEFAULT_TIMEOUT_MS = 300_000;
 const HANA_QUERY_RESULT_PREVIEW_BYTES = 4096;
 const HDB_BOOLEAN_TYPE_CODE = 28;
 
+/**
+ * The hdb driver aborts the connection with "No initialization reply received
+ * within 5 sec" if HANA does not answer the protocol handshake within its
+ * default 5s window. HANA Cloud instances auto-suspend when idle and need
+ * noticeably longer than 5s to wake up on the first connection, which is why a
+ * cold query fails but an immediate retry succeeds. Give the handshake a much
+ * larger budget so a cold instance has time to respond.
+ */
+const HANA_CONNECT_INIT_TIMEOUT_MS = 60_000;
+const HANA_CONNECT_MAX_ATTEMPTS = 3;
+const HANA_CONNECT_RETRY_DELAY_MS = 600;
+
 export interface HanaConnection {
   readonly host: string;
   readonly port: number;
@@ -99,6 +111,7 @@ export interface HdbCreateClientArgs {
   readonly databaseName?: string;
   readonly encrypt?: boolean;
   readonly sslValidateCertificate?: boolean;
+  readonly initializationTimeout?: number;
 }
 
 export interface HdbModule {
@@ -111,6 +124,7 @@ export interface ExecuteHanaQueryOptions {
   readonly timeoutMs?: number;
   readonly clientFactory?: HdbClientFactory;
   readonly statementKind?: HanaSqlStatementKind;
+  readonly connectRetryDelayMs?: number;
 }
 
 export type HanaStatementOutcomeStatus = 'success' | 'error' | 'skipped';
@@ -143,6 +157,7 @@ export interface HanaBatchExecutionSummary {
 export interface ExecuteHanaQueryBatchOptions {
   readonly timeoutMs?: number;
   readonly clientFactory?: HdbClientFactory;
+  readonly connectRetryDelayMs?: number;
   readonly onStatementComplete?: (
     index: number,
     outcome: HanaStatementOutcome
@@ -163,24 +178,13 @@ export async function executeHanaQuery(
   const factory = options.clientFactory ?? createDefaultHdbClient;
   const statementKind = options.statementKind ?? classifyHanaSqlStatement(trimmedSql);
 
-  let client: HdbClient;
-  try {
-    client = factory(connection);
-  } catch (error) {
-    throw toHanaQueryError(error, 'create-client');
-  }
-
-  client.on?.('error', () => {
-    /* swallow late errors so they don't crash the host */
-  });
-
   const started = Date.now();
-  try {
-    await connectClient(client, timeoutMs);
-  } catch (error) {
-    safeClose(client);
-    throw toHanaQueryError(error, 'connect');
-  }
+  const client = await connectWithRetry(
+    factory,
+    connection,
+    timeoutMs,
+    options.connectRetryDelayMs ?? HANA_CONNECT_RETRY_DELAY_MS
+  );
 
   let result: HanaQueryResult;
   try {
@@ -211,23 +215,12 @@ export async function executeHanaQueryBatch(
   const hasMutating = statements.some((statement) => statement.statementKind === 'mutating');
   const shouldUseTransaction = hasMutating && statements.length > 1;
 
-  let client: HdbClient;
-  try {
-    client = factory(connection);
-  } catch (error) {
-    throw toHanaQueryError(error, 'create-client');
-  }
-
-  client.on?.('error', () => {
-    /* swallow late errors so they don't crash the host */
-  });
-
-  try {
-    await connectClient(client, timeoutMs);
-  } catch (error) {
-    safeClose(client);
-    throw toHanaQueryError(error, 'connect');
-  }
+  const client = await connectWithRetry(
+    factory,
+    connection,
+    timeoutMs,
+    options.connectRetryDelayMs ?? HANA_CONNECT_RETRY_DELAY_MS
+  );
 
   let usedTransaction = false;
   let transactionUnavailableReason: string | undefined;
@@ -540,6 +533,71 @@ export function extractColumnNames(
     return [];
   }
   return Object.keys(rows[0] ?? {});
+}
+
+/**
+ * Create an hdb client and establish its connection, retrying when the failure
+ * looks like a cold HANA Cloud instance that has not finished waking up. Each
+ * attempt uses a fresh client because a client whose connect failed cannot be
+ * reused safely.
+ */
+async function connectWithRetry(
+  factory: HdbClientFactory,
+  connection: HanaConnection,
+  timeoutMs: number,
+  retryDelayMs: number
+): Promise<HdbClient> {
+  let lastError: HanaQueryError | undefined;
+  for (let attempt = 1; attempt <= HANA_CONNECT_MAX_ATTEMPTS; attempt += 1) {
+    let client: HdbClient;
+    try {
+      client = factory(connection);
+    } catch (error) {
+      throw toHanaQueryError(error, 'create-client');
+    }
+
+    client.on?.('error', () => {
+      /* swallow late errors so they don't crash the host */
+    });
+
+    try {
+      await connectClient(client, timeoutMs);
+      return client;
+    } catch (error) {
+      safeClose(client);
+      const mapped = toHanaQueryError(error, 'connect');
+      lastError = mapped;
+      if (attempt < HANA_CONNECT_MAX_ATTEMPTS && isRetryableHanaConnectError(mapped)) {
+        await delayMs(retryDelayMs * attempt);
+        continue;
+      }
+      throw mapped;
+    }
+  }
+  throw lastError ?? new HanaQueryError('connection', 'Failed to connect to HANA.');
+}
+
+/**
+ * Only retry the cold-start handshake signatures. Other connection failures
+ * (refused port, DNS, auth) will not heal on their own, and our wrapper timeout
+ * (kind 'timeout') is intentionally left to surface immediately.
+ */
+function isRetryableHanaConnectError(error: HanaQueryError): boolean {
+  if (error.kind !== 'connection') {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('no initialization reply') ||
+    message.includes('could not connect to any host') ||
+    message.includes('initialization timeout')
+  );
+}
+
+function delayMs(durationMs: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
 }
 
 async function connectClient(client: HdbClient, timeoutMs: number): Promise<void> {
@@ -915,6 +973,7 @@ function createDefaultHdbClient(connection: HanaConnection): HdbClient {
     password: connection.password,
     encrypt: true,
     sslValidateCertificate: true,
+    initializationTimeout: HANA_CONNECT_INIT_TIMEOUT_MS,
   };
   if (connection.database !== undefined && connection.database.length > 0) {
     return hdbModule.createClient({ ...args, databaseName: connection.database });

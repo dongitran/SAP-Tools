@@ -36,6 +36,7 @@ import {
   getCfApiEndpoint,
   isCfSessionExpired,
   parseCfAppsOutput,
+  prepareCfCliSession,
   spawnAppLogStreamFromTarget,
 } from './cfClient';
 
@@ -179,6 +180,37 @@ describe('parseCfAppsOutput', () => {
     ]);
 
     expect(parseCfAppsOutput('unexpected output')).toEqual([]);
+  });
+});
+
+describe('prepareCfCliSession', () => {
+  beforeEach(() => {
+    execFileAsyncMock.mockReset();
+  });
+
+  it('serializes concurrent preparations so api/auth/target never interleave', async () => {
+    const order: string[] = [];
+    execFileAsyncMock.mockImplementation((_cmd: string, args: string[]) => {
+      order.push(args[0] ?? '');
+      return new Promise((resolve) => {
+        setTimeout(() => resolve({ stdout: '' }), 5);
+      });
+    });
+
+    const params = {
+      apiEndpoint: 'https://api.cf.us10.hana.ondemand.com',
+      email: 'test@example.com',
+      password: 'super-secret-password',
+      orgName: 'finance-services-prod',
+      spaceName: 'uat',
+      cfHomeDir: '/tmp/sap-tools-cf-home-serialized',
+    };
+
+    await Promise.all([prepareCfCliSession(params), prepareCfCliSession(params)]);
+
+    // Without serialization the two triplets would interleave
+    // (api, api, auth, auth, target, target).
+    expect(order).toEqual(['api', 'auth', 'target', 'api', 'auth', 'target']);
   });
 });
 

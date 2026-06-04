@@ -4,6 +4,7 @@ import type { HanaQueryResultSet } from './hanaSqlService';
 import {
   buildHanaSqlResultExportFileName,
   buildHanaSqlResultHtml,
+  buildSqlBatchSectionUpdate,
   formatHanaSqlResultRowObjectJson,
   formatHanaSqlResultSetCsv,
   formatHanaSqlResultSetJson,
@@ -11,8 +12,13 @@ import {
   formatHanaSqlStatementBatchJson,
   resolveHanaSqlResultCellValue,
   resolveSqlResultTargetColumn,
+  summarizeSqlBatch,
+  SQL_BATCH_PROGRESS_MESSAGE_TYPE,
+  SQL_BATCH_SECTIONS_MESSAGE_TYPE,
   type HanaSqlResultExportFormat,
   type RenderSqlResultOptions,
+  type SqlBatchSectionUpdate,
+  type SqlResultStatementStatus,
   type SqlResultStatementView,
 } from './hanaSqlWorkbenchSupport';
 
@@ -76,8 +82,18 @@ export class HanaSqlResultPanelManager implements vscode.Disposable {
     );
     const nonce = createWebviewNonce();
     let currentOptions = { ...options, nonce };
-    const render = (): void => {
+    let renderedBatchCount: number | null = null;
+    let renderedStatuses: SqlResultStatementStatus[] | null = null;
+    const fullRender = (): void => {
       panel.webview.html = buildHanaSqlResultHtml(currentOptions);
+      const statements = currentOptions.statements ?? [];
+      if (statements.length > 1) {
+        renderedBatchCount = statements.length;
+        renderedStatuses = statements.map((statement) => statement.status);
+      } else {
+        renderedBatchCount = null;
+        renderedStatuses = null;
+      }
     };
     const messageSubscription = panel.webview.onDidReceiveMessage((message: unknown) => {
       void this.handlePanelMessage(currentOptions, message);
@@ -85,14 +101,70 @@ export class HanaSqlResultPanelManager implements vscode.Disposable {
     panel.onDidDispose(() => {
       messageSubscription.dispose();
     }, null, this.disposables);
-    render();
+    fullRender();
     return {
       panel,
       update: (nextOptions: RenderSqlResultOptions): void => {
-        currentOptions = { ...nextOptions, nonce };
-        render();
+        const next = { ...nextOptions, nonce };
+        const statements = next.statements ?? [];
+        const canStream =
+          statements.length > 1 &&
+          next.batchSummary === undefined &&
+          renderedBatchCount === statements.length &&
+          renderedStatuses !== null;
+        currentOptions = next;
+        if (canStream && renderedStatuses !== null) {
+          this.streamBatchProgress(panel, statements, renderedStatuses);
+          renderedStatuses = statements.map((statement) => statement.status);
+          return;
+        }
+        fullRender();
       },
     };
+  }
+
+  /**
+   * Push live batch progress to an already-rendered batch document without
+   * reloading it: a single summary message plus only the statement sections
+   * whose status changed since the previous update. This keeps large INSERT
+   * batches responsive (no full-document reflow or scroll reset per statement).
+   */
+  private streamBatchProgress(
+    panel: vscode.WebviewPanel,
+    statements: readonly SqlResultStatementView[],
+    previousStatuses: readonly SqlResultStatementStatus[]
+  ): void {
+    const summary = summarizeSqlBatch(statements);
+    void panel.webview.postMessage({
+      type: SQL_BATCH_PROGRESS_MESSAGE_TYPE,
+      total: summary.total,
+      done: summary.done,
+      success: summary.success,
+      error: summary.error,
+      skipped: summary.skipped,
+      pending: summary.pending,
+      finished: summary.finished,
+      title: summary.title,
+      note: summary.note,
+      tone: summary.tone,
+    });
+
+    const changedSections: SqlBatchSectionUpdate[] = [];
+    for (let index = 0; index < statements.length; index += 1) {
+      const statement = statements[index];
+      if (statement === undefined) {
+        continue;
+      }
+      if (previousStatuses[index] !== statement.status) {
+        changedSections.push(buildSqlBatchSectionUpdate(statement, index, statements.length));
+      }
+    }
+    if (changedSections.length > 0) {
+      void panel.webview.postMessage({
+        type: SQL_BATCH_SECTIONS_MESSAGE_TYPE,
+        sections: changedSections,
+      });
+    }
   }
 
   private async handlePanelMessage(

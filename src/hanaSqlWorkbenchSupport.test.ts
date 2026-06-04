@@ -10,6 +10,8 @@ import {
   buildHanaSqlResultHtml,
   buildInitialHanaSqlTemplate,
   buildQuickTableSelectSql,
+  buildSqlBatchSectionUpdate,
+  summarizeSqlBatch,
   buildTestModeBatchOutcomes,
   buildTestModeQueryResult,
   createTestModeTableNames,
@@ -1092,6 +1094,109 @@ describe('buildHanaSqlResultHtml batch view', () => {
     expect(html).toContain('Table: DUMMY');
     expect(html).not.toContain('Elapsed:');
     expect(html).not.toContain('Export all');
+  });
+
+  test('renders a colored progress summary band above the batch sections', () => {
+    const html = buildHanaSqlResultHtml({
+      appName: 'finance-uat-api',
+      sql: 'INSERT INTO T VALUES (1); INSERT INTO T VALUES (2); INSERT INTO T VALUES (3)',
+      executedAt: '2026-04-25T00:00:00Z',
+      nonce: 'test-nonce',
+      statements: [
+        { sql: 'INSERT INTO T VALUES (1)', status: 'success', tableName: 'T', elapsedMs: 2 },
+        { sql: 'INSERT INTO T VALUES (2)', status: 'success', tableName: 'T', elapsedMs: 2 },
+        { sql: 'INSERT INTO T VALUES (3)', status: 'pending', tableName: 'T' },
+      ],
+    });
+
+    expect(html).toContain('result-batch-summary');
+    expect(html).toContain('data-role="batch-summary"');
+    expect(html).toContain('data-role="batch-progress"');
+    expect(html).toContain('data-tone="running"');
+    expect(html).toContain('Running… 2 / 3');
+    expect(html).toContain('OK 2');
+    expect(html).toContain('Pending 1');
+    expect(html).toContain('max="3"');
+    expect(html).toContain('value="2"');
+    // The progress band streams updates over postMessage rather than reloading.
+    expect(html).toContain("data.type === 'sapTools.sqlBatchProgress'");
+    expect(html).toContain("data.type === 'sapTools.sqlBatchSections'");
+  });
+});
+
+describe('summarizeSqlBatch', () => {
+  test('reports a running tone with live counts before the batch finishes', () => {
+    const summary = summarizeSqlBatch([
+      { sql: 'a', status: 'success' },
+      { sql: 'b', status: 'error', errorMessage: 'boom' },
+      { sql: 'c', status: 'pending' },
+      { sql: 'd', status: 'pending' },
+    ]);
+
+    expect(summary).toMatchObject({
+      total: 4,
+      success: 1,
+      error: 1,
+      skipped: 0,
+      pending: 2,
+      done: 2,
+      finished: false,
+      tone: 'running',
+    });
+    expect(summary.title).toBe('Running… 2 / 4');
+  });
+
+  test('reports a success tone and committed note when a transaction commits', () => {
+    const summary = summarizeSqlBatch(
+      [
+        { sql: 'a', status: 'success' },
+        { sql: 'b', status: 'success' },
+      ],
+      { usedTransaction: true, committed: true, rolledBack: false }
+    );
+
+    expect(summary.finished).toBe(true);
+    expect(summary.tone).toBe('success');
+    expect(summary.title).toBe('Completed 2 statements');
+    expect(summary.note).toContain('committed');
+  });
+
+  test('reports an error tone and rollback note when a statement fails', () => {
+    const summary = summarizeSqlBatch(
+      [
+        { sql: 'a', status: 'error', errorMessage: 'boom' },
+        { sql: 'b', status: 'skipped' },
+      ],
+      { usedTransaction: true, committed: false, rolledBack: true }
+    );
+
+    expect(summary.tone).toBe('error');
+    expect(summary.title).toContain('Completed with 1 error');
+    expect(summary.note).toContain('rolled back');
+  });
+});
+
+describe('buildSqlBatchSectionUpdate', () => {
+  test('returns the status class and inner section markup for a statement', () => {
+    const update = buildSqlBatchSectionUpdate(
+      {
+        sql: 'INSERT INTO T VALUES (1)',
+        status: 'success',
+        tableName: 'T',
+        elapsedMs: 3,
+        result: { kind: 'status', message: '1 row affected.', elapsedMs: 3 },
+      },
+      0,
+      5
+    );
+
+    expect(update.index).toBe(0);
+    expect(update.className).toBe('result-statement-section status-success');
+    expect(update.innerHtml).toContain('Statement 1 / 5');
+    expect(update.innerHtml).toContain('1 row affected.');
+    // Inner markup excludes the outer section wrapper (the panel patches into it).
+    expect(update.innerHtml).not.toContain('data-statement-index');
+    expect(update.innerHtml).not.toContain('result-statement-section');
   });
 
   test('keeps the batch table horizontal scrollbar clear of the last row', () => {

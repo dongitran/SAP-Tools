@@ -1,6 +1,12 @@
 import { HanaQueryError, findTopLevelSqlSemicolons, stripLeadingSqlComments } from './hanaSqlService';
 
-export const MAX_HANA_SQL_BATCH_STATEMENTS = 100;
+/**
+ * Upper bound on statements in a single batch. Kept high so large INSERT seed
+ * scripts run without artificial truncation, while still guarding against a
+ * pathological paste that would try to render an unbounded number of result
+ * sections in the webview.
+ */
+export const MAX_HANA_SQL_BATCH_STATEMENTS = 100_000;
 
 export interface SplitHanaStatement {
   readonly sql: string;

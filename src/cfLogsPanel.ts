@@ -59,6 +59,27 @@ const STREAM_BATCH_FLUSH_MS = 150;
 const STREAM_RETRY_INITIAL_MS = 1_000;
 const STREAM_RETRY_MAX_MS = 20_000;
 
+/**
+ * A freshly spawned `cf logs` stream occasionally emits CF CLI "session not
+ * ready" errors (No org targeted / Not logged in / app not found) when the
+ * shared CF config was still being prepared. Within this grace window — and
+ * before the stream has produced any real log output — those lines are
+ * suppressed and the session is re-prepared instead of being shown to the user.
+ */
+const SESSION_HEAL_GRACE_MS = 6_000;
+const MAX_SESSION_RECOVERIES = 3;
+
+/** CF CLI messages that mean the shared session/target was not ready yet. */
+const CF_SESSION_NOT_READY_PATTERNS: readonly RegExp[] = [
+  /no org targeted/i,
+  /no org and space targeted/i,
+  /no space targeted/i,
+  /not logged in/i,
+  /use '?cf login'?/i,
+  /app '[^']*' not found/i,
+  /no api endpoint set/i,
+];
+
 /* cspell:disable */
 const TEST_MODE_SAMPLE_LOGS = `Retrieving logs for app finance-uat-api in org finance-services-prod / space uat as developer@example.com...
 
@@ -117,10 +138,13 @@ interface AppStreamRuntime {
   readonly appName: string;
   readonly token: number;
   readonly handle: CfLogStreamHandle;
+  readonly startedAt: number;
   lineRemainder: string;
   lineBuffer: string[];
   flushTimer: NodeJS.Timeout | null;
   stoppedByRequest: boolean;
+  healthy: boolean;
+  sawSessionError: boolean;
 }
 
 export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -134,6 +158,7 @@ export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.D
   private readonly pendingStarts = new Set<string>();
   private readonly reconnectTimers = new Map<string, NodeJS.Timeout>();
   private readonly reconnectDelays = new Map<string, number>();
+  private readonly sessionRecoveryCounts = new Map<string, number>();
   private preparedFetchToken = -1;
   private preparingFetchToken: number | null = null;
   private prepareSessionPromise: Promise<void> | null = null;
@@ -291,9 +316,11 @@ export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.D
   private doUpdateApps(apps: CfAppEntry[], sessionParams: LogSessionParams | null): void {
     this.fetchToken += 1;
     this.sessionParams = sessionParams;
+    // Invalidate the prepared session for the new scope, but keep any in-flight
+    // prepare referenced: a concurrent `ensureCliPrepared` then chains behind it
+    // instead of launching a second `prepareCfCliSession` that would race on the
+    // shared CF config. The stale prepare simply won't mark the new token ready.
     this.preparedFetchToken = -1;
-    this.preparingFetchToken = null;
-    this.prepareSessionPromise = null;
     const selectedApp = this.resolvePreferredSelectedApp(apps);
     void this.webviewView?.webview.postMessage({
       type: APPS_UPDATE_MESSAGE_TYPE,
@@ -471,10 +498,13 @@ export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.D
       appName,
       token: expectedFetchToken,
       handle,
+      startedAt: Date.now(),
       lineRemainder: '',
       lineBuffer: [],
       flushTimer: null,
       stoppedByRequest: false,
+      healthy: false,
+      sawSessionError: false,
     };
     this.runningStreams.set(appName, stream);
     this.attachStreamListeners(stream);
@@ -506,7 +536,12 @@ export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.D
       return;
     }
 
-    const sanitizedLines = lines.map((line) => this.sanitizeLineForUi(line));
+    const visibleLines = this.filterSessionNotReadyLines(stream, lines);
+    if (visibleLines.length === 0) {
+      return;
+    }
+
+    const sanitizedLines = visibleLines.map((line) => this.sanitizeLineForUi(line));
     stream.lineBuffer.push(...sanitizedLines);
 
     if (stream.flushTimer !== null) {
@@ -516,6 +551,67 @@ export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.D
     stream.flushTimer = setTimeout(() => {
       this.flushStreamLines(stream.appName);
     }, STREAM_BATCH_FLUSH_MS);
+  }
+
+  /**
+   * Suppress the CF CLI "session not ready" lines that a just-started stream can
+   * emit before the shared CF config is fully prepared. Once a real log line
+   * arrives (or the grace window elapses) the stream is considered healthy and
+   * every line passes through untouched. After the recovery budget is spent the
+   * lines are shown so a genuine problem (e.g. a deleted app) still surfaces.
+   */
+  private filterSessionNotReadyLines(stream: AppStreamRuntime, lines: string[]): string[] {
+    if (stream.healthy || this.sessionHealAttemptsExhausted(stream.appName)) {
+      return lines;
+    }
+    if (Date.now() - stream.startedAt > SESSION_HEAL_GRACE_MS) {
+      this.markStreamHealthy(stream);
+      return lines;
+    }
+
+    const visible: string[] = [];
+    for (const line of lines) {
+      if (isCfSessionNotReadyLine(line)) {
+        stream.sawSessionError = true;
+        continue;
+      }
+      if (stream.sawSessionError && isCfCliFailedMarkerLine(line)) {
+        continue;
+      }
+      if (line.trim().length > 0 && !isCfCliFailedMarkerLine(line)) {
+        this.markStreamHealthy(stream);
+      }
+      visible.push(line);
+    }
+    return visible;
+  }
+
+  private markStreamHealthy(stream: AppStreamRuntime): void {
+    stream.healthy = true;
+    this.sessionRecoveryCounts.delete(stream.appName);
+  }
+
+  private sessionHealAttemptsExhausted(appName: string): boolean {
+    return (this.sessionRecoveryCounts.get(appName) ?? 0) >= MAX_SESSION_RECOVERIES;
+  }
+
+  /**
+   * When a stream exited without ever producing real output but did emit CF
+   * session errors, the shared config was not ready. Invalidate the prepared
+   * token so the reconnect re-runs `cf auth`/`cf target` first. Bounded so a
+   * persistently failing app eventually surfaces its error instead of looping.
+   */
+  private maybeRecoverSessionBeforeReconnect(stream: AppStreamRuntime): boolean {
+    if (stream.healthy || !stream.sawSessionError) {
+      return false;
+    }
+    const attempts = this.sessionRecoveryCounts.get(stream.appName) ?? 0;
+    if (attempts >= MAX_SESSION_RECOVERIES) {
+      return false;
+    }
+    this.sessionRecoveryCounts.set(stream.appName, attempts + 1);
+    this.preparedFetchToken = -1;
+    return true;
   }
 
   private flushStreamLines(appName: string): void {
@@ -547,6 +643,12 @@ export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.D
 
     if (!shouldReconnect) {
       this.postStreamState(stream.appName, 'stopped');
+      return;
+    }
+
+    if (this.maybeRecoverSessionBeforeReconnect(stream)) {
+      this.postStreamState(stream.appName, 'reconnecting', 'Preparing CF session…');
+      this.scheduleStreamReconnect(stream.appName, STREAM_RETRY_INITIAL_MS);
       return;
     }
 
@@ -609,6 +711,7 @@ export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.D
     }
     this.reconnectDelays.clear();
     this.pendingStarts.clear();
+    this.sessionRecoveryCounts.clear();
   }
 
   private stopStream(appName: string, notify: boolean): void {
@@ -621,6 +724,7 @@ export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.D
     this.clearStreamTimers(stream);
     this.clearReconnectTimer(appName);
     this.reconnectDelays.delete(appName);
+    this.sessionRecoveryCounts.delete(appName);
     this.detachStreamListeners(stream);
     stream.handle.stop();
     this.runningStreams.delete(appName);
@@ -1036,6 +1140,14 @@ export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.D
 
 function isTestMode(): boolean {
   return process.env['SAP_TOOLS_TEST_MODE'] === '1';
+}
+
+function isCfSessionNotReadyLine(line: string): boolean {
+  return CF_SESSION_NOT_READY_PATTERNS.some((pattern) => pattern.test(line));
+}
+
+function isCfCliFailedMarkerLine(line: string): boolean {
+  return line.trim().toUpperCase() === 'FAILED';
 }
 
 function shouldRetryPreparedSession(errorMessage: string): boolean {

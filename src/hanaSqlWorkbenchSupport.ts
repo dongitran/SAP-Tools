@@ -18,8 +18,14 @@ export {
 } from './hanaSqlResultExport';
 export {
   buildHanaSqlResultHtml,
+  buildSqlBatchSectionUpdate,
   escapeHtml,
+  summarizeSqlBatch,
+  SQL_BATCH_PROGRESS_MESSAGE_TYPE,
+  SQL_BATCH_SECTIONS_MESSAGE_TYPE,
   type RenderSqlResultOptions,
+  type SqlBatchSectionUpdate,
+  type SqlBatchSummaryView,
   type SqlResultBatchSummary,
   type SqlResultStatementStatus,
   type SqlResultStatementView,

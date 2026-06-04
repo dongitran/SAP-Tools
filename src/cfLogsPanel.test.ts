@@ -145,6 +145,60 @@ describe('CfLogsPanelProvider stream lifecycle', () => {
   });
 });
 
+interface CfLogsPanelHealAccess {
+  filterSessionNotReadyLines(stream: unknown, lines: string[]): string[];
+  readonly sessionRecoveryCounts: Map<string, number>;
+}
+
+function createYoungStream(appName: string): {
+  appName: string;
+  startedAt: number;
+  healthy: boolean;
+  sawSessionError: boolean;
+} {
+  return { appName, startedAt: Date.now(), healthy: false, sawSessionError: false };
+}
+
+describe('CfLogsPanelProvider session healing', () => {
+  it('suppresses CF session-not-ready lines for a young stream until real output arrives', () => {
+    const provider = createProviderForSettings();
+    const access = provider as unknown as CfLogsPanelHealAccess;
+    const stream = createYoungStream('app-demo');
+
+    const suppressed = access.filterSessionNotReadyLines(stream, [
+      "No org targeted, use 'cf target -o ORG' to target an org.",
+      'FAILED',
+      "App 'app-demo' not found.",
+      "Not logged in. Use 'cf login' or 'cf login --sso' to log in.",
+    ]);
+
+    expect(suppressed).toEqual([]);
+    expect(stream.sawSessionError).toBe(true);
+    expect(stream.healthy).toBe(false);
+
+    const realOutput = '2026-04-12T09:14:31.73+0700 [APP/PROC/WEB/0] OUT server listening';
+    const visible = access.filterSessionNotReadyLines(stream, [realOutput]);
+    expect(visible).toEqual([realOutput]);
+    expect(stream.healthy).toBe(true);
+
+    // Once healthy, even a matching line passes through (it is likely real output).
+    expect(access.filterSessionNotReadyLines(stream, ['No org targeted'])).toEqual([
+      'No org targeted',
+    ]);
+  });
+
+  it('stops suppressing once the per-app recovery budget is spent', () => {
+    const provider = createProviderForSettings();
+    const access = provider as unknown as CfLogsPanelHealAccess;
+    access.sessionRecoveryCounts.set('app-demo', 3);
+    const stream = createYoungStream('app-demo');
+
+    expect(access.filterSessionNotReadyLines(stream, ['No org targeted'])).toEqual([
+      'No org targeted',
+    ]);
+  });
+});
+
 describe('CfLogsPanelProvider message display setting', () => {
   it('renders a default-off setting to limit long message height', () => {
     const provider = createProviderForSettings();

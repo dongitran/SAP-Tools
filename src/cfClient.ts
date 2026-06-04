@@ -224,10 +224,45 @@ export async function fetchStartedAppsViaCfCli(params: {
 }
 
 /**
+ * Serializes CF CLI session preparation per CF_HOME. All SAP Tools features
+ * share a single CF_HOME (one `cf` config.json), so concurrent preparations
+ * would race on the same file.
+ */
+const cfCliSessionQueues = new Map<string, Promise<void>>();
+
+/**
  * Prepare CF CLI context for a specific API + org + space.
  * This is an expensive step and should be reused when possible.
+ *
+ * `cf api` transiently clears the auth token and the targeted org/space, so if
+ * two preparations interleave on the shared CF_HOME, one `cf api` wipes the
+ * other's freshly-set target. Downstream `cf logs`/`cf curl` calls then briefly
+ * fail with "Not logged in" / "No org targeted" until a later attempt happens
+ * to find a fully-prepared config. Chaining preparations per CF_HOME keeps the
+ * api → auth → target triplet atomic and removes that race.
  */
 export async function prepareCfCliSession(params: CfCliTargetParams): Promise<void> {
+  const queueKey = params.cfHomeDir ?? '';
+  const previous = cfCliSessionQueues.get(queueKey) ?? Promise.resolve();
+  const run = previous.then(
+    () => runCfCliSessionPreparation(params),
+    () => runCfCliSessionPreparation(params)
+  );
+  // Store a non-rejecting tail so the next caller always chains, even on failure.
+  const tail = run.then(
+    () => undefined,
+    () => undefined
+  );
+  cfCliSessionQueues.set(queueKey, tail);
+  void tail.then(() => {
+    if (cfCliSessionQueues.get(queueKey) === tail) {
+      cfCliSessionQueues.delete(queueKey);
+    }
+  });
+  return run;
+}
+
+async function runCfCliSessionPreparation(params: CfCliTargetParams): Promise<void> {
   const cfHomeOptions = buildCfHomeOptions(params.cfHomeDir);
 
   await runCfCommand(['api', params.apiEndpoint], {

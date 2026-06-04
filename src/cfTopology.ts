@@ -20,10 +20,28 @@ export interface CfTopology {
   readonly accounts: readonly CfTopologyOrg[];
 }
 
+/**
+ * A single app entry resolved from the shared `~/.saptools/cf-structure.json`.
+ * Shape matches the sidebar/CF logs app entry so it can be used directly as the
+ * dashboard app list. Includes every app regardless of running state (running,
+ * scaled-to-zero "empty", and stopped) — mirrors the CDS Debug app list.
+ */
+export interface CfTopologyApp {
+  readonly id: string;
+  readonly name: string;
+  readonly runningInstances: number;
+}
+
 export const EMPTY_CF_TOPOLOGY: CfTopology = { ready: false, accounts: [] };
+
+interface ParsedAppNode {
+  readonly name: string;
+  readonly runningInstances: number;
+}
 
 interface ParsedSpaceNode {
   readonly name: string;
+  readonly apps: readonly ParsedAppNode[];
 }
 
 interface ParsedOrgNode {
@@ -56,6 +74,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function normalizeEndpoint(value: string): string {
+  return value.trim().replace(/\/+$/, '').toLowerCase();
+}
+
+function parseAppNode(value: unknown): ParsedAppNode | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const name = value['name'];
+  if (typeof name !== 'string' || name.length === 0) {
+    return undefined;
+  }
+  const runningInstancesRaw = value['runningInstances'];
+  const runningInstances =
+    typeof runningInstancesRaw === 'number' && Number.isFinite(runningInstancesRaw)
+      ? runningInstancesRaw
+      : 0;
+  return { name, runningInstances };
+}
+
 function parseSpaceNode(value: unknown): ParsedSpaceNode | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -64,7 +102,17 @@ function parseSpaceNode(value: unknown): ParsedSpaceNode | undefined {
   if (typeof name !== 'string' || name.length === 0) {
     return undefined;
   }
-  return { name };
+  const appsRaw = value['apps'];
+  const apps: ParsedAppNode[] = [];
+  if (Array.isArray(appsRaw)) {
+    for (const appRaw of appsRaw) {
+      const app = parseAppNode(appRaw);
+      if (app !== undefined) {
+        apps.push(app);
+      }
+    }
+  }
+  return { name, apps };
 }
 
 function parseOrgNode(value: unknown): ParsedOrgNode | undefined {
@@ -199,4 +247,44 @@ export async function getCfTopologySnapshot(): Promise<CfTopology> {
     ready: true,
     accounts,
   };
+}
+
+/**
+ * Resolve the apps for one org/space from the shared `~/.saptools/cf-structure.json`
+ * (synced by the cf-sync engine and shared with the CDS Debug extension). Returns
+ * every app in the space — running, scaled-to-zero, and stopped — matching the CDS
+ * Debug app list. Returns `null` when no structure file exists, or the region (matched
+ * by API endpoint), org, or space is not present, so the caller can fall back or refresh.
+ */
+export function getAppsFromTopologySync(
+  apiEndpoint: string,
+  orgName: string,
+  spaceName: string
+): CfTopologyApp[] | null {
+  const structure = readStructureSyncSafe();
+  if (structure === undefined) {
+    return null;
+  }
+
+  const endpoint = normalizeEndpoint(apiEndpoint);
+  for (const region of structure.regions) {
+    if (!region.accessible || normalizeEndpoint(region.apiEndpoint) !== endpoint) {
+      continue;
+    }
+    const org = region.orgs.find((candidate) => candidate.name === orgName);
+    if (org === undefined) {
+      return null;
+    }
+    const space = org.spaces.find((candidate) => candidate.name === spaceName);
+    if (space === undefined) {
+      return null;
+    }
+    return space.apps.map((app) => ({
+      id: app.name,
+      name: app.name,
+      runningInstances: app.runningInstances,
+    }));
+  }
+
+  return null;
 }

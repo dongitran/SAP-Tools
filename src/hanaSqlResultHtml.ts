@@ -32,6 +32,31 @@ export interface RenderSqlResultOptions {
   readonly batchSummary?: SqlResultBatchSummary;
 }
 
+/** Webview message types used to stream batch progress without reloading the document. */
+export const SQL_BATCH_PROGRESS_MESSAGE_TYPE = 'sapTools.sqlBatchProgress';
+export const SQL_BATCH_SECTIONS_MESSAGE_TYPE = 'sapTools.sqlBatchSections';
+
+export type SqlBatchSummaryTone = 'running' | 'success' | 'error';
+
+export interface SqlBatchSummaryView {
+  readonly total: number;
+  readonly success: number;
+  readonly error: number;
+  readonly skipped: number;
+  readonly pending: number;
+  readonly done: number;
+  readonly finished: boolean;
+  readonly title: string;
+  readonly note: string;
+  readonly tone: SqlBatchSummaryTone;
+}
+
+export interface SqlBatchSectionUpdate {
+  readonly index: number;
+  readonly className: string;
+  readonly innerHtml: string;
+}
+
 const SHARED_THEME_STYLE = `
       :root {
         color-scheme: light dark;
@@ -274,10 +299,67 @@ const RESULT_BATCH_STYLE = `${SHARED_THEME_STYLE}
         --saptools-accent: var(--vscode-progressBar-background, var(--vscode-focusBorder, #0078d4));
       }
       .result-batch-layout {
-        min-height: 100vh;
+        height: 100vh;
         display: grid;
-        grid-template-rows: minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
         gap: 0;
+      }
+      .result-batch-scroll { min-height: 0; overflow: auto; }
+      .result-batch-summary {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        display: grid;
+        gap: 6px;
+        padding: 8px 10px;
+        background: var(--saptools-surface-strong);
+        border-bottom: 1px solid var(--saptools-border);
+      }
+      .result-batch-summary[data-tone="running"] {
+        background: color-mix(in oklab, var(--saptools-accent) 18%, var(--saptools-bg));
+        border-bottom-color: var(--saptools-accent);
+      }
+      .result-batch-summary[data-tone="success"] {
+        background: color-mix(in oklab, var(--saptools-success) 16%, var(--saptools-bg));
+        border-bottom-color: var(--saptools-success);
+      }
+      .result-batch-summary[data-tone="error"] {
+        background: color-mix(in oklab, var(--saptools-error) 16%, var(--saptools-bg));
+        border-bottom-color: var(--saptools-error);
+      }
+      .batch-summary-line {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+      .batch-summary-title { font-weight: 600; font-size: 12px; }
+      .batch-summary-note { margin: 0; font-size: 12px; color: var(--saptools-muted); }
+      .batch-summary-note[hidden] { display: none; }
+      progress.batch-summary-progress {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 6px;
+        border: 0;
+        border-radius: 999px;
+        background: var(--saptools-surface);
+        overflow: hidden;
+      }
+      progress.batch-summary-progress::-webkit-progress-bar {
+        background: var(--saptools-surface);
+        border-radius: 999px;
+      }
+      progress.batch-summary-progress::-webkit-progress-value {
+        background: var(--saptools-accent);
+        border-radius: 999px;
+        transition: width 140ms ease;
+      }
+      progress.batch-summary-progress.is-finished::-webkit-progress-value {
+        background: var(--saptools-success);
+      }
+      progress.batch-summary-progress.has-error::-webkit-progress-value {
+        background: var(--saptools-error);
       }
       .result-chip {
         border: 1px solid var(--saptools-border);
@@ -455,9 +537,8 @@ const RESULT_BATCH_STYLE = `${SHARED_THEME_STYLE}
 const RESULT_ACTION_SCRIPT = `
 (() => {
   const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
-  const triggers = Array.from(document.querySelectorAll('[data-role="result-export-trigger"]'));
   const contextMenu = document.querySelector('[data-role="sql-result-context-menu"]');
-  if (triggers.length === 0 || !(contextMenu instanceof HTMLElement)) return;
+  if (!(contextMenu instanceof HTMLElement)) return;
   let openTrigger = null;
   let selectedContext = null;
   const closeExportMenu = () => {
@@ -718,6 +799,67 @@ function buildResultActionScript(nonce: string | undefined): string {
   return `<script nonce="${escapeHtml(nonce)}">${RESULT_ACTION_SCRIPT}</script>`;
 }
 
+const RESULT_BATCH_UPDATE_SCRIPT = `
+(() => {
+  const summaryBar = document.querySelector('[data-role="batch-summary"]');
+  const summaryTitle = document.querySelector('[data-role="batch-summary-title"]');
+  const summaryNote = document.querySelector('[data-role="batch-summary-note"]');
+  const progress = document.querySelector('[data-role="batch-progress"]');
+  const sectionsRoot = document.querySelector('[data-role="batch-sections"]');
+  const counts = {
+    success: document.querySelector('[data-role="batch-count-success"]'),
+    error: document.querySelector('[data-role="batch-count-error"]'),
+    skipped: document.querySelector('[data-role="batch-count-skipped"]'),
+    pending: document.querySelector('[data-role="batch-count-pending"]'),
+  };
+  const setText = (element, text) => { if (element instanceof HTMLElement) element.textContent = text; };
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (data === null || typeof data !== 'object') return;
+    if (data.type === 'sapTools.sqlBatchProgress') {
+      setText(summaryTitle, typeof data.title === 'string' ? data.title : '');
+      setText(counts.success, 'OK ' + String(data.success ?? 0));
+      setText(counts.error, 'Failed ' + String(data.error ?? 0));
+      setText(counts.skipped, 'Skipped ' + String(data.skipped ?? 0));
+      setText(counts.pending, 'Pending ' + String(data.pending ?? 0));
+      if (summaryBar instanceof HTMLElement && typeof data.tone === 'string') {
+        summaryBar.dataset.tone = data.tone;
+      }
+      if (summaryNote instanceof HTMLElement) {
+        const note = typeof data.note === 'string' ? data.note : '';
+        summaryNote.textContent = note;
+        summaryNote.hidden = note.length === 0;
+      }
+      if (progress instanceof HTMLProgressElement) {
+        progress.max = Math.max(Number(data.total) || 0, 1);
+        progress.value = Number(data.done) || 0;
+        progress.classList.toggle('is-finished', data.finished === true && data.tone !== 'error');
+        progress.classList.toggle('has-error', data.finished === true && data.tone === 'error');
+      }
+      return;
+    }
+    if (data.type === 'sapTools.sqlBatchSections' && Array.isArray(data.sections) && sectionsRoot instanceof HTMLElement) {
+      for (const section of data.sections) {
+        if (section === null || typeof section !== 'object') continue;
+        const target = sectionsRoot.querySelector('[data-statement-index="' + String(section.index) + '"]');
+        if (target instanceof HTMLElement) {
+          if (typeof section.className === 'string') target.className = section.className;
+          if (typeof section.innerHtml === 'string') target.innerHTML = section.innerHtml;
+        }
+      }
+    }
+  });
+})();
+`;
+
+function buildBatchResultScript(nonce: string | undefined): string {
+  if (nonce === undefined || nonce.length === 0) {
+    return '';
+  }
+  const escapedNonce = escapeHtml(nonce);
+  return `<script nonce="${escapedNonce}">${RESULT_ACTION_SCRIPT}</script><script nonce="${escapedNonce}">${RESULT_BATCH_UPDATE_SCRIPT}</script>`;
+}
+
 function renderResultTable(columns: readonly string[], rows: readonly string[][]): string {
   const headerCells = [
     '<th class="row-number">#</th>',
@@ -753,21 +895,130 @@ function renderResultContextMenu(): string {
 
 function buildBatchResultHtml(options: RenderSqlResultOptions): string {
   const statements = options.statements ?? [];
+  const summary = summarizeSqlBatch(statements, options.batchSummary);
   return wrapResultDocument(
     options.nonce,
     RESULT_BATCH_STYLE,
     `
     <main class="result-batch-layout">
-      <div class="result-batch-sections">
-        ${statements
-          .map((statement, index) => renderStatementSection(statement, index, statements.length))
-          .join('')}
+      ${renderBatchSummaryBar(summary)}
+      <div class="result-batch-scroll">
+        <div class="result-batch-sections" data-role="batch-sections">
+          ${statements
+            .map((statement, index) => renderStatementSection(statement, index, statements.length))
+            .join('')}
+        </div>
       </div>
       ${renderResultContextMenu()}
     </main>
-    ${buildResultActionScript(options.nonce)}
+    ${buildBatchResultScript(options.nonce)}
   `
   );
+}
+
+/**
+ * Aggregate per-statement outcomes into the headline progress shown in the
+ * coloured summary band. Shared by the full render and the incremental
+ * postMessage updates so both views stay consistent.
+ */
+export function summarizeSqlBatch(
+  statements: readonly SqlResultStatementView[],
+  batchSummary?: SqlResultBatchSummary
+): SqlBatchSummaryView {
+  let success = 0;
+  let error = 0;
+  let skipped = 0;
+  let pending = 0;
+  for (const statement of statements) {
+    if (statement.status === 'success') success += 1;
+    else if (statement.status === 'error') error += 1;
+    else if (statement.status === 'skipped') skipped += 1;
+    else pending += 1;
+  }
+  const total = statements.length;
+  const done = success + error + skipped;
+  const finished = batchSummary !== undefined;
+  const hadFailure = error > 0 || skipped > 0 || batchSummary?.rolledBack === true;
+  const tone: SqlBatchSummaryTone = finished ? (hadFailure ? 'error' : 'success') : 'running';
+  const title = finished
+    ? hadFailure
+      ? `Completed with ${String(error)} error${error === 1 ? '' : 's'} · ${String(done)} / ${String(total)}`
+      : `Completed ${String(total)} statement${total === 1 ? '' : 's'}`
+    : `Running… ${String(done)} / ${String(total)}`;
+
+  return {
+    total,
+    success,
+    error,
+    skipped,
+    pending,
+    done,
+    finished,
+    title,
+    note: buildBatchSummaryNote(batchSummary),
+    tone,
+  };
+}
+
+function buildBatchSummaryNote(batchSummary?: SqlResultBatchSummary): string {
+  if (batchSummary === undefined) {
+    return '';
+  }
+  if (batchSummary.commitFailureMessage !== undefined) {
+    return `Commit failed and the transaction was rolled back: ${batchSummary.commitFailureMessage}`;
+  }
+  if (batchSummary.rolledBack) {
+    return 'A statement failed — the transaction was rolled back.';
+  }
+  if (batchSummary.committed) {
+    return 'All statements committed in a single transaction.';
+  }
+  if (batchSummary.transactionUnavailableReason !== undefined) {
+    return `Ran without a transaction: ${batchSummary.transactionUnavailableReason}`;
+  }
+  return '';
+}
+
+function renderBatchSummaryBar(summary: SqlBatchSummaryView): string {
+  const progressStateClass = summary.finished
+    ? summary.tone === 'error'
+      ? ' has-error'
+      : ' is-finished'
+    : '';
+  return `
+      <header class="result-batch-summary" data-role="batch-summary" data-tone="${summary.tone}">
+        <div class="batch-summary-line">
+          <span class="batch-summary-title" data-role="batch-summary-title">${escapeHtml(summary.title)}</span>
+          <span class="result-toolbar-spacer" aria-hidden="true"></span>
+          <span class="result-chip result-chip-success" data-role="batch-count-success">OK ${String(summary.success)}</span>
+          <span class="result-chip result-chip-error" data-role="batch-count-error">Failed ${String(summary.error)}</span>
+          <span class="result-chip result-chip-skip" data-role="batch-count-skipped">Skipped ${String(summary.skipped)}</span>
+          <span class="result-chip" data-role="batch-count-pending">Pending ${String(summary.pending)}</span>
+        </div>
+        <progress class="batch-summary-progress${progressStateClass}" data-role="batch-progress" max="${String(Math.max(summary.total, 1))}" value="${String(summary.done)}"></progress>
+        <p class="batch-summary-note" data-role="batch-summary-note"${summary.note.length > 0 ? '' : ' hidden'}>${escapeHtml(summary.note)}</p>
+      </header>
+    `;
+}
+
+/**
+ * Build the class + inner HTML for a single statement section so the panel can
+ * patch just the sections that changed instead of reloading the whole document.
+ */
+export function buildSqlBatchSectionUpdate(
+  statement: SqlResultStatementView,
+  index: number,
+  total: number
+): SqlBatchSectionUpdate {
+  return {
+    index,
+    className: resolveBatchSectionClass(statement.status),
+    innerHtml: renderStatementSectionInner(statement, index, total),
+  };
+}
+
+function resolveBatchSectionClass(status: SqlResultStatementStatus): string {
+  return `result-statement-section status-${status}`;
 }
 
 function renderStatementSection(
@@ -775,7 +1026,16 @@ function renderStatementSection(
   index: number,
   total: number
 ): string {
-  const statusClass = `status-${statement.status}`;
+  return `
+      <section class="${resolveBatchSectionClass(statement.status)}" data-statement-index="${String(index)}">${renderStatementSectionInner(statement, index, total)}</section>
+    `;
+}
+
+function renderStatementSectionInner(
+  statement: SqlResultStatementView,
+  index: number,
+  total: number
+): string {
   const trimmedTableName = (statement.tableName ?? '').trim();
   const tableName = trimmedTableName.length > 0 ? trimmedTableName : 'SQL statement';
   const statusBadge = renderStatementStatusBadge(statement.status);
@@ -786,7 +1046,6 @@ function renderStatementSection(
       : '';
 
   return `
-      <section class="result-statement-section ${statusClass}" data-statement-index="${String(index)}">
         <header class="result-statement-header">
           <span class="result-statement-title">Statement ${String(index + 1)} / ${String(total)}</span>
           ${statusBadge}
@@ -796,9 +1055,7 @@ function renderStatementSection(
         </header>
         <div class="result-statement-body">
           ${renderStatementBody(statement)}
-        </div>
-      </section>
-    `;
+        </div>`;
 }
 
 function renderStatementStatusBadge(status: SqlResultStatementStatus): string {

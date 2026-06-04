@@ -1,4 +1,5 @@
 // cspell:ignore mypw s3cret
+// cspell:words EHDBTIMEOUT
 import { describe, expect, test } from 'vitest';
 
 import {
@@ -313,6 +314,66 @@ describe('executeHanaQuery (error mapping)', () => {
     ).rejects.toMatchObject({
       kind: 'connection',
     });
+  });
+
+  test('retries a cold-start initialization timeout and succeeds on the next attempt', async () => {
+    const coldStartError = Object.assign(
+      new Error(
+        'Could not connect to any host: [ h.hanacloud.ondemand.com:443 - No initialization reply received within 5 sec ]'
+      ),
+      { code: 'EHDBTIMEOUT' }
+    );
+    const failing = createFakeClient({ connectError: coldStartError });
+    const healthy = createFakeClient({
+      statement: {
+        metadata: [{ columnDisplayName: 'ID' }],
+        rowsOrAffected: [{ ID: 1 }],
+      },
+    });
+    const clients = [failing.client, healthy.client];
+    let factoryCalls = 0;
+
+    const result = await executeHanaQuery(
+      { host: 'h', port: 443, user: 'u', password: 'p' },
+      'SELECT 1 FROM DUMMY',
+      {
+        clientFactory: () => {
+          const client = clients[factoryCalls] ?? healthy.client;
+          factoryCalls += 1;
+          return client;
+        },
+        connectRetryDelayMs: 0,
+      }
+    );
+
+    expect(factoryCalls).toBe(2);
+    expect(result.kind).toBe('resultset');
+    expect(failing.log.events).toContain('client.connect');
+    expect(failing.log.events).toContain('client.close');
+    expect(healthy.log.events).toContain('client.connect');
+  });
+
+  test('does not retry an ECONNREFUSED connection error', async () => {
+    const error = Object.assign(new Error('connect ECONNREFUSED 1.2.3.4:443'), {
+      code: 'ECONNREFUSED',
+    });
+    let factoryCalls = 0;
+    const { client } = createFakeClient({ connectError: error });
+
+    await expect(
+      executeHanaQuery(
+        { host: 'h', port: 443, user: 'u', password: 'p' },
+        'SELECT 1 FROM DUMMY',
+        {
+          clientFactory: () => {
+            factoryCalls += 1;
+            return client;
+          },
+          connectRetryDelayMs: 0,
+        }
+      )
+    ).rejects.toMatchObject({ kind: 'connection' });
+    expect(factoryCalls).toBe(1);
   });
 
   test('maps SQL syntax errors during exec to sql error kind', async () => {

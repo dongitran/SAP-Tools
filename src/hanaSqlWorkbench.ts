@@ -64,6 +64,13 @@ import { HanaSqlResultPanelManager, type HanaSqlResultPanelSession } from './han
 export { buildHanaSqlResultHtml, buildInitialHanaSqlTemplate } from './hanaSqlWorkbenchSupport';
 export const RUN_HANA_SQL_COMMAND_ID = 'sapTools.runHanaSql';
 const HANA_SQL_EDITOR_CONTEXT_KEY = 'sapTools.hanaSqlEditor';
+/**
+ * Minimum gap between live batch-progress repaints. Large INSERT batches
+ * complete statements faster than the eye can read; coalescing intermediate
+ * updates keeps the result panel responsive while the final repaint after the
+ * batch always shows the authoritative end state.
+ */
+const HANA_SQL_BATCH_PROGRESS_INTERVAL_MS = 90;
 interface HanaSqlAppContext {
   readonly appId: string;
   readonly appName: string;
@@ -505,11 +512,17 @@ export class HanaSqlWorkbench
         );
       }
 
+      let lastProgressUpdateAt = 0;
       const batchOutcome = await this.executeBatchForContext(context, prepared, (statementIndex, outcome) => {
         pendingViews[statementIndex] = this.toStatementView(prepared[statementIndex], outcome);
         if (prepared.length === 1) {
           return;
         }
+        const now = Date.now();
+        if (now - lastProgressUpdateAt < HANA_SQL_BATCH_PROGRESS_INTERVAL_MS) {
+          return;
+        }
+        lastProgressUpdateAt = now;
         resultPanel.update({
           appName: context.appName,
           tableName,
