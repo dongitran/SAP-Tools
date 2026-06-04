@@ -282,7 +282,8 @@ body.vscode-high-contrast-light.cf-logs-panel-page {
   color: var(--panel-text);
   user-select: none;
 }
-.settings-column-item input[type='checkbox'] {
+.settings-column-item input[type='checkbox'],
+.settings-message-limit-item input[type='checkbox'] {
   accent-color: var(--panel-accent);
   cursor: pointer;
   width: 13px;
@@ -498,14 +499,20 @@ body.vscode-high-contrast-light.cf-logs-panel-page {
   /* no extra padding — message gets all available column space */
 }
 
-/* Message text: preserve formatting, wrap at any char to avoid overflow */
+/* Message text: preserve formatting and show the full message by default. */
 .cf-log-table .cell-message-text {
-  max-height: 8.5em;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
   text-overflow: clip;
+}
+
+/* Optional compact mode from settings for users who prefer row-local scrolling. */
+.cf-log-message-limited .cf-log-table .cell-message-text {
+  max-height: 8.5em;
+  overflow: auto;
 }
 
 /* ── Copy toast notification ────────────────────────────────────────── */

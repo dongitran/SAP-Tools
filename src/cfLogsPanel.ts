@@ -25,10 +25,13 @@ const SAVE_FONT_SIZE_SETTING_MESSAGE_TYPE = 'sapTools.saveFontSizeSetting';
 const FONT_SIZE_SETTING_INIT_MESSAGE_TYPE = 'sapTools.fontSizeSettingInit';
 const SAVE_LOG_LIMIT_SETTING_MESSAGE_TYPE = 'sapTools.saveLogLimitSetting';
 const LOG_LIMIT_SETTING_INIT_MESSAGE_TYPE = 'sapTools.logLimitSettingInit';
+const SAVE_MESSAGE_HEIGHT_LIMIT_SETTING_MESSAGE_TYPE = 'sapTools.saveMessageHeightLimitSetting';
+const MESSAGE_HEIGHT_LIMIT_SETTING_INIT_MESSAGE_TYPE = 'sapTools.messageHeightLimitSettingInit';
 
 const COLUMN_SETTINGS_GLOBAL_STATE_KEY = 'cfLogsPanel.visibleColumns';
 const FONT_SIZE_SETTING_GLOBAL_STATE_KEY = 'cfLogsPanel.fontSizePreset';
 const LOG_LIMIT_SETTING_GLOBAL_STATE_KEY = 'cfLogsPanel.logLimit';
+const MESSAGE_HEIGHT_LIMIT_SETTING_GLOBAL_STATE_KEY = 'cfLogsPanel.limitMessageHeight';
 const ALL_COLUMN_IDS = [
   'time',
   'level',
@@ -50,6 +53,7 @@ const FONT_SIZE_PRESETS = ['smaller', 'default', 'large', 'xlarge'] as const;
 const DEFAULT_FONT_SIZE_PRESET = 'default';
 const LOG_LIMIT_PRESETS = [300, 500, 1000, 3000] as const;
 const DEFAULT_LOG_LIMIT = 300;
+const DEFAULT_LIMIT_MESSAGE_HEIGHT = false;
 
 const STREAM_BATCH_FLUSH_MS = 150;
 const STREAM_RETRY_INITIAL_MS = 1_000;
@@ -200,6 +204,18 @@ export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.D
     void webviewView.webview.postMessage({
       type: LOG_LIMIT_SETTING_INIT_MESSAGE_TYPE,
       logLimit: normalizedLogLimit,
+    });
+
+    const savedLimitMessageHeight = this.extensionContext.globalState.get<unknown>(
+      MESSAGE_HEIGHT_LIMIT_SETTING_GLOBAL_STATE_KEY
+    );
+    const normalizedLimitMessageHeight =
+      typeof savedLimitMessageHeight === 'boolean'
+        ? savedLimitMessageHeight
+        : DEFAULT_LIMIT_MESSAGE_HEIGHT;
+    void webviewView.webview.postMessage({
+      type: MESSAGE_HEIGHT_LIMIT_SETTING_INIT_MESSAGE_TYPE,
+      limitMessageHeight: normalizedLimitMessageHeight,
     });
 
     // Replay scope and apps that arrived before this view was initialized.
@@ -763,6 +779,16 @@ export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.D
         message['logLimit']
       );
     }
+
+    if (
+      message['type'] === SAVE_MESSAGE_HEIGHT_LIMIT_SETTING_MESSAGE_TYPE &&
+      typeof message['limitMessageHeight'] === 'boolean'
+    ) {
+      await this.extensionContext.globalState.update(
+        MESSAGE_HEIGHT_LIMIT_SETTING_GLOBAL_STATE_KEY,
+        message['limitMessageHeight']
+      );
+    }
   }
 
   private async copyLogMessageToClipboard(requestId: number, text: string): Promise<void> {
@@ -971,6 +997,17 @@ export class CfLogsPanelProvider implements vscode.WebviewViewProvider, vscode.D
             <option value="1000">1000</option>
             <option value="3000">3000</option>
           </select>
+        </div>
+        <div class="settings-row settings-row-message-limit">
+          <span class="settings-panel-label">Message</span>
+          <label class="settings-column-item settings-message-limit-item" for="settings-message-limit">
+            <input
+              id="settings-message-limit"
+              type="checkbox"
+              aria-label="Limit message height"
+            />
+            Limit height and scroll long messages
+          </label>
         </div>
       </div>
 

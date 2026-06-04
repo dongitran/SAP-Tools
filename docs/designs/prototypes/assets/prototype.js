@@ -5779,7 +5779,7 @@ function triggerServiceExport() {
     serviceExportInProgress = false;
     serviceExportStatusTone = 'success';
     serviceExportStatusMessage =
-      `default-env.json and pnpm-lock.yaml exported for ${selectedMapping.appName}.`;
+      `Export completed for "${selectedMapping.appName}". 2 files: default-env.json, pnpm-lock.yaml.`;
     return true;
   }
 

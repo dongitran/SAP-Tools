@@ -24,6 +24,7 @@ import {
 } from './serviceFolderMapping';
 import {
   exportServiceArtifacts,
+  formatServiceArtifactExportCompletionMessage,
   type ServiceExportSession,
 } from './serviceArtifactExporter';
 import { readSharedAppFolderMappings, readSharedRemoteRoot } from './sharedDebugConfig';
@@ -1858,7 +1859,10 @@ export class RegionSidebarProvider
       this.postMessage({
         type: MSG_EXPORT_ARTIFACT_RESULT,
         success: true,
-        message: `Export completed for "${payload.appName}". ${filesLabel}`,
+        message: formatServiceArtifactExportCompletionMessage(
+          payload.appName,
+          result.writtenFiles
+        ),
       });
     } catch (error) {
       const errorMessage =

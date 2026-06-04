@@ -9,6 +9,8 @@ const SAVE_FONT_SIZE_SETTING_MESSAGE_TYPE = 'sapTools.saveFontSizeSetting';
 const FONT_SIZE_SETTING_INIT_MESSAGE_TYPE = 'sapTools.fontSizeSettingInit';
 const SAVE_LOG_LIMIT_SETTING_MESSAGE_TYPE = 'sapTools.saveLogLimitSetting';
 const LOG_LIMIT_SETTING_INIT_MESSAGE_TYPE = 'sapTools.logLimitSettingInit';
+const SAVE_MESSAGE_HEIGHT_LIMIT_SETTING_MESSAGE_TYPE = 'sapTools.saveMessageHeightLimitSetting';
+const MESSAGE_HEIGHT_LIMIT_SETTING_INIT_MESSAGE_TYPE = 'sapTools.messageHeightLimitSettingInit';
 const CF_LINE_PATTERN = /^\s*(?<timestamp>\d{4}-\d{2}-\d{2}T[^\s]+)\s+\[(?<source>[^\]]+)]\s+(?<stream>OUT|ERR)\s?(?<body>.*)$/;
 const CF_CLI_SYSTEM_MESSAGE_PREFIXES = [
   'Retrieving logs for app',
@@ -56,6 +58,7 @@ const FONT_SIZE_PRESETS = ['smaller', 'default', 'large', 'xlarge'];
 const DEFAULT_FONT_SIZE_PRESET = 'default';
 const LOG_LIMIT_PRESETS = [300, 500, 1000, 3000];
 const DEFAULT_LOG_LIMIT = 300;
+const DEFAULT_LIMIT_MESSAGE_HEIGHT = false;
 
 function isKnownColumnId(value) {
   return typeof value === 'string' && COLUMN_DEFS.some((column) => column.id === value);
@@ -127,6 +130,10 @@ Failed to retrieve logs from Log Cache: unexpected status code 404`;
     typeof savedState?.fontSizePreset === 'string' ? savedState.fontSizePreset : '';
   const savedLogLimitCandidate =
     typeof savedState?.logLimit === 'number' ? savedState.logLimit : Number.NaN;
+  const savedLimitMessageHeight =
+    typeof savedState?.limitMessageHeight === 'boolean'
+      ? savedState.limitMessageHeight
+      : DEFAULT_LIMIT_MESSAGE_HEIGHT;
   const normalizedSavedColumns =
     saved !== null ? normalizeVisibleColumns(saved) : [...DEFAULT_VISIBLE_COLUMNS];
   // eslint-disable-next-line no-var
@@ -139,6 +146,8 @@ Failed to retrieve logs from Log Cache: unexpected status code 404`;
   var logLimit = isKnownLogLimit(savedLogLimitCandidate)
     ? savedLogLimitCandidate
     : DEFAULT_LOG_LIMIT;
+  // eslint-disable-next-line no-var
+  var limitMessageHeight = savedLimitMessageHeight;
 }
 
 const elements = getRequiredElements();
@@ -165,6 +174,7 @@ let copyToastTimer = null;
 
 applyFontSizePreset();
 applyLogLimitSetting();
+applyMessageHeightLimitSetting();
 
 // Build header from current column config before first render.
 rebuildTableHeader();
@@ -198,6 +208,7 @@ function getRequiredElements() {
   const settingsColumnToggles = document.getElementById('settings-column-toggles');
   const settingsFontSize = document.getElementById('settings-font-size');
   const settingsLogLimit = document.getElementById('settings-log-limit');
+  const settingsMessageLimit = document.getElementById('settings-message-limit');
   const copyToast = document.getElementById('copy-toast');
 
   if (!(tableHead instanceof HTMLTableSectionElement)) {
@@ -248,6 +259,10 @@ function getRequiredElements() {
     throw new Error('Missing #settings-log-limit.');
   }
 
+  if (!(settingsMessageLimit instanceof HTMLInputElement)) {
+    throw new Error('Missing #settings-message-limit.');
+  }
+
   if (!(copyToast instanceof HTMLElement)) {
     throw new Error('Missing #copy-toast.');
   }
@@ -262,6 +277,7 @@ function getRequiredElements() {
     settingsColumnToggles,
     settingsFontSize,
     settingsLogLimit,
+    settingsMessageLimit,
     copyToast,
     filters: {
       search: filterSearch,
@@ -1096,6 +1112,10 @@ function bindFilterEvents() {
     handleLogLimitChange(elements.settingsLogLimit.value);
   });
 
+  elements.settingsMessageLimit.addEventListener('change', () => {
+    handleMessageHeightLimitChange(elements.settingsMessageLimit.checked);
+  });
+
   // Close settings panel when clicking outside it.
   document.addEventListener('click', (event) => {
     if (
@@ -1300,6 +1320,15 @@ function bindExtensionMessages() {
       applyLogLimitSetting();
       syncLogLimitSettingToState();
       reconcileRowsToCurrentLogLimit();
+    }
+
+    if (
+      msg.type === MESSAGE_HEIGHT_LIMIT_SETTING_INIT_MESSAGE_TYPE &&
+      typeof msg.limitMessageHeight === 'boolean'
+    ) {
+      limitMessageHeight = msg.limitMessageHeight;
+      applyMessageHeightLimitSetting();
+      syncMessageHeightLimitSettingToState();
     }
   });
 }
@@ -1922,6 +1951,23 @@ function handleLogLimitChange(nextLimitRaw) {
   reconcileRowsToCurrentLogLimit();
 }
 
+function applyMessageHeightLimitSetting() {
+  document.body.classList.toggle('cf-log-message-limited', limitMessageHeight);
+  elements.settingsMessageLimit.checked = limitMessageHeight;
+}
+
+function handleMessageHeightLimitChange(nextLimitMessageHeight) {
+  if (nextLimitMessageHeight === limitMessageHeight) {
+    applyMessageHeightLimitSetting();
+    return;
+  }
+
+  limitMessageHeight = nextLimitMessageHeight;
+  applyMessageHeightLimitSetting();
+  syncMessageHeightLimitSettingToState();
+  saveMessageHeightLimitSetting();
+}
+
 /**
  * Rebuild the <thead> row to match the current visibleColumns list.
  */
@@ -1948,6 +1994,7 @@ function buildSettingsPanel() {
   elements.settingsColumnToggles.replaceChildren();
   elements.settingsFontSize.value = fontSizePreset;
   elements.settingsLogLimit.value = String(logLimit);
+  elements.settingsMessageLimit.checked = limitMessageHeight;
 
   for (const colDef of COLUMN_DEFS) {
     const label = document.createElement('label');
@@ -2038,6 +2085,13 @@ function syncLogLimitSettingToState() {
   }
 }
 
+function syncMessageHeightLimitSettingToState() {
+  if (vscodeApi !== null) {
+    const existing = vscodeApi.getState() ?? {};
+    vscodeApi.setState({ ...existing, limitMessageHeight });
+  }
+}
+
 /**
  * Send visibleColumns to the extension host for cross-session persistence (globalState).
  */
@@ -2064,6 +2118,15 @@ function saveLogLimitSetting() {
     vscodeApi.postMessage({
       type: SAVE_LOG_LIMIT_SETTING_MESSAGE_TYPE,
       logLimit,
+    });
+  }
+}
+
+function saveMessageHeightLimitSetting() {
+  if (vscodeApi !== null) {
+    vscodeApi.postMessage({
+      type: SAVE_MESSAGE_HEIGHT_LIMIT_SETTING_MESSAGE_TYPE,
+      limitMessageHeight,
     });
   }
 }

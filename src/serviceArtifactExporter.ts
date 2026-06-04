@@ -36,6 +36,25 @@ export interface ServiceArtifactExportResult {
   readonly writtenFiles: readonly string[];
 }
 
+export function formatServiceArtifactExportCompletionMessage(
+  appName: string,
+  writtenFiles: readonly string[]
+): string {
+  const artifactNames = writtenFiles.map((filePath) => resolveArtifactFileName(filePath));
+  if (artifactNames.length === 0) {
+    return `Export completed for "${appName}".`;
+  }
+
+  const filesLabel = artifactNames.join(', ');
+  const fileCount = artifactNames.length;
+  const countLabel = `${String(fileCount)} ${fileCount === 1 ? 'file' : 'files'}`;
+  return `Export completed for "${appName}". ${countLabel}: ${filesLabel}.`;
+}
+
+function resolveArtifactFileName(filePath: string): string {
+  return filePath.split(/[\\/]/).filter((segment) => segment.length > 0).at(-1) ?? filePath;
+}
+
 export async function exportServiceArtifacts(
   options: ServiceArtifactExportOptions
 ): Promise<ServiceArtifactExportResult> {

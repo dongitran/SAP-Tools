@@ -427,6 +427,49 @@ test.describe('SAP Tools CF logs panel', () => {
     }
   });
 
+
+  test('User can read full raw messages by default and opt into compact scrolling', async () => {
+    const { session, logsFrame } = await openStartedCfLogsSession();
+
+    try {
+      await setCfLogsColumnVisible(logsFrame, 'Message', true);
+
+      const marker = 'full-message-display-e2e-marker';
+      const longMessage = Array.from({ length: 14 }, (_, index) =>
+        `${marker} line ${String(index + 1).padStart(2, '0')} with enough text to wrap in the message column`
+      ).join('\n');
+
+      await appendCfLogsLines(logsFrame, [
+        `2026-05-11T18:23:00.00+0700 [APP/PROC/WEB/0] OUT ${JSON.stringify({ level: 'info', logger: 'LongMessageLogger', msg: longMessage, type: 'log' })}`,
+      ]);
+
+      await logsFrame.getByLabel('Search logs').fill(`${marker} line 14`);
+      await expect(logsFrame.locator('#log-table-body td.empty-row')).toHaveCount(0, {
+        timeout: 5000,
+      });
+      await expect(logsFrame.locator('#log-table-body tr')).toHaveCount(1, { timeout: 5000 });
+
+      const messageText = logsFrame
+        .locator('#log-table-body tr')
+        .first()
+        .locator('td.cell-message .cell-message-text');
+      await expect(messageText).toContainText(`${marker} line 14`);
+
+      await expect(logsFrame.getByLabel('Limit message height')).not.toBeChecked();
+      await expect(messageText).toHaveCSS('max-height', 'none');
+      await expect(messageText).toHaveCSS('overflow-y', 'visible');
+
+      await clickWithFallback(logsFrame.getByLabel('Column settings'));
+      await expect(logsFrame.locator('#settings-panel')).toBeVisible({ timeout: 5000 });
+      await clickWithFallback(logsFrame.getByLabel('Limit message height'));
+      await expect(logsFrame.getByLabel('Limit message height')).toBeChecked();
+      await expect(messageText).toHaveCSS('overflow-y', 'auto');
+      await expect(messageText).not.toHaveCSS('max-height', 'none');
+    } finally {
+      await cleanupExtensionHost(session);
+    }
+  });
+
   test('User can keep text and continuation messages faithful in CF logs', async () => {
     const { session, logsFrame } = await openStartedCfLogsSession();
 

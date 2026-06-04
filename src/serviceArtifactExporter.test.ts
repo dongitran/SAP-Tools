@@ -25,7 +25,10 @@ vi.mock('./cfClient', () => ({
   findRemotePackageJsonPathsFromTarget: findRemotePackageJsonPathsFromTargetMock,
 }));
 
-import { exportServiceArtifacts } from './serviceArtifactExporter';
+import {
+  exportServiceArtifacts,
+  formatServiceArtifactExportCompletionMessage,
+} from './serviceArtifactExporter';
 
 const baseOptions = {
   appName: 'finance-uat-api',
@@ -46,6 +49,37 @@ beforeEach(() => {
   fetchDefaultEnvJsonFromTargetMock.mockReset();
   fetchPnpmLockFromTargetMock.mockReset();
   findRemotePackageJsonPathsFromTargetMock.mockReset();
+});
+
+describe('formatServiceArtifactExportCompletionMessage', () => {
+  it('summarizes exported artifact filenames without full local paths', () => {
+    const message = formatServiceArtifactExportCompletionMessage('finance-uat-api', [
+      '/tmp/workspace/finance-uat-api/default-env.json',
+      '/tmp/workspace/finance-uat-api/pnpm-lock.yaml',
+    ]);
+
+    expect(message).toBe(
+      'Export completed for "finance-uat-api". 2 files: default-env.json, pnpm-lock.yaml.'
+    );
+    expect(message).not.toContain('/tmp/workspace');
+  });
+
+  it('keeps the completion message short for deeply nested target folders', () => {
+    const message = formatServiceArtifactExportCompletionMessage('finance-uat-api', [
+      '/Users/developer/projects/customer/very/deep/path/finance-uat-api/default-env.json',
+    ]);
+
+    expect(message).toBe('Export completed for "finance-uat-api". 1 file: default-env.json.');
+    expect(message).not.toContain('/Users/developer/projects');
+  });
+
+  it('summarizes Windows-style exported artifact paths', () => {
+    expect(
+      formatServiceArtifactExportCompletionMessage('finance-uat-api', [
+        'C:\\workspace\\finance-uat-api\\default-env.json',
+      ])
+    ).toBe('Export completed for "finance-uat-api". 1 file: default-env.json.');
+  });
 });
 
 describe('exportServiceArtifacts', () => {
