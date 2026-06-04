@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.6 (stable)
+- CFLogs now shows full Message column content by default, with an optional settings checkbox to restore compact row-local scrolling for long messages.
+- Shortened Apps tab artifact export completion text to show only exported artifact filenames while keeping full paths in the Output channel for diagnostics.
+
 ## 0.8.5 (stable)
 - Added a `sapTools.appFolderMappings` setting so Apps-tab service-folder mapping can resolve apps whose CF name differs too much from the local folder for the automatic `-`↔`_` normalization.
 - Explicit mappings take the highest matching priority and are reported as exact matches; `folderName` is a basename searched recursively (depth ≤ 6) for a folder containing a `package.json`.
