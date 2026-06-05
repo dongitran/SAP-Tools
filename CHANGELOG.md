@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.10.4 (stable)
+- CFLogs app filtering now also applies to the sidebar App Logging catalog: the app selection list (where you tick apps and click "Start App Logging") now lists only apps with more than zero running instances, matching the Logs panel selector. The 0.10.3 filter only covered the Logs panel, so stopped and scaled-to-zero apps still appeared in the sidebar catalog. Stopped apps remain available in the Apps workspace (service export).
+
 ## 0.10.3 (stable)
 - CFLogs now lists only loggable apps in the Logs panel app selector: apps must have more than zero running instances, so stopped and scaled-to-zero apps remain available in the Apps workspace but no longer appear where logs cannot be viewed.
 

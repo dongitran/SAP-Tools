@@ -1179,7 +1179,7 @@ function refreshWorkspaceLogsView() {
   }
 
   const availableApps = resolveCurrentSpaceApps();
-  const visibleApps = filterAppCatalogRows(availableApps);
+  const visibleApps = filterLoggableCatalogApps(filterAppCatalogRows(availableApps));
   const selectedApps = new Set(selectedAppLogIds);
   const activeApps = new Set(activeAppLogIds);
   const startableSelectionCount = getStartableSelectionCount(activeApps);
@@ -4112,7 +4112,7 @@ function renderWorkspaceTabContent() {
 
 function renderLogsTab() {
   const availableApps = resolveCurrentSpaceApps();
-  const visibleApps = filterAppCatalogRows(availableApps);
+  const visibleApps = filterLoggableCatalogApps(filterAppCatalogRows(availableApps));
   const selectedApps = new Set(selectedAppLogIds);
   const activeApps = new Set(activeAppLogIds);
   const startableSelectionCount = getStartableSelectionCount(activeApps);
@@ -5638,6 +5638,16 @@ function syncSqlAppTargetsFromCurrentApps() {
         : 0,
   }));
   pruneSelectedHanaServiceId();
+}
+
+// Only apps with at least one running instance can stream logs. Mirrors the CF Logs
+// panel filter (filterLoggableApps / isLoggableApp) so the sidebar App Logging catalog
+// no longer lists stopped or scaled-to-zero apps where logs cannot be viewed. Stopped
+// apps remain available in the Apps workspace (service export) which uses the full list.
+function filterLoggableCatalogApps(apps) {
+  return apps.filter(
+    (app) => Number.isFinite(app.runningInstances) && app.runningInstances > 0
+  );
 }
 
 function filterAppCatalogRows(apps) {
