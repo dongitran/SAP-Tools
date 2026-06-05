@@ -190,6 +190,7 @@ let serviceFolderScanInProgress = false;
 let serviceExportInProgress = false;
 let hanaServiceOptions = null;
 let selectedHanaServiceId = '';
+let sqlAppSearchKeyword = '';
 let hanaQueryStatusMessage = '';
 let hanaQueryStatusTone = 'info';
 let hanaTablesByServiceId = new Map();
@@ -866,6 +867,16 @@ appElement.addEventListener('input', (event) => {
     serviceExportSearchKeyword = target.value;
     if (isWorkspaceAppsMounted()) {
       refreshWorkspaceAppsView();
+      return;
+    }
+    renderPrototype();
+    return;
+  }
+
+  if (role === 'sql-app-search') {
+    sqlAppSearchKeyword = target.value;
+    if (isWorkspaceSqlMounted()) {
+      refreshSqlServiceSearchResults();
       return;
     }
     renderPrototype();
@@ -4727,6 +4738,33 @@ function applyHanaTableSelectLoadingState(row, tableName, isLoading) {
   );
 }
 
+
+function refreshSqlServiceSearchResults() {
+  const workbench = appElement.querySelector('.sql-workbench');
+  if (!(workbench instanceof HTMLElement)) {
+    refreshWorkspaceSqlView();
+    return;
+  }
+
+  const serviceList = workbench.querySelector('[data-role="hana-service-list"]');
+  if (!(serviceList instanceof HTMLElement)) {
+    refreshWorkspaceSqlView();
+    return;
+  }
+
+  const services = resolveHanaServices();
+  const visibleServices = filterHanaServiceRows(services);
+  serviceList.innerHTML = renderHanaServiceRows(visibleServices, {
+    hasSearchKeyword: sqlAppSearchKeyword.trim().length > 0,
+    totalRowCount: services.length,
+  });
+
+  const searchInput = workbench.querySelector('[data-role="sql-app-search"]');
+  if (searchInput instanceof HTMLInputElement) {
+    searchInput.value = sqlAppSearchKeyword;
+  }
+}
+
 function refreshSqlTableResults() {
   const tablesPanel = appElement.querySelector('[data-role="hana-tables-panel"]');
   if (!(tablesPanel instanceof HTMLElement)) {
@@ -4773,13 +4811,28 @@ function renderPlaceholderTab(tabId) {
 
 function renderSqlWorkbenchTab() {
   const services = resolveHanaServices();
-  const servicesMarkup = renderHanaServiceRows(services);
+  const visibleServices = filterHanaServiceRows(services);
+  const servicesMarkup = renderHanaServiceRows(visibleServices, {
+    hasSearchKeyword: sqlAppSearchKeyword.trim().length > 0,
+    totalRowCount: services.length,
+  });
   const tablesPanelMarkup = renderSqlTablesPanel();
 
   return `
     <section class="group-card sql-workbench" aria-label="S/4HANA SQL Workbench">
       <header class="sql-workbench-header">
         <h2>S/4HANA SQL Workbench</h2>
+        <label class="sql-app-search-row search-input-with-icon">
+          <span class="search-input-icon" aria-hidden="true">&#128269;</span>
+          <input
+            type="search"
+            class="sql-app-search"
+            data-role="sql-app-search"
+            value="${escapeHtml(sqlAppSearchKeyword)}"
+            placeholder="Search apps by name"
+            aria-label="Search apps in S/4HANA SQL Workbench"
+          />
+        </label>
       </header>
 
       <section class="sql-service-list" data-role="hana-service-list" aria-label="Discovered apps">
@@ -4964,8 +5017,11 @@ function formatSqlResultPreviewTime(value) {
   return value.replace('T', ' ').replace(/\.\d{3}Z$/, 'Z');
 }
 
-function renderHanaServiceRows(services) {
+function renderHanaServiceRows(services, options = { hasSearchKeyword: false, totalRowCount: 0 }) {
   if (services.length === 0) {
+    if (options.hasSearchKeyword && options.totalRowCount > 0) {
+      return '<p class="logs-empty-message">No apps match current search.</p>';
+    }
     return '<p class="logs-empty-message">No apps found in current space.</p>';
   }
 
@@ -5544,6 +5600,18 @@ function resolveHanaServices() {
   return hanaServiceOptions ?? [];
 }
 
+function filterHanaServiceRows(services) {
+  const keyword = sqlAppSearchKeyword.trim().toLowerCase();
+  if (keyword.length === 0) {
+    return services;
+  }
+
+  return services.filter((service) => {
+    const serviceName = typeof service.name === 'string' ? service.name.toLowerCase() : '';
+    return serviceName.includes(keyword);
+  });
+}
+
 function resolveSelectedHanaService() {
   const services = resolveHanaServices();
   return services.find((service) => service.id === selectedHanaServiceId);
@@ -5779,7 +5847,7 @@ function triggerServiceExport() {
     serviceExportInProgress = false;
     serviceExportStatusTone = 'success';
     serviceExportStatusMessage =
-      `Export completed for "${selectedMapping.appName}". 2 files: default-env.json, pnpm-lock.yaml.`;
+      `Export completed for "${selectedMapping.appName}". 6 files: default-env.json, pnpm-lock.yaml, package.json, .npmrc, .cdsrc.json, .csdrc.json.`;
     return true;
   }
 

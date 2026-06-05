@@ -71,8 +71,11 @@ const SHARED_THEME_STYLE = `
         --saptools-surface: var(--vscode-editor-inactiveSelectionBackground, rgba(128, 128, 128, 0.12));
         --saptools-surface-strong: var(--vscode-editor-selectionBackground, rgba(128, 128, 128, 0.18));
       }
+      html,
       body {
         margin: 0;
+        padding: 0;
+        width: 100%;
         min-height: 100vh;
         background: var(--saptools-bg);
         color: var(--saptools-fg);
@@ -182,7 +185,7 @@ const LOADING_RESULT_STYLE = `${SHARED_THEME_STYLE}
 `;
 
 const RESULT_SET_STYLE = `${SHARED_THEME_STYLE}
-      .result-layout { height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+      .result-layout { width: 100vw; height: 100vh; margin: 0; padding: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); }
       :root {
         --saptools-row-hover: var(--vscode-list-hoverBackground, var(--saptools-surface-strong));
       }
@@ -241,7 +244,7 @@ const RESULT_SET_STYLE = `${SHARED_THEME_STYLE}
         cursor: pointer;
       }
       .result-export-list button:hover { background: var(--saptools-surface-strong); }
-      .result-table-wrap { min-height: 0; overflow: auto; }
+      .result-table-wrap { width: 100vw; min-height: 0; margin: 0; padding: 0; overflow: auto; }
       table { width: max-content; min-width: 100%; border-collapse: collapse; table-layout: auto; font-size: 12px; }
       tbody tr { transition: background-color 120ms ease; }
       tbody tr:hover td { background: var(--saptools-row-hover); }
@@ -299,12 +302,15 @@ const RESULT_BATCH_STYLE = `${SHARED_THEME_STYLE}
         --saptools-accent: var(--vscode-progressBar-background, var(--vscode-focusBorder, #0078d4));
       }
       .result-batch-layout {
+        width: 100vw;
         height: 100vh;
+        margin: 0;
+        padding: 0;
         display: grid;
         grid-template-rows: auto minmax(0, 1fr);
         gap: 0;
       }
-      .result-batch-scroll { min-height: 0; overflow: auto; }
+      .result-batch-scroll { width: 100vw; min-height: 0; margin: 0; padding: 0; overflow: auto; }
       .result-batch-summary {
         position: sticky;
         top: 0;
@@ -376,8 +382,8 @@ const RESULT_BATCH_STYLE = `${SHARED_THEME_STYLE}
       .result-toolbar-spacer { flex: 1 1 auto; }
       .result-batch-sections {
         display: grid;
-        gap: 8px;
-        padding: 8px 6px;
+        gap: 0;
+        padding: 0;
       }
       .result-statement-section {
         border: 1px solid var(--saptools-border);

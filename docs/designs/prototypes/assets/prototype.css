@@ -1573,6 +1573,7 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 
 .service-export-search-row,
 .app-log-search-row,
+.sql-app-search-row,
 .sql-table-search-row {
   display: block;
 }
@@ -1594,6 +1595,7 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 
 .service-export-search,
 .app-log-search,
+.sql-app-search,
 .sql-table-search {
   width: 100%;
   min-height: 30px;
@@ -2038,13 +2040,26 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
 
 .sql-workbench-header {
   display: grid;
-  gap: 3px;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 260px);
+  align-items: center;
+  gap: 10px;
 }
 
 .sql-workbench-header h2 {
   margin: 0;
   font-size: 0.86rem;
   font-family: var(--title-font);
+  min-width: 0;
+}
+
+.sql-app-search-row {
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .sql-workbench-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .sql-service-list {
@@ -2403,9 +2418,9 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
 .sql-result-preview-panel {
   position: absolute;
   z-index: 6;
-  right: 10px;
-  bottom: 10px;
-  left: 10px;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   max-height: min(46%, 320px);
@@ -2556,9 +2571,9 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
 
 .sql-result-batch-sections {
   display: grid;
-  gap: 8px;
+  gap: 0;
   min-height: 0;
-  padding: 8px;
+  padding: 0;
   overflow: auto;
   background: var(--surface-bg);
 }
@@ -2636,6 +2651,9 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
 .sql-result-preview-table-wrap {
   overflow: auto;
   min-height: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   border-radius: 0 0 12px 12px;
   background: var(--surface-bg);
 }

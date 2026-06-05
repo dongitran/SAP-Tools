@@ -86,6 +86,8 @@
     "us10001",
     "us10002",
     "hdbsql",
-    "hdbclient"
+    "hdbclient",
+    "cdsrc",
+    "csdrc"
   ]
 }

@@ -13,6 +13,7 @@ const execFileAsync = promisify(execFile);
 
 const CF_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
 const CF_COMMAND_TIMEOUT_MS = 30_000;
+const REMOTE_FILE_CONTENT_SENTINEL = '__SAP_TOOLS_REMOTE_FILE_CONTENT__';
 
 /**
  * Lists every package.json inside the running app container (excluding noisy mount
@@ -27,10 +28,6 @@ const REMOTE_PACKAGE_JSON_FIND_COMMAND = [
   '-print 2>/dev/null',
 ].join(' ');
 
-const DEFAULT_PNPM_LOCK_COMMANDS = [
-  'cat /home/vcap/app/pnpm-lock.yaml',
-  'cat pnpm-lock.yaml',
-] as const;
 const CF_API_REQUEST_TIMEOUT_MS = 20_000;
 const CF_V3_PAGE_SIZE = 200;
 const CF_RETRY_MAX_ATTEMPTS = 3;
@@ -413,6 +410,40 @@ export async function fetchPnpmLockFromTarget(params: {
 }
 
 /**
+ * Fetch a text file from the app container via CF SSH.
+ * Requires CF CLI to be already targeted to the intended org/space.
+ * Returns `null` when all candidate locations are missing or empty so callers can
+ * opportunistically export optional CAP project metadata without failing the main
+ * artifact export.
+ */
+export async function fetchRemoteTextFileFromTarget(params: {
+  readonly appName: string;
+  readonly fileName: string;
+  readonly cfHomeDir?: string;
+  readonly remoteRoot?: string;
+}): Promise<string | null> {
+  const cfHomeOptions = buildCfHomeOptions(params.cfHomeDir);
+  const fileCommands = buildRemoteTextFileCommands(params.fileName, params.remoteRoot);
+
+  for (const command of fileCommands) {
+    try {
+      const stdout = await runCfCommand(['ssh', params.appName, '-c', command], {
+        ...cfHomeOptions,
+        failureMessage: `Failed to fetch ${params.fileName} for app "${params.appName}".`,
+      });
+      const content = parseRemoteTextFileContent(stdout);
+      if (content !== null) {
+        return content;
+      }
+    } catch {
+      // Missing optional files are expected for some CAP apps; try the next location.
+    }
+  }
+
+  return null;
+}
+
+/**
  * Spawn long-running `cf logs <app>` stream process.
  * Requires CF target to be prepared beforehand.
  */
@@ -499,18 +530,45 @@ function extractSafeCliDetail(error: unknown): string {
   return `(cli: ${normalized.slice(0, 180)})`;
 }
 
+function buildRemoteTextFileCommands(fileName: string, remoteRoot: string | undefined): string[] {
+  return buildRemoteFilePaths(fileName, remoteRoot).map(buildRemoteTextFileCommand);
+}
+
+function buildRemoteTextFileCommand(remoteFilePath: string): string {
+  const quotedPath = quoteShellArg(remoteFilePath);
+  return [
+    `if [ -f ${quotedPath} ]; then`,
+    `printf '%s\\n' ${quoteShellArg(REMOTE_FILE_CONTENT_SENTINEL)};`,
+    `cat ${quotedPath};`,
+    'else exit 66; fi',
+  ].join(' ');
+}
+
+function parseRemoteTextFileContent(stdout: string): string | null {
+  const sentinelPrefix = `${REMOTE_FILE_CONTENT_SENTINEL}\n`;
+  return stdout.startsWith(sentinelPrefix) ? stdout.slice(sentinelPrefix.length) : null;
+}
+
+function quoteShellArg(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function buildPnpmLockCommands(remoteRoot: string | undefined): string[] {
-  const commands: string[] = [];
+  return buildRemoteFilePaths('pnpm-lock.yaml', remoteRoot).map((filePath) => `cat ${filePath}`);
+}
+
+function buildRemoteFilePaths(fileName: string, remoteRoot: string | undefined): string[] {
+  const paths: string[] = [];
   const normalizedRoot = remoteRoot?.trim().replace(/\/+$/, '');
   if (normalizedRoot !== undefined && normalizedRoot.length > 0) {
-    commands.push(`cat ${normalizedRoot}/pnpm-lock.yaml`);
+    paths.push(`${normalizedRoot}/${fileName}`);
   }
-  for (const fallback of DEFAULT_PNPM_LOCK_COMMANDS) {
-    if (!commands.includes(fallback)) {
-      commands.push(fallback);
+  for (const fallback of [`/home/vcap/app/${fileName}`, fileName]) {
+    if (!paths.includes(fallback)) {
+      paths.push(fallback);
     }
   }
-  return commands;
+  return paths;
 }
 
 function buildCfHomeOptions(cfHomeDir: string | undefined): Pick<CfCliExecutionOptions, 'cfHomeDir'> {

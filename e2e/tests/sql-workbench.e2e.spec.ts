@@ -264,6 +264,47 @@ test.describe('SAP Tools SQL workbench', () => {
       await expect(
         webviewFrame.getByText('Manual SELECT queries without a row limit run with LIMIT 100.')
       ).toHaveCount(0);
+      const appSearch = webviewFrame.getByRole('searchbox', {
+        name: 'Search apps in S/4HANA SQL Workbench',
+      });
+      await expect(appSearch).toBeVisible();
+      await expect(appSearch).toHaveAttribute('placeholder', 'Search apps by name');
+
+      const appSearchLayout = await webviewFrame.locator('.sql-workbench-header').evaluate(() => {
+        const title = document.querySelector<HTMLElement>('.sql-workbench-header h2');
+        const input = document.querySelector<HTMLElement>('[data-role="sql-app-search"]');
+        const icon = document.querySelector<HTMLElement>('.sql-app-search-row .search-input-icon');
+        if (title === null || input === null || icon === null) {
+          throw new Error('SQL app search header controls are missing.');
+        }
+        const titleBox = title.getBoundingClientRect();
+        const inputBox = input.getBoundingClientRect();
+        const inputStyles = window.getComputedStyle(input);
+        const iconStyles = window.getComputedStyle(icon);
+        return {
+          inputLeft: inputBox.left,
+          inputPaddingLeft: inputStyles.paddingLeft,
+          iconLeft: iconStyles.left,
+          titleRight: titleBox.right,
+        };
+      });
+      expect(appSearchLayout.inputLeft).toBeGreaterThanOrEqual(appSearchLayout.titleRight);
+      expect(appSearchLayout.inputPaddingLeft).toBe('31px');
+      expect(appSearchLayout.iconLeft).toBe('12px');
+
+      await expect(webviewFrame.locator('.sql-service-row')).toHaveCount(3);
+      await expect(webviewFrame.locator('.sql-service-open-indicator')).toHaveCount(3);
+
+      await appSearch.fill('audit');
+      await expect(webviewFrame.locator('.sql-service-row')).toHaveCount(1);
+      await expect(webviewFrame.getByRole('button', { name: 'finance-uat-audit' })).toBeVisible();
+      await expect(webviewFrame.getByRole('button', { name: 'finance-uat-api' })).toHaveCount(0);
+
+      await appSearch.fill('not-found');
+      await expect(webviewFrame.locator('.sql-service-row')).toHaveCount(0);
+      await expect(webviewFrame.getByText('No apps match current search.')).toBeVisible();
+
+      await appSearch.fill('');
       await expect(webviewFrame.locator('.sql-service-row')).toHaveCount(3);
       await expect(webviewFrame.locator('.sql-service-open-indicator')).toHaveCount(3);
       await expect(webviewFrame.locator('.sql-service-panel')).toHaveCount(0);
@@ -396,23 +437,51 @@ test.describe('SAP Tools SQL workbench', () => {
       const tableLayout = await resultFrame.getByRole('table').evaluate((table) => {
         const firstCell = table.querySelector('td');
         const wrapper = table.closest('.result-table-wrap');
+        const layout = table.closest('.result-layout');
         if (!(table instanceof HTMLElement) || !(firstCell instanceof HTMLElement)) {
           throw new Error('Result table or first cell is missing.');
         }
         if (!(wrapper instanceof HTMLElement)) {
           throw new Error('Result table wrapper is missing.');
         }
+        if (!(layout instanceof HTMLElement)) {
+          throw new Error('Result layout is missing.');
+        }
         const tableStyles = window.getComputedStyle(table);
         const cellStyles = window.getComputedStyle(firstCell);
+        const bodyStyles = window.getComputedStyle(document.body);
+        const wrapperStyles = window.getComputedStyle(wrapper);
+        const layoutStyles = window.getComputedStyle(layout);
+        const wrapperBox = wrapper.getBoundingClientRect();
+        const layoutBox = layout.getBoundingClientRect();
         return {
           cellOverflow: cellStyles.overflow,
           cellTextOverflow: cellStyles.textOverflow,
           cellWhiteSpace: cellStyles.whiteSpace,
+          bodyMarginLeft: bodyStyles.marginLeft,
+          bodyPaddingLeft: bodyStyles.paddingLeft,
+          layoutPaddingLeft: layoutStyles.paddingLeft,
           tableLayout: tableStyles.tableLayout,
           tableWidth: table.getBoundingClientRect().width,
+          viewportWidth: window.innerWidth,
+          wrapperLeft: wrapperBox.left,
+          wrapperPaddingLeft: wrapperStyles.paddingLeft,
+          wrapperPaddingRight: wrapperStyles.paddingRight,
+          wrapperRight: wrapperBox.right,
           wrapperWidth: wrapper.getBoundingClientRect().width,
+          layoutLeft: layoutBox.left,
+          layoutRight: layoutBox.right,
         };
       });
+      expect(tableLayout.bodyMarginLeft).toBe('0px');
+      expect(tableLayout.bodyPaddingLeft).toBe('0px');
+      expect(tableLayout.layoutPaddingLeft).toBe('0px');
+      expect(tableLayout.wrapperPaddingLeft).toBe('0px');
+      expect(tableLayout.wrapperPaddingRight).toBe('0px');
+      expect(tableLayout.wrapperLeft).toBe(0);
+      expect(tableLayout.layoutLeft).toBe(0);
+      expect(Math.abs(tableLayout.wrapperRight - tableLayout.viewportWidth)).toBeLessThanOrEqual(1);
+      expect(Math.abs(tableLayout.layoutRight - tableLayout.viewportWidth)).toBeLessThanOrEqual(1);
       expect(tableLayout.tableLayout).toBe('auto');
       expect(tableLayout.cellWhiteSpace).toBe('pre');
       expect(tableLayout.cellOverflow).toBe('visible');

@@ -5,12 +5,14 @@ const {
   prepareCfCliSessionMock,
   fetchDefaultEnvJsonFromTargetMock,
   fetchPnpmLockFromTargetMock,
+  fetchRemoteTextFileFromTargetMock,
   findRemotePackageJsonPathsFromTargetMock,
 } = vi.hoisted(() => ({
   writeFileMock: vi.fn(),
   prepareCfCliSessionMock: vi.fn(),
   fetchDefaultEnvJsonFromTargetMock: vi.fn(),
   fetchPnpmLockFromTargetMock: vi.fn(),
+  fetchRemoteTextFileFromTargetMock: vi.fn(),
   findRemotePackageJsonPathsFromTargetMock: vi.fn(),
 }));
 
@@ -22,6 +24,7 @@ vi.mock('./cfClient', () => ({
   prepareCfCliSession: prepareCfCliSessionMock,
   fetchDefaultEnvJsonFromTarget: fetchDefaultEnvJsonFromTargetMock,
   fetchPnpmLockFromTarget: fetchPnpmLockFromTargetMock,
+  fetchRemoteTextFileFromTarget: fetchRemoteTextFileFromTargetMock,
   findRemotePackageJsonPathsFromTarget: findRemotePackageJsonPathsFromTargetMock,
 }));
 
@@ -48,6 +51,7 @@ beforeEach(() => {
   prepareCfCliSessionMock.mockReset();
   fetchDefaultEnvJsonFromTargetMock.mockReset();
   fetchPnpmLockFromTargetMock.mockReset();
+  fetchRemoteTextFileFromTargetMock.mockReset();
   findRemotePackageJsonPathsFromTargetMock.mockReset();
 });
 
@@ -99,6 +103,11 @@ describe('exportServiceArtifacts', () => {
   it('exports both default-env.json and pnpm-lock.yaml', async () => {
     fetchDefaultEnvJsonFromTargetMock.mockResolvedValueOnce('{\n  "NODE_ENV": "production"\n}\n');
     fetchPnpmLockFromTargetMock.mockResolvedValueOnce('lockfileVersion: 9.0\n');
+    fetchRemoteTextFileFromTargetMock
+      .mockResolvedValueOnce('{\n  \"name\": \"finance-uat-api\"\n}\n')
+      .mockResolvedValueOnce('registry=https://registry.npmjs.org/\n')
+      .mockResolvedValueOnce('{\n  \"requires\": {}\n}\n')
+      .mockResolvedValueOnce('{\n  \"profiles\": []\n}\n');
 
     const result = await exportServiceArtifacts({
       ...baseOptions,
@@ -129,16 +138,64 @@ describe('exportServiceArtifacts', () => {
       '{\n  "NODE_ENV": "production"\n}\n',
       'utf8'
     );
+    expect(fetchRemoteTextFileFromTargetMock).toHaveBeenNthCalledWith(1, {
+      appName: baseOptions.appName,
+      cfHomeDir: baseOptions.session.cfHomeDir,
+      fileName: 'package.json',
+    });
+    expect(fetchRemoteTextFileFromTargetMock).toHaveBeenNthCalledWith(2, {
+      appName: baseOptions.appName,
+      cfHomeDir: baseOptions.session.cfHomeDir,
+      fileName: '.npmrc',
+    });
+    expect(fetchRemoteTextFileFromTargetMock).toHaveBeenNthCalledWith(3, {
+      appName: baseOptions.appName,
+      cfHomeDir: baseOptions.session.cfHomeDir,
+      fileName: '.cdsrc.json',
+    });
+    expect(fetchRemoteTextFileFromTargetMock).toHaveBeenNthCalledWith(4, {
+      appName: baseOptions.appName,
+      cfHomeDir: baseOptions.session.cfHomeDir,
+      fileName: '.csdrc.json',
+    });
     expect(writeFileMock).toHaveBeenNthCalledWith(
       2,
       '/tmp/workspace/finance-uat-api/pnpm-lock.yaml',
       'lockfileVersion: 9.0\n',
       'utf8'
     );
+    expect(writeFileMock).toHaveBeenNthCalledWith(
+      3,
+      '/tmp/workspace/finance-uat-api/package.json',
+      '{\n  "name": "finance-uat-api"\n}\n',
+      'utf8'
+    );
+    expect(writeFileMock).toHaveBeenNthCalledWith(
+      4,
+      '/tmp/workspace/finance-uat-api/.npmrc',
+      'registry=https://registry.npmjs.org/\n',
+      'utf8'
+    );
+    expect(writeFileMock).toHaveBeenNthCalledWith(
+      5,
+      '/tmp/workspace/finance-uat-api/.cdsrc.json',
+      '{\n  "requires": {}\n}\n',
+      'utf8'
+    );
+    expect(writeFileMock).toHaveBeenNthCalledWith(
+      6,
+      '/tmp/workspace/finance-uat-api/.csdrc.json',
+      '{\n  "profiles": []\n}\n',
+      'utf8'
+    );
     expect(result).toEqual({
       writtenFiles: [
         '/tmp/workspace/finance-uat-api/default-env.json',
         '/tmp/workspace/finance-uat-api/pnpm-lock.yaml',
+        '/tmp/workspace/finance-uat-api/package.json',
+        '/tmp/workspace/finance-uat-api/.npmrc',
+        '/tmp/workspace/finance-uat-api/.cdsrc.json',
+        '/tmp/workspace/finance-uat-api/.csdrc.json',
       ],
     });
   });
@@ -167,6 +224,7 @@ describe('exportServiceArtifacts', () => {
 
   it('exports only pnpm-lock.yaml when requested', async () => {
     fetchPnpmLockFromTargetMock.mockResolvedValueOnce('lockfileVersion: 9.0\n');
+    fetchRemoteTextFileFromTargetMock.mockResolvedValue(null);
 
     const result = await exportServiceArtifacts({
       ...baseOptions,

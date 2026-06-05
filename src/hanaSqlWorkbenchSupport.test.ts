@@ -729,6 +729,10 @@ describe('buildHanaSqlResultHtml', () => {
     expect(html).toContain('table-layout: auto;');
     expect(html).toContain('width: max-content;');
     expect(html).toContain('min-width: 100%;');
+    expect(html).toContain('html,');
+    expect(html).toContain('padding: 0;');
+    expect(html).toContain('.result-layout { width: 100vw; height: 100vh; margin: 0; padding: 0;');
+    expect(html).toContain('.result-table-wrap { width: 100vw; min-height: 0; margin: 0; padding: 0; overflow: auto; }');
     expect(html).not.toContain('Showing first');
   });
 
@@ -1084,6 +1088,9 @@ describe('buildHanaSqlResultHtml batch view', () => {
     });
 
     expect(html).toContain('result-batch-layout');
+    expect(html).toContain('.result-batch-layout {');
+    expect(html).toContain('width: 100vw;');
+    expect(html).toMatch(/\.result-batch-sections \{[^}]*gap: 0;[^}]*padding: 0;[^}]*\}/);
     expect(html).not.toContain('Statements: 2');
     expect(html).not.toContain('OK: 2');
     expect(html).not.toContain('Failed: ');

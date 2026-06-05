@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   fetchDefaultEnvJsonFromTarget,
   fetchPnpmLockFromTarget,
+  fetchRemoteTextFileFromTarget,
   findRemotePackageJsonPathsFromTarget,
   prepareCfCliSession,
 } from './cfClient';
@@ -31,6 +32,13 @@ export interface ServiceArtifactExportOptions {
    */
   readonly remoteRootSetting?: string;
 }
+
+const OPTIONAL_REMOTE_SOURCE_ARTIFACTS = [
+  'package.json',
+  '.npmrc',
+  '.cdsrc.json',
+  '.csdrc.json',
+] as const;
 
 export interface ServiceArtifactExportResult {
   readonly writtenFiles: readonly string[];
@@ -93,9 +101,33 @@ export async function exportServiceArtifacts(
     const outputPath = join(options.targetFolderPath, 'pnpm-lock.yaml');
     await writeFile(outputPath, pnpmLockContent, 'utf8');
     writtenFiles.push(outputPath);
+
+    await exportOptionalRemoteSourceArtifacts(options, remoteRoot, writtenFiles);
   }
 
   return { writtenFiles };
+}
+
+async function exportOptionalRemoteSourceArtifacts(
+  options: ServiceArtifactExportOptions,
+  remoteRoot: string | undefined,
+  writtenFiles: string[]
+): Promise<void> {
+  for (const fileName of OPTIONAL_REMOTE_SOURCE_ARTIFACTS) {
+    const content = await fetchRemoteTextFileFromTarget({
+      appName: options.appName,
+      cfHomeDir: options.session.cfHomeDir,
+      fileName,
+      ...(remoteRoot !== undefined ? { remoteRoot } : {}),
+    });
+    if (content === null) {
+      continue;
+    }
+
+    const outputPath = join(options.targetFolderPath, fileName);
+    await writeFile(outputPath, content, 'utf8');
+    writtenFiles.push(outputPath);
+  }
 }
 
 /**

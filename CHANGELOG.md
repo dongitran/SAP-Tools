@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.2 (stable)
+- SAP Tools SQL Result now uses the full webview width for result tables, removing outer left/right gutters and padding from the result table wrapper and batch result sections.
+
+## 0.10.1 (stable)
+- Apps artifact export now also copies remote project metadata files from the resolved app source folder: `package.json`, `.npmrc`, `.cdsrc.json`, and the legacy/typo-compatible `.csdrc.json` when present, alongside `default-env.json` and `pnpm-lock.yaml`, including empty optional files and shell-safe remote paths.
+
 ## 0.10.0 (stable)
 - Logs/Apps now list every app in a space (including scaled-to-zero apps) from the shared cache, and two-way CF scope sync with the CDS Debug extension works again — changing org/space in one extension follows in the other.
 

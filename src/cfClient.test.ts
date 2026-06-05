@@ -29,6 +29,7 @@ import {
   fetchDefaultEnvJsonFromTarget,
   fetchOrgs,
   fetchPnpmLockFromTarget,
+  fetchRemoteTextFileFromTarget,
   findRemotePackageJsonPathsFromTarget,
   fetchRecentAppLogs,
   fetchSpaces,
@@ -619,6 +620,98 @@ describe('fetchPnpmLockFromTarget', () => {
       })
     ).rejects.toThrow(
       'Unable to read pnpm-lock.yaml from app "finance-uat-api". Ensure SSH is enabled and the file exists in the app container.'
+    );
+  });
+});
+
+describe('fetchRemoteTextFileFromTarget', () => {
+  beforeEach(() => {
+    execFileAsyncMock.mockReset();
+  });
+
+  it('returns package.json from the configured remote root before default locations', async () => {
+    execFileAsyncMock.mockResolvedValueOnce({
+      stdout: '__SAP_TOOLS_REMOTE_FILE_CONTENT__\n{"name":"finance-uat-api"}\n',
+    });
+
+    const content = await fetchRemoteTextFileFromTarget({
+      appName: 'finance-uat-api',
+      fileName: 'package.json',
+      remoteRoot: '/home/vcap/app/gen/srv/',
+    });
+
+    expect(content).toBe('{"name":"finance-uat-api"}\n');
+    expect(execFileAsyncMock).toHaveBeenNthCalledWith(
+      1,
+      'cf',
+      [
+        'ssh',
+        'finance-uat-api',
+        '-c',
+        "if [ -f '/home/vcap/app/gen/srv/package.json' ]; then printf '%s\\n' '__SAP_TOOLS_REMOTE_FILE_CONTENT__'; cat '/home/vcap/app/gen/srv/package.json'; else exit 66; fi",
+      ],
+      expect.any(Object)
+    );
+  });
+
+  it('exports an empty optional file when it exists in the container', async () => {
+    execFileAsyncMock.mockResolvedValueOnce({ stdout: '__SAP_TOOLS_REMOTE_FILE_CONTENT__\n' });
+
+    const content = await fetchRemoteTextFileFromTarget({
+      appName: 'finance-uat-api',
+      fileName: '.npmrc',
+      remoteRoot: '/home/vcap/app',
+    });
+
+    expect(content).toBe('');
+  });
+
+  it('quotes remote paths before passing them to the shell command', async () => {
+    execFileAsyncMock.mockResolvedValueOnce({
+      stdout: '__SAP_TOOLS_REMOTE_FILE_CONTENT__\nregistry=https://example.invalid/\n',
+    });
+
+    await fetchRemoteTextFileFromTarget({
+      appName: 'finance-uat-api',
+      fileName: '.npmrc',
+      remoteRoot: "/home/vcap/app/service's root",
+    });
+
+    expect(execFileAsyncMock).toHaveBeenNthCalledWith(
+      1,
+      'cf',
+      [
+        'ssh',
+        'finance-uat-api',
+        '-c',
+        "if [ -f '/home/vcap/app/service'\\''s root/.npmrc' ]; then printf '%s\\n' '__SAP_TOOLS_REMOTE_FILE_CONTENT__'; cat '/home/vcap/app/service'\\''s root/.npmrc'; else exit 66; fi",
+      ],
+      expect.any(Object)
+    );
+  });
+
+  it('returns null for optional dotfiles that are not present', async () => {
+    execFileAsyncMock
+      .mockRejectedValueOnce({ stderr: 'No such file' })
+      .mockRejectedValueOnce({ stderr: 'No such file' });
+
+    const content = await fetchRemoteTextFileFromTarget({
+      appName: 'finance-uat-api',
+      fileName: '.cdsrc.json',
+    });
+
+    expect(content).toBeNull();
+    expect(execFileAsyncMock).toHaveBeenCalledTimes(2);
+    expect(execFileAsyncMock).toHaveBeenNthCalledWith(
+      2,
+      'cf',
+      [
+        'ssh',
+        'finance-uat-api',
+        '-c',
+        "if [ -f '.cdsrc.json' ]; then printf '%s\\n' '__SAP_TOOLS_REMOTE_FILE_CONTENT__'; cat '.cdsrc.json'; else exit 66; fi",
+      ],
+      expect.any(Object)
     );
   });
 });
