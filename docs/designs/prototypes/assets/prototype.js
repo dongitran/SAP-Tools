@@ -4437,7 +4437,7 @@ function renderDetectedPackagesInner() {
       type="button"
       class="small-action detected-packages-config"
       data-action="open-local-packages-settings"
-      title="Configure sapTools.localPackages.namePatterns"
+      title="Configure local packages settings"
       ${detectedPackagesLoading ? 'disabled' : ''}
     >Configure</button>`;
 

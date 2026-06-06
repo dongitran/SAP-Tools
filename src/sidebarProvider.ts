@@ -556,7 +556,7 @@ export class RegionSidebarProvider
     if (type === MSG_OPEN_LOCAL_PACKAGES_SETTINGS) {
       await vscode.commands.executeCommand(
         'workbench.action.openSettings',
-        'sapTools.localPackages.namePatterns'
+        'sapTools.localPackages'
       );
       return;
     }

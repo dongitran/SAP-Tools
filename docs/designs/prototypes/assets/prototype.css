@@ -2034,7 +2034,7 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
 
 .detected-pkg {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   font-size: 0.66rem;
@@ -2058,17 +2058,29 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
 }
 
 .detected-pkg-version {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
   color: var(--muted-color);
   font-size: 0.6rem;
   white-space: nowrap;
+  transition: opacity 0.15s ease;
+}
+
+.detected-pkg:hover .detected-pkg-version {
+  opacity: 0;
 }
 
 .detected-pkg-single-build {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
   padding: 2px 8px;
   font-size: 0.6rem;
+  z-index: 1;
 }
 
 .detected-pkg:hover .detected-pkg-single-build {
