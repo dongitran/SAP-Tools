@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.18 (stable)
+- Hide the package version in the detected packages list (it never changes during normal use, so it added noise).
+- Remove the "Mapped x/x services" summary line — the mapping rows already convey that state.
+- Per-package **Build** button is now wider (easier hover target) and shows an inline build flow: a loading spinner appears before "Build", the row is disabled while building, then the button is replaced by a green "✓ Built & published" confirmation that auto-hides after ~2s.
+- Remove the separate "Build & Publish" panel below the Export Artifacts button; all single-build feedback now happens inline within the package list.
+- Building no longer steals focus by auto-opening the "SAP Tools: NPM Build" output channel — logs are still written there and can be opened manually.
+
 ## 0.10.16 (stable)
 - Remove sensitive internal keywords from the codebase.
 

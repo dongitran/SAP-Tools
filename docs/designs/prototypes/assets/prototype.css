@@ -1872,93 +1872,6 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
   flex: 0 0 auto;
 }
 
-.build-panel {
-  margin-top: 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 10px;
-  background: color-mix(in oklab, var(--accent-soft) 14%, var(--frame-bg));
-}
-
-.build-panel-title {
-  margin: 0 0 6px;
-  font-size: 0.72rem;
-  font-weight: 600;
-}
-
-.build-step-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.build-step {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: baseline;
-  gap: 6px;
-  font-size: 0.68rem;
-}
-
-.build-step-badge {
-  flex: 0 0 auto;
-  border-radius: 6px;
-  padding: 1px 6px;
-  font-size: 0.6rem;
-  font-weight: 600;
-  background: color-mix(in oklab, var(--muted-color) 24%, var(--frame-bg));
-  color: var(--text-color);
-}
-
-.build-step-info .build-step-badge {
-  background: color-mix(in oklab, var(--accent-color) 30%, var(--frame-bg));
-}
-
-.build-step-success .build-step-badge {
-  background: color-mix(in oklab, var(--state-success-fg) 28%, var(--frame-bg));
-}
-
-.build-step-error .build-step-badge {
-  background: color-mix(in oklab, var(--state-danger-fg) 30%, var(--frame-bg));
-}
-
-.build-step-name {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.build-step-detail {
-  grid-column: 1 / -1;
-  color: var(--muted-color);
-  font-size: 0.64rem;
-}
-
-.build-panel-pending {
-  margin: 0;
-  font-size: 0.68rem;
-  color: var(--muted-color);
-}
-
-.build-panel-result {
-  margin: 8px 0 0;
-  font-size: 0.68rem;
-}
-
-.build-panel-result.tone-success {
-  color: var(--state-success-fg);
-}
-
-.build-panel-result.tone-error {
-  color: var(--state-danger-fg);
-}
-
-.build-panel-result.tone-info {
-  color: var(--chip-text);
-}
-
 .detected-packages {
   display: flex;
   flex-direction: column;
@@ -2021,6 +1934,23 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
   color: var(--state-danger-fg);
 }
 
+.detected-packages-result {
+  margin: 0;
+  font-size: 0.64rem;
+}
+
+.detected-packages-result.tone-success {
+  color: var(--state-success-fg);
+}
+
+.detected-packages-result.tone-error {
+  color: var(--state-danger-fg);
+}
+
+.detected-packages-result.tone-info {
+  color: var(--muted-color);
+}
+
 .detected-pkg-list {
   list-style: none;
   margin: 0;
@@ -2038,6 +1968,7 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
   align-items: center;
   gap: 8px;
   font-size: 0.66rem;
+  min-height: 22px;
 }
 
 .detected-pkg-round {
@@ -2055,30 +1986,28 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.detected-pkg-version {
-  grid-column: 3;
-  grid-row: 1;
-  justify-self: end;
-  color: var(--muted-color);
-  font-size: 0.6rem;
-  white-space: nowrap;
   transition: opacity 0.15s ease;
 }
 
-.detected-pkg:hover .detected-pkg-version {
-  opacity: 0;
+/* Dim the package name while its build is running, signalling the row is busy. */
+.detected-pkg.is-building .detected-pkg-name {
+  opacity: 0.55;
 }
 
 .detected-pkg-single-build {
   grid-column: 3;
   grid-row: 1;
   justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
   padding: 2px 8px;
+  /* Roughly double the previous compact width for an easier hover target. */
+  min-width: 84px;
   font-size: 0.6rem;
   z-index: 1;
 }
@@ -2086,6 +2015,60 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
 .detected-pkg:hover .detected-pkg-single-build {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* While building, keep the button pinned visible regardless of hover. */
+.detected-pkg.is-building .detected-pkg-single-build {
+  opacity: 1;
+  pointer-events: none;
+  cursor: progress;
+}
+
+.detected-pkg-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid color-mix(in oklab, currentColor 35%, transparent);
+  border-top-color: currentColor;
+  border-radius: 999px;
+  animation: sql-tables-spin 820ms linear infinite;
+  flex: 0 0 auto;
+}
+
+/* In-list build result (replaces the button once a build finishes). */
+.detected-pkg-result {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  min-width: 84px;
+  justify-content: flex-end;
+  font-size: 0.6rem;
+  font-weight: 600;
+  white-space: nowrap;
+  animation: detected-pkg-result-in 0.2s ease;
+}
+
+.detected-pkg-result.is-success {
+  color: var(--state-success-fg);
+}
+
+.detected-pkg-result.is-error {
+  color: var(--state-danger-fg);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes detected-pkg-result-in {
+  from {
+    opacity: 0;
+    transform: translateY(-1px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .panel-logs-bridge {

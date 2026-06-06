@@ -202,6 +202,12 @@ let buildPublishOrder = [];
 let buildPublishStatuses = {};
 let buildPublishResultMessage = '';
 let buildPublishResultTone = 'info';
+// Per-package single-build effect state (in-list, no separate panel).
+let buildingPackageName = '';
+let buildResultPackageName = '';
+let buildResultSuccess = false;
+let buildResultMessage = '';
+let buildResultTimer = null;
 let detectedPackages = [];
 let detectedPackagesConfigured = false;
 let detectedPackagesLoading = false;
@@ -519,9 +525,10 @@ window.addEventListener('message', (event) => {
     serviceFolderScanInProgress = false;
     serviceFolderMappings = normalizeServiceFolderMappings(rawMappings);
     pruneSelectedServiceExportAppId();
-    const mappedCount = serviceFolderMappings.filter((mapping) => mapping.isMapped).length;
+    // The "Mapped x/x services" summary line was intentionally dropped — the
+    // mapping rows themselves already convey the mapped/unmapped state.
     serviceExportStatusTone = 'info';
-    serviceExportStatusMessage = `Mapped ${mappedCount}/${serviceFolderMappings.length} services.`;
+    serviceExportStatusMessage = '';
     refreshUiAfterServiceExportStateChange();
     return;
   }
@@ -619,13 +626,42 @@ window.addEventListener('message', (event) => {
   if (msg.type === 'sapTools.buildPublishResult') {
     buildPublishInProgress = false;
     const success = msg.success === true;
-    buildPublishResultTone = success ? 'success' : 'error';
-    buildPublishResultMessage =
+    const resultText =
       typeof msg.message === 'string' && msg.message.length > 0
         ? msg.message
         : success
           ? 'Build & publish completed.'
           : 'Build & publish failed.';
+
+    // Single-package build → show an in-list result on that package row only.
+    if (buildingPackageName.length > 0) {
+      const pkgName = buildingPackageName;
+      buildingPackageName = '';
+      buildResultPackageName = pkgName;
+      buildResultSuccess = success;
+      buildResultMessage = success ? 'Built & published' : resultText;
+
+      if (buildResultTimer !== null) {
+        clearTimeout(buildResultTimer);
+        buildResultTimer = null;
+      }
+      if (success) {
+        // Keep the green confirmation for ~2s, then quietly fade it away.
+        buildResultTimer = setTimeout(() => {
+          buildResultTimer = null;
+          if (buildResultPackageName === pkgName) {
+            buildResultPackageName = '';
+            buildResultMessage = '';
+            refreshUiAfterServiceExportStateChange();
+          }
+        }, 2000);
+      }
+      refreshUiAfterServiceExportStateChange();
+      return;
+    }
+
+    buildPublishResultTone = success ? 'success' : 'error';
+    buildPublishResultMessage = resultText;
     refreshUiAfterServiceExportStateChange();
     return;
   }
@@ -2178,8 +2214,16 @@ function handleServiceExportAction(action, actionElement) {
   }
 
   if (action === 'build-publish-all') {
-    if (vscodeApi === null || detectedPackages.length === 0) {
+    if (vscodeApi === null || detectedPackages.length === 0 || buildPublishInProgress) {
       return true;
+    }
+    // Clear any lingering single-build result so the two flows don't overlap.
+    buildingPackageName = '';
+    buildResultPackageName = '';
+    buildResultMessage = '';
+    if (buildResultTimer !== null) {
+      clearTimeout(buildResultTimer);
+      buildResultTimer = null;
     }
     buildPublishInProgress = true;
     buildPublishOrder = [];
@@ -2198,15 +2242,23 @@ function handleServiceExportAction(action, actionElement) {
     if (!packageName) {
       return true;
     }
+    // Ignore re-clicks while a build is already running.
+    if (buildPublishInProgress) {
+      return true;
+    }
     buildPublishInProgress = true;
-    buildPublishOrder = [];
-    buildPublishStatuses = {};
-    buildPublishResultMessage = `Building & publishing ${packageName}…`;
-    buildPublishResultTone = 'info';
+    buildingPackageName = packageName;
+    buildResultPackageName = '';
+    buildResultMessage = '';
+    if (buildResultTimer !== null) {
+      clearTimeout(buildResultTimer);
+      buildResultTimer = null;
+    }
     vscodeApi.postMessage({
       type: BUILD_SINGLE_PACKAGE_MESSAGE_TYPE,
       payload: { packageName },
     });
+    refreshUiAfterServiceExportStateChange();
     return true;
   }
 
@@ -4380,7 +4432,6 @@ function renderServiceExportTab() {
       </div>
 
       ${renderServiceExportStatus()}
-      ${renderLocalPackageBuildPanel()}
     </section>
   `;
 }
@@ -4471,20 +4522,42 @@ function renderDetectedPackagesInner() {
       )
       .map((pkg) => {
         const roundLabel = typeof pkg.round === 'number' ? `Build ${String(pkg.round + 1)}` : '—';
-        const version = typeof pkg.version === 'string' ? pkg.version : '';
-        const buildButton = `<button
-          type="button"
-          class="small-action detected-pkg-single-build"
-          data-action="build-single-package"
-          data-package="${escapeHtml(pkg.name)}"
-          title="Build & publish ${escapeHtml(pkg.name)}"
-        >Build</button>`;
+        const isBuilding = buildingPackageName === pkg.name;
+        const hasResult = buildResultPackageName === pkg.name;
+
+        let actionCell;
+        if (hasResult) {
+          const tone = buildResultSuccess ? 'is-success' : 'is-error';
+          const resultText = buildResultSuccess ? '✓ Built &amp; published' : escapeHtml(buildResultMessage);
+          actionCell = `<span class="detected-pkg-result ${tone}" title="${escapeHtml(buildResultMessage)}">${resultText}</span>`;
+        } else if (isBuilding) {
+          actionCell = `<button
+            type="button"
+            class="small-action detected-pkg-single-build is-building"
+            data-action="build-single-package"
+            data-package="${escapeHtml(pkg.name)}"
+            disabled
+            aria-busy="true"
+          ><span class="detected-pkg-spinner" aria-hidden="true"></span>Build</button>`;
+        } else {
+          actionCell = `<button
+            type="button"
+            class="small-action detected-pkg-single-build"
+            data-action="build-single-package"
+            data-package="${escapeHtml(pkg.name)}"
+            title="Build & publish ${escapeHtml(pkg.name)}"
+          >Build</button>`;
+        }
+
+        const rowClass =
+          'detected-pkg' +
+          (isBuilding ? ' is-building' : '') +
+          (hasResult ? ' is-result' : '');
         return `
-          <li class="detected-pkg">
+          <li class="${rowClass}">
             <span class="detected-pkg-round" title="Build order (lower builds first)">${escapeHtml(roundLabel)}</span>
             <span class="detected-pkg-name" title="${escapeHtml(pkg.name)}">${escapeHtml(pkg.name)}</span>
-            <span class="detected-pkg-version" title="${escapeHtml(version)}">${escapeHtml(version)}</span>
-            ${buildButton}
+            ${actionCell}
           </li>`;
       })
       .join('');
@@ -4502,6 +4575,14 @@ function renderDetectedPackagesInner() {
         >${buildPublishInProgress ? 'Building&#8230;' : 'Build All'}</button>`
       : '';
 
+  // Build All keeps a compact result line inside the package list (the old
+  // "Build & Publish" panel below Export Artifacts was removed). Per-package
+  // single builds report inline on their own row instead.
+  const buildAllResult =
+    buildResultPackageName.length === 0 && buildPublishResultMessage.length > 0
+      ? `<p class="detected-packages-result tone-${escapeHtml(buildPublishResultTone)}">${escapeHtml(buildPublishResultMessage)}</p>`
+      : '';
+
   return `
     <div class="detected-packages-head">
       <span class="detected-packages-title">
@@ -4514,70 +4595,12 @@ function renderDetectedPackagesInner() {
       </span>
     </div>
     ${body}
+    ${buildAllResult}
   `;
 }
 
 function roundOrInfinity(pkg) {
   return typeof pkg.round === 'number' ? pkg.round : Number.MAX_SAFE_INTEGER;
-}
-
-function renderLocalPackageBuildPanel() {
-  if (
-    !buildPublishInProgress &&
-    buildPublishResultMessage.length === 0 &&
-    buildPublishOrder.length === 0
-  ) {
-    return '';
-  }
-
-  const rows = buildPublishOrder
-    .map((name) => {
-      const state = buildPublishStatuses[name] ?? { phase: '', status: '', message: '' };
-      const badge = resolveBuildBadge(state);
-      const detail = state.message.length > 0 ? ` · ${escapeHtml(state.message)}` : '';
-      return `
-        <li class="build-step build-step-${escapeHtml(badge.tone)}">
-          <span class="build-step-badge">${escapeHtml(badge.label)}</span>
-          <span class="build-step-name">${escapeHtml(name)}</span>
-          <span class="build-step-detail">${detail}</span>
-        </li>
-      `;
-    })
-    .join('');
-
-  const orderMarkup =
-    buildPublishOrder.length > 0
-      ? `<ol class="build-step-list">${rows}</ol>`
-      : '<p class="build-panel-pending">Resolving build order…</p>';
-
-  const resultMarkup =
-    buildPublishResultMessage.length > 0
-      ? `<p class="build-panel-result tone-${escapeHtml(buildPublishResultTone)}">${escapeHtml(buildPublishResultMessage)}</p>`
-      : '';
-
-  return `
-    <section class="build-panel" aria-label="Package build progress" aria-live="polite">
-      <h3 class="build-panel-title">Build &amp; Publish</h3>
-      ${orderMarkup}
-      ${resultMarkup}
-    </section>
-  `;
-}
-
-function resolveBuildBadge(state) {
-  if (state.status === 'failed') {
-    return { label: 'Failed', tone: 'error' };
-  }
-  if (state.status === 'skipped') {
-    return { label: 'Skipped', tone: 'muted' };
-  }
-  if (state.status === 'running') {
-    return { label: state.phase === 'publish' ? 'Publishing' : 'Building', tone: 'info' };
-  }
-  if (state.status === 'done') {
-    return { label: state.phase === 'publish' ? 'Published' : 'Built', tone: 'success' };
-  }
-  return { label: 'Pending', tone: 'muted' };
 }
 
 function renderServiceExportMappingRows(

@@ -1984,7 +1984,8 @@ export class RegionSidebarProvider
     }
 
     this.buildPublishInProgress = true;
-    this.npmBuildChannel.show(true);
+    // Log to the output channel but do not steal focus by auto-opening it.
+    // Users can open "SAP Tools: NPM Build" manually if they want to follow along.
     this.npmBuildChannel.appendLine(
       `\n=== Build & publish all local packages (${new Date().toISOString()}) ===`
     );
