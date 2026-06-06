@@ -112,7 +112,11 @@ export async function runBuildPublishAll(
       }
 
       request.onProgress({ packageName: name, phase: 'build', status: 'running', index, total });
-      const buildOutcome = await buildPackage(pkg, request.onOutput);
+      const buildOutcome = await buildPackage(pkg, {
+        registryUrl: request.registryUrl,
+        authToken: request.authToken,
+        onOutput: request.onOutput,
+      });
       if (buildOutcome === 'skipped') {
         skippedCount += 1;
       } else {

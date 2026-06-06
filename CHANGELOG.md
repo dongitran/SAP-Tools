@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.10.20 (stable)
+- Fix `pnpm install` during local package build to correctly use the local Verdaccio registry instead of the public npm registry.
+
 ## 0.10.19 (stable)
 - Fix local package building to run `pnpm i --shamefully-hoist` before `npm run build` to ensure dependencies are present.
 
