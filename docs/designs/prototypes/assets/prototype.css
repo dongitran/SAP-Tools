@@ -1872,29 +1872,6 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
   flex: 0 0 auto;
 }
 
-.service-map-row-group {
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
-  border-bottom: 1px solid color-mix(in oklab, var(--border-color) 76%, var(--mix-base));
-}
-
-.service-map-row-group:last-child {
-  border-bottom: 0;
-}
-
-.service-map-row-group .service-map-row {
-  border-bottom: 0;
-  flex: 1 1 auto;
-}
-
-.service-map-build {
-  flex: 0 0 auto;
-  align-self: center;
-  white-space: nowrap;
-  margin-right: 6px;
-}
-
 .build-panel {
   margin-top: 10px;
   border: 1px solid var(--border-color);
@@ -2014,9 +1991,21 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
   color: var(--muted-color);
 }
 
-.detected-packages-config {
+.detected-packages-actions {
   flex: 0 0 auto;
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detected-packages-config {
+  flex: 0 0 auto;
+}
+
+.detected-packages-build {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .detected-packages-empty {

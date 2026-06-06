@@ -47,7 +47,7 @@ import type { HanaSqlWorkbench } from './hanaSqlWorkbench';
 import { writeScopeIfChanged, type SharedCfScope } from './scopeSync';
 import { readLocalPackagesConfig } from './localPackages/localPackagesConfig';
 import { VerdaccioManager } from './localPackages/verdaccioManager';
-import { runBuildPublishForService } from './localPackages/buildPublishOrchestrator';
+import { runBuildPublishAll } from './localPackages/buildPublishOrchestrator';
 import { scanLocalPackages } from './localPackages/localPackageScanner';
 import { buildDependencyOrder } from './localPackages/dependencyGraph';
 
@@ -81,7 +81,7 @@ const MSG_EXPORT_SQLTOOLS_CONFIG = 'sapTools.exportSqlToolsConfig';
 const MSG_OPEN_HANA_SQL_FILE = 'sapTools.openHanaSqlFile';
 const MSG_RUN_HANA_TABLE_SELECT = 'sapTools.runHanaTableSelect';
 const MSG_OPEN_SQLTOOLS_EXTENSION = 'sapTools.openSqlToolsExtension';
-const MSG_BUILD_PUBLISH_PACKAGES = 'sapTools.buildPublishPackages';
+const MSG_BUILD_PUBLISH_ALL = 'sapTools.buildPublishAll';
 const MSG_LOCAL_REGISTRY_START = 'sapTools.localRegistryStart';
 const MSG_LOCAL_REGISTRY_STOP = 'sapTools.localRegistryStop';
 const MSG_LOCAL_REGISTRY_STATUS = 'sapTools.localRegistryStatus';
@@ -508,8 +508,8 @@ export class RegionSidebarProvider
       return;
     }
 
-    if (type === MSG_BUILD_PUBLISH_PACKAGES && isAppIdMessage(message)) {
-      await this.handleBuildPublishPackages(String(message['appId']));
+    if (type === MSG_BUILD_PUBLISH_ALL) {
+      await this.handleBuildPublishAll();
       return;
     }
 
@@ -1937,32 +1937,21 @@ export class RegionSidebarProvider
 
   // ── Local package build + publish (Verdaccio) ────────────────────────────
 
-  private async handleBuildPublishPackages(appId: string): Promise<void> {
+  private async handleBuildPublishAll(): Promise<void> {
     if (this.buildPublishInProgress) {
-      this.postBuildResult(appId, false, 'A build & publish run is already in progress.');
-      return;
-    }
-
-    const mapping = this.serviceFolderMappings.find((entry) => entry.appId === appId);
-    if (mapping === undefined || mapping.folderPath.length === 0) {
-      this.postBuildResult(
-        appId,
-        false,
-        'This service is not mapped to a local folder. Map it in the Apps tab first.'
-      );
+      this.postBuildResult(false, 'A build & publish run is already in progress.');
       return;
     }
 
     const rootFolderPath = this.selectedLocalRootFolderPath.trim();
     if (rootFolderPath.length === 0) {
-      this.postBuildResult(appId, false, 'Select a local root folder before building packages.');
+      this.postBuildResult(false, 'Select a local root folder before building packages.');
       return;
     }
 
     const config = readLocalPackagesConfig();
     if (config.namePatterns.trim().length === 0) {
       this.postBuildResult(
-        appId,
         false,
         'Configure "sapTools.localPackages.namePatterns" (e.g. "@example/") to detect your packages.'
       );
@@ -1972,7 +1961,7 @@ export class RegionSidebarProvider
     this.buildPublishInProgress = true;
     this.npmBuildChannel.show(true);
     this.npmBuildChannel.appendLine(
-      `\n=== Build & publish for "${mapping.appName}" (${new Date().toISOString()}) ===`
+      `\n=== Build & publish all local packages (${new Date().toISOString()}) ===`
     );
 
     try {
@@ -1982,17 +1971,16 @@ export class RegionSidebarProvider
       });
       await this.postRegistryState();
 
-      const outcome = await runBuildPublishForService({
+      const outcome = await runBuildPublishAll({
         rootFolderPath,
-        serviceFolderPath: mapping.folderPath,
         config,
         registryUrl: this.verdaccioManager.getRegistryUrl(config.registry.port),
         authToken: this.verdaccioManager.getAuthToken(),
         onOrder: (order) => {
-          this.postMessage({ type: MSG_BUILD_PUBLISH_PREVIEW, appId, order: [...order] });
+          this.postMessage({ type: MSG_BUILD_PUBLISH_PREVIEW, order: [...order] });
         },
         onProgress: (progress) => {
-          this.postMessage({ type: MSG_BUILD_PUBLISH_PROGRESS, appId, ...progress });
+          this.postMessage({ type: MSG_BUILD_PUBLISH_PROGRESS, ...progress });
         },
         onOutput: (chunk) => {
           this.npmBuildChannel.append(chunk);
@@ -2000,15 +1988,15 @@ export class RegionSidebarProvider
       });
 
       const summary =
-        `Published ${String(outcome.order.length)} package(s) for "${mapping.appName}" ` +
-        `(${String(outcome.builtCount)} built, ${String(outcome.skippedCount)} skipped)` +
-        (outcome.installedInService ? ' and reinstalled them in the service.' : '.');
+        `Published ${String(outcome.order.length)} package(s) ` +
+        `(${String(outcome.builtCount)} built, ${String(outcome.skippedCount)} skipped) ` +
+        'to the local registry.';
       this.npmBuildChannel.appendLine(summary);
-      this.postBuildResult(appId, true, summary);
+      this.postBuildResult(true, summary);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Build & publish failed.';
       this.npmBuildChannel.appendLine(`ERROR: ${message}`);
-      this.postBuildResult(appId, false, message);
+      this.postBuildResult(false, message);
     } finally {
       this.buildPublishInProgress = false;
       await this.postRegistryState();
@@ -2099,8 +2087,8 @@ export class RegionSidebarProvider
     }
   }
 
-  private postBuildResult(appId: string, success: boolean, message: string): void {
-    this.postMessage({ type: MSG_BUILD_PUBLISH_RESULT, appId, success, message });
+  private postBuildResult(success: boolean, message: string): void {
+    this.postMessage({ type: MSG_BUILD_PUBLISH_RESULT, success, message });
   }
 
   private async handleExportSqlToolsConfig(
@@ -3556,10 +3544,6 @@ function isNonEmptyString(value: unknown, maxLength: number): value is string {
 
 function isLoginSubmitMessage(value: Record<string, unknown>): boolean {
   return isNonEmptyString(value['email'], 256) && isNonEmptyString(value['password'], 256);
-}
-
-function isAppIdMessage(value: Record<string, unknown>): boolean {
-  return isNonEmptyString(value['appId'], 256);
 }
 
 function readLoginSubmitPayload(value: Record<string, unknown>): {

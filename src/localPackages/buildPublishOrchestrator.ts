@@ -1,26 +1,18 @@
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-
-import { buildOrderForService, type PackageNode } from './dependencyGraph';
+import { buildDependencyOrder, type PackageNode } from './dependencyGraph';
 import type { LocalPackagesConfig } from './localPackagesConfig';
 import { scanLocalPackages, type LocalPackage } from './localPackageScanner';
 import { buildPackage } from './packageBuilder';
-import {
-  npmRegistryAuthKey,
-  publishPackage,
-  resolvePublishTag,
-} from './packagePublisher';
-import { runCommand } from './processRunner';
+import { publishPackage } from './packagePublisher';
 
 /**
- * Drives the per-service pipeline: scan the root for local packages, work out which
- * ones the service needs and in what order, then build → publish each to the local
- * registry, and finally reinstall them in the service. The registry must already be
- * running; the caller passes its URL + auth token (so this module stays decoupled from
- * the Verdaccio lifecycle manager).
+ * Drives the package pipeline: scan the root folder for locally-developed npm packages
+ * (by the configured name regex), order them topologically, then build → publish each
+ * to the local registry in that order. This operates on the *packages* found under the
+ * root — not on the Cloud Foundry app/service list, which is a separate concept. The
+ * registry must already be running; the caller passes its URL + auth token.
  */
 
-export type BuildPublishPhase = 'build' | 'publish' | 'install';
+export type BuildPublishPhase = 'build' | 'publish';
 export type BuildPublishStatus = 'running' | 'done' | 'skipped' | 'failed';
 
 export interface BuildPublishProgress {
@@ -34,7 +26,6 @@ export interface BuildPublishProgress {
 
 export interface BuildPublishRequest {
   readonly rootFolderPath: string;
-  readonly serviceFolderPath: string;
   readonly config: LocalPackagesConfig;
   readonly registryUrl: string;
   readonly authToken: string;
@@ -48,17 +39,19 @@ export interface BuildPublishOutcome {
   readonly order: readonly string[];
   readonly builtCount: number;
   readonly skippedCount: number;
-  readonly installedInService: boolean;
 }
 
-export async function runBuildPublishForService(
+/**
+ * Builds and publishes every detected local package, in dependency order (a package is
+ * built only after everything it depends on). Throws if no packages are found or the
+ * dependency graph has a cycle.
+ */
+export async function runBuildPublishAll(
   request: BuildPublishRequest
 ): Promise<BuildPublishOutcome> {
-  const { config } = request;
-
   const packages = await scanLocalPackages(
     request.rootFolderPath,
-    config.namePatterns
+    request.config.namePatterns
   );
   if (packages.length === 0) {
     throw new Error(
@@ -71,19 +64,11 @@ export async function runBuildPublishForService(
     name: pkg.name,
     deps: pkg.dependencyNames,
   }));
-
-  const serviceDepSpecs = await readServiceDependencySpecs(request.serviceFolderPath);
-  const serviceDepNames = Object.keys(serviceDepSpecs).filter((name) => byName.has(name));
-
-  const order = buildOrderForService(serviceDepNames, nodes).ordered;
-  if (order.length === 0) {
-    throw new Error(
-      'This service does not depend on any detected local package, so there is nothing to build.'
-    );
-  }
+  const order = buildDependencyOrder(nodes).ordered;
   request.onOrder?.(order);
 
   const total = order.length;
+  const tag = request.config.registry.defaultTag;
   let builtCount = 0;
   let skippedCount = 0;
 
@@ -112,12 +97,11 @@ export async function runBuildPublishForService(
       });
 
       request.onProgress({ packageName: name, phase: 'publish', status: 'running', index, total });
-      const tag = resolvePublishTag(serviceDepSpecs[name], config.registry.defaultTag);
-      const publishResult = await publishPackage(pkg, {
+      const result = await publishPackage(pkg, {
         registryUrl: request.registryUrl,
         tag,
         authToken: request.authToken,
-        versionBumpStrategy: config.versionBumpStrategy,
+        versionBumpStrategy: request.config.versionBumpStrategy,
         onOutput: request.onOutput,
       });
       request.onProgress({
@@ -126,7 +110,7 @@ export async function runBuildPublishForService(
         status: 'done',
         index,
         total,
-        message: `${publishResult.publishedVersion} (${publishResult.tag})`,
+        message: `${result.publishedVersion} (${result.tag})`,
       });
     } catch (error) {
       request.onProgress({
@@ -141,68 +125,5 @@ export async function runBuildPublishForService(
     }
   }
 
-  let installedInService = false;
-  if (config.installInServiceAfterPublish) {
-    request.onProgress({
-      packageName: '(service)',
-      phase: 'install',
-      status: 'running',
-      index: total,
-      total,
-    });
-    await installInService(request);
-    installedInService = true;
-    request.onProgress({
-      packageName: '(service)',
-      phase: 'install',
-      status: 'done',
-      index: total,
-      total,
-    });
-  }
-
-  return { order, builtCount, skippedCount, installedInService };
-}
-
-async function installInService(request: BuildPublishRequest): Promise<void> {
-  const authKey = npmRegistryAuthKey(request.registryUrl);
-  const scopeArgs = request.config.registry.scopes.map(
-    (scope) => `--${scope}:registry=${request.registryUrl}`
-  );
-  await runCommand(
-    'npm',
-    ['install', ...scopeArgs, `--${authKey}:_authToken=${request.authToken}`],
-    { cwd: request.serviceFolderPath, onOutput: request.onOutput }
-  );
-}
-
-async function readServiceDependencySpecs(
-  serviceFolderPath: string
-): Promise<Record<string, string>> {
-  let raw: string;
-  try {
-    raw = await readFile(join(serviceFolderPath, 'package.json'), 'utf8');
-  } catch {
-    return {};
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return {};
-  }
-  if (!isRecord(parsed) || !isRecord(parsed['dependencies'])) {
-    return {};
-  }
-  const specs: Record<string, string> = {};
-  for (const [name, spec] of Object.entries(parsed['dependencies'])) {
-    if (typeof spec === 'string') {
-      specs[name] = spec;
-    }
-  }
-  return specs;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return { order, builtCount, skippedCount };
 }

@@ -138,7 +138,7 @@ const UPDATE_SYNC_INTERVAL_MESSAGE_TYPE = 'sapTools.updateSyncInterval';
 const SYNC_NOW_MESSAGE_TYPE = 'sapTools.syncNow';
 const LOGOUT_MESSAGE_TYPE = 'sapTools.logout';
 const SELECT_LOCAL_ROOT_FOLDER_MESSAGE_TYPE = 'sapTools.selectLocalRootFolder';
-const BUILD_PUBLISH_PACKAGES_MESSAGE_TYPE = 'sapTools.buildPublishPackages';
+const BUILD_PUBLISH_ALL_MESSAGE_TYPE = 'sapTools.buildPublishAll';
 const LOCAL_REGISTRY_START_MESSAGE_TYPE = 'sapTools.localRegistryStart';
 const LOCAL_REGISTRY_STOP_MESSAGE_TYPE = 'sapTools.localRegistryStop';
 const LOCAL_REGISTRY_STATUS_MESSAGE_TYPE = 'sapTools.localRegistryStatus';
@@ -196,7 +196,6 @@ let serviceExportInProgress = false;
 let localRegistryRunning = false;
 let localRegistryInstalling = false;
 let localRegistryUrl = '';
-let buildPublishActiveAppId = '';
 let buildPublishInProgress = false;
 let buildPublishOrder = [];
 let buildPublishStatuses = {};
@@ -595,8 +594,7 @@ window.addEventListener('message', (event) => {
   }
 
   if (msg.type === 'sapTools.buildPublishPreview') {
-    if (typeof msg.appId === 'string' && Array.isArray(msg.order)) {
-      buildPublishActiveAppId = msg.appId;
+    if (Array.isArray(msg.order)) {
       buildPublishOrder = msg.order.filter((name) => typeof name === 'string');
       buildPublishStatuses = {};
       refreshUiAfterServiceExportStateChange();
@@ -2170,22 +2168,16 @@ function handleServiceExportAction(action, actionElement) {
     return triggerSqlToolsConfigExport();
   }
 
-  if (action === 'build-publish-packages') {
-    const appId = actionElement.dataset.appId ?? '';
-    if (appId.length === 0 || vscodeApi === null) {
+  if (action === 'build-publish-all') {
+    if (vscodeApi === null || detectedPackages.length === 0) {
       return true;
     }
-    const mapping = serviceFolderMappings.find((entry) => entry.appId === appId);
-    if (mapping === undefined || !mapping.isMapped) {
-      return true;
-    }
-    buildPublishActiveAppId = appId;
     buildPublishInProgress = true;
     buildPublishOrder = [];
     buildPublishStatuses = {};
-    buildPublishResultMessage = `Building packages for ${mapping.appName}…`;
+    buildPublishResultMessage = 'Building & publishing packages…';
     buildPublishResultTone = 'info';
-    vscodeApi.postMessage({ type: BUILD_PUBLISH_PACKAGES_MESSAGE_TYPE, appId });
+    vscodeApi.postMessage({ type: BUILD_PUBLISH_ALL_MESSAGE_TYPE });
     return true;
   }
 
@@ -4419,7 +4411,7 @@ function renderDetectedPackagesInner() {
     return `
       <div class="detected-packages-head">
         <span class="detected-packages-title">NPM Packages</span>
-        ${configureButton}
+        <span class="detected-packages-actions">${configureButton}</span>
       </div>
       <p class="detected-packages-empty">Set a detection regex (<code>sapTools.localPackages.namePatterns</code>) to list packages here.</p>
     `;
@@ -4462,11 +4454,25 @@ function renderDetectedPackagesInner() {
       ? `<span class="detected-packages-patterns" title="${escapeHtml(detectedPackagesPatterns)}">${escapeHtml(detectedPackagesPatterns)}</span>`
       : '';
 
+  const buildAllButton =
+    count > 0
+      ? `<button
+          type="button"
+          class="primary-action detected-packages-build"
+          data-action="build-publish-all"
+          title="Build & publish all detected packages to the local registry, in dependency order"
+          ${buildPublishInProgress ? 'disabled' : ''}
+        >${buildPublishInProgress ? 'Building&#8230;' : 'Build &amp; Publish all'}</button>`
+      : '';
+
   return `
     <div class="detected-packages-head">
       <span class="detected-packages-title">NPM Packages (${String(count)})</span>
       ${patternsLabel}
-      ${configureButton}
+      <span class="detected-packages-actions">
+        ${buildAllButton}
+        ${configureButton}
+      </span>
     </div>
     ${body}
   `;
@@ -4478,7 +4484,7 @@ function roundOrInfinity(pkg) {
 
 function renderLocalPackageBuildPanel() {
   if (
-    buildPublishActiveAppId.length === 0 &&
+    !buildPublishInProgress &&
     buildPublishResultMessage.length === 0 &&
     buildPublishOrder.length === 0
   ) {
@@ -4585,33 +4591,19 @@ function renderServiceExportMappingRows(
       `;
     }
 
-    const isBuildingThis =
-      buildPublishInProgress && buildPublishActiveAppId === mapping.appId;
     return `
-      <div class="service-map-row-group${isSelected ? ' is-selected' : ''}">
-        <button
-          type="button"
-          class="service-map-row${isSelected ? ' is-selected' : ''}"
-          data-action="select-export-service"
-          data-app-id="${escapeHtml(mapping.appId)}"
-        >
-          <span class="service-map-name">${escapeHtml(mapping.appName)}</span>
-          <span
-            class="service-map-state service-map-state-mapped"
-            title="${escapeHtml(mapping.folderPath)}"
-          >Mapped</span>
-        </button>
-        <button
-          type="button"
-          class="small-action service-map-build"
-          data-action="build-publish-packages"
-          data-app-id="${escapeHtml(mapping.appId)}"
-          title="Build & publish the npm packages this service needs to the local registry"
-          ${buildPublishInProgress ? 'disabled' : ''}
-        >
-          ${isBuildingThis ? 'Building&#8230;' : 'Build &amp; Publish'}
-        </button>
-      </div>
+      <button
+        type="button"
+        class="service-map-row${isSelected ? ' is-selected' : ''}"
+        data-action="select-export-service"
+        data-app-id="${escapeHtml(mapping.appId)}"
+      >
+        <span class="service-map-name">${escapeHtml(mapping.appName)}</span>
+        <span
+          class="service-map-state service-map-state-mapped"
+          title="${escapeHtml(mapping.folderPath)}"
+        >Mapped</span>
+      </button>
     `;
   });
 
@@ -5953,8 +5945,11 @@ function filterAppCatalogRows(apps) {
 }
 
 function resolveServiceExportRows(availableApps) {
+  // Only apps actually running on CF (started, instances > 0) are services you can map
+  // and export — mirror the Logs tab so stopped / scaled-to-zero apps are hidden here too.
+  const runningApps = filterLoggableCatalogApps(availableApps);
   const mappingByAppId = new Map(serviceFolderMappings.map((mapping) => [mapping.appId, mapping]));
-  return availableApps.map((app) => {
+  return runningApps.map((app) => {
     const existingMapping = mappingByAppId.get(app.id);
     if (existingMapping !== undefined) {
       return existingMapping;
