@@ -401,14 +401,22 @@ function normalizeCacheState(rawState: unknown): CacheState {
   const rawUsers = normalizeUsers(rawState['users']);
   const rawExportRootFolders = normalizeExportRootFolders(rawState['exportRootFolders']);
   const rawHanaTableLists = normalizeHanaTableLists(rawState['hanaTableLists']);
+  const rawLocalPackages = normalizeLocalPackagesCacheEntry(rawState['localPackages']);
 
-  return {
+  const state: CacheState = {
     version: 1,
     settings: rawSettings,
     users: rawUsers,
     exportRootFolders: rawExportRootFolders,
     hanaTableLists: rawHanaTableLists,
   };
+
+  if (rawLocalPackages !== null) {
+    // Cannot assign undefined directly due to exactOptionalPropertyTypes
+    Object.assign(state, { localPackages: rawLocalPackages });
+  }
+
+  return state;
 }
 
 function normalizeHanaTableLists(
@@ -826,4 +834,47 @@ function createDefaultCacheState(): CacheState {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function normalizeLocalPackagesCacheEntry(
+  rawEntry: unknown
+): LocalPackagesCacheEntry | null {
+  if (!isRecord(rawEntry)) {
+    return null;
+  }
+
+  const cacheKey = readString(rawEntry['cacheKey']);
+  if (cacheKey.length === 0) {
+    return null;
+  }
+
+  const updatedAt = readString(rawEntry['updatedAt']);
+  if (updatedAt.length === 0) {
+    return null;
+  }
+
+  let packages: readonly CachedLocalPackage[] = [];
+  const rawPackages = rawEntry['packages'];
+  if (Array.isArray(rawPackages)) {
+    packages = rawPackages
+      .map(normalizeCachedLocalPackage)
+      .filter((pkg): pkg is CachedLocalPackage => pkg !== null);
+  }
+
+  return { cacheKey, packages, updatedAt };
+}
+
+function normalizeCachedLocalPackage(rawPkg: unknown): CachedLocalPackage | null {
+  if (!isRecord(rawPkg)) {
+    return null;
+  }
+  const name = readString(rawPkg['name']);
+  if (name.length === 0) {
+    return null;
+  }
+  const version = readString(rawPkg['version']);
+  const hasBuildScript = rawPkg['hasBuildScript'] === true;
+  const roundRaw = rawPkg['round'];
+  const round = typeof roundRaw === 'number' ? roundRaw : null;
+  return { name, version, hasBuildScript, round };
 }

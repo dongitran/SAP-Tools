@@ -4407,6 +4407,10 @@ function renderDetectedPackagesList() {
 }
 
 function renderDetectedPackagesInner() {
+  const loadingIndicator = detectedPackagesLoading
+    ? '<span class="sql-tables-spinner" aria-hidden="true" title="Scanning..."></span>'
+    : '';
+
   const configureButton = `
     <button
       type="button"
@@ -4419,20 +4423,13 @@ function renderDetectedPackagesInner() {
   if (!detectedPackagesConfigured) {
     return `
       <div class="detected-packages-head">
-        <span class="detected-packages-title">Packages</span>
+        <span class="detected-packages-title">
+          Packages
+          ${loadingIndicator}
+        </span>
         <span class="detected-packages-actions">${configureButton}</span>
       </div>
       <p class="detected-packages-empty">Set a detection regex (<code>sapTools.localPackages.namePatterns</code>) to list packages here.</p>
-    `;
-  }
-
-  if (detectedPackagesLoading && detectedPackages.length === 0) {
-    return `
-      <div class="detected-packages-head">
-        <span class="detected-packages-title">Packages</span>
-        <span class="detected-packages-actions">${configureButton}</span>
-      </div>
-      <p class="detected-packages-empty">Scanning&#8230;</p>
     `;
   }
 
@@ -4441,6 +4438,7 @@ function renderDetectedPackagesInner() {
   if (detectedPackagesError.length > 0) {
     body = `<p class="detected-packages-empty is-error">${escapeHtml(detectedPackagesError)}</p>`;
   } else if (count === 0) {
+    // If loading and empty, just let the title spinner indicate progress, no need for "Scanning..." text.
     body = '<p class="detected-packages-empty">No packages matched the regex under the root folder.</p>';
   } else {
     const rows = detectedPackages
@@ -4481,7 +4479,10 @@ function renderDetectedPackagesInner() {
 
   return `
     <div class="detected-packages-head">
-      <span class="detected-packages-title">Packages (${String(count)})</span>
+      <span class="detected-packages-title">
+        Packages (${String(count)})
+        ${loadingIndicator}
+      </span>
       <span class="detected-packages-actions">
         ${buildAllButton}
         ${configureButton}

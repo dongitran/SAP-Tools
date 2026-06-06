@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.10 (stable)
+- Fix bug where local packages cache was not persisted across VS Code reloads.
+- Fix missing loading spinner when updating local packages configuration.
+
 ## 0.10.9 (stable)
 - Saving `sapTools.localPackages.namePatterns` in VS Code Settings now immediately triggers a re-scan of local packages — no restart required. A loading indicator shows while scanning and the Configure button is disabled during the scan.
 - Local package scan results are now cached. On VS Code restart, the cached list is shown instantly while a background re-scan verifies it; if the config has changed, the scan runs fresh.

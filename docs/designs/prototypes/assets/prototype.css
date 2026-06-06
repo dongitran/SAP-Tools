@@ -1977,6 +1977,9 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
 }
 
 .detected-packages-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.7rem;
   font-weight: 600;
 }
