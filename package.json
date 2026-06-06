@@ -2,7 +2,7 @@
   "name": "sap-tools",
   "displayName": "SAP Tools",
   "description": "All-in-one toolbox for SAP BTP development workflows",
-  "version": "0.10.10",
+  "version": "0.10.11",
   "publisher": "dongtran",
   "icon": "resources/icon.png",
   "license": "MIT",
@@ -84,6 +84,13 @@
             "scope": "application",
             "default": "",
             "markdownDescription": "Comma-separated patterns identifying which repos under the Apps-tab root folder are locally-developed npm packages (as opposed to service repos). Each pattern is tested against the `name` in a folder's `package.json`; a pattern that is not valid regex is matched literally, so a plain scope prefix like `@example/` works. Detection keys off the package *name*, not the presence of a `build` script (so dependency-only packages such as `@example/core` are still found). Leave empty to disable local-package scanning."
+          },
+          "sapTools.localPackages.prePublishScript": {
+            "type": "string",
+            "scope": "application",
+            "default": "",
+            "editPresentation": "multilineText",
+            "markdownDescription": "Optional JavaScript code (executed via `node -e`) to run in the package folder before building and publishing. Use this to modify `package.json` dynamically (e.g. replacing text) prior to the pipeline. You can use standard Node APIs like `fs` and `path`."
           },
           "sapTools.localPackages.versionBumpStrategy": {
             "type": "string",

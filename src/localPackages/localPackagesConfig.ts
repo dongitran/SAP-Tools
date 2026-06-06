@@ -23,6 +23,7 @@ export interface LocalRegistryConfig {
 
 export interface LocalPackagesConfig {
   readonly namePatterns: string;
+  readonly prePublishScript: string;
   readonly versionBumpStrategy: VersionBumpStrategy;
   readonly installInServiceAfterPublish: boolean;
   readonly registry: LocalRegistryConfig;
@@ -32,6 +33,7 @@ export function readLocalPackagesConfig(): LocalPackagesConfig {
   const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
 
   const namePatterns = readString(config, 'localPackages.namePatterns', '');
+  const prePublishScript = readString(config, 'localPackages.prePublishScript', '');
   const versionBumpStrategy = readVersionBumpStrategy(config);
   const installInServiceAfterPublish = config.get<boolean>(
     'localPackages.installInServiceAfterPublish',
@@ -45,6 +47,7 @@ export function readLocalPackagesConfig(): LocalPackagesConfig {
 
   return {
     namePatterns,
+    prePublishScript,
     versionBumpStrategy,
     installInServiceAfterPublish,
     registry: {

@@ -3,6 +3,7 @@ import type { LocalPackagesConfig } from './localPackagesConfig';
 import { scanLocalPackages, type LocalPackage } from './localPackageScanner';
 import { buildPackage } from './packageBuilder';
 import { publishPackage } from './packagePublisher';
+import { runCommand } from './processRunner';
 
 /**
  * Drives the package pipeline: scan the root folder for locally-developed npm packages
@@ -12,7 +13,7 @@ import { publishPackage } from './packagePublisher';
  * registry must already be running; the caller passes its URL + auth token.
  */
 
-export type BuildPublishPhase = 'build' | 'publish';
+export type BuildPublishPhase = 'pre-publish-script' | 'build' | 'publish';
 export type BuildPublishStatus = 'running' | 'done' | 'skipped' | 'failed';
 
 export interface BuildPublishProgress {
@@ -33,6 +34,7 @@ export interface BuildPublishRequest {
   readonly onOrder?: (order: readonly string[]) => void;
   readonly onProgress: (progress: BuildPublishProgress) => void;
   readonly onOutput: (chunk: string) => void;
+  readonly targetPackageName?: string;
 }
 
 export interface BuildPublishOutcome {
@@ -64,7 +66,15 @@ export async function runBuildPublishAll(
     name: pkg.name,
     deps: pkg.dependencyNames,
   }));
-  const order = buildDependencyOrder(nodes).ordered;
+  const fullOrder = buildDependencyOrder(nodes).ordered;
+  const order = request.targetPackageName !== undefined
+    ? fullOrder.filter((name) => name === request.targetPackageName)
+    : fullOrder;
+
+  if (request.targetPackageName !== undefined && order.length === 0) {
+    throw new Error(`Package "${request.targetPackageName}" not found under the root folder.`);
+  }
+
   request.onOrder?.(order);
 
   const total = order.length;
@@ -80,6 +90,27 @@ export async function runBuildPublishAll(
     }
 
     try {
+      if (request.config.prePublishScript.length > 0) {
+        request.onProgress({
+          packageName: name,
+          phase: 'pre-publish-script',
+          status: 'running',
+          index,
+          total,
+        });
+        await runCommand('node', ['-e', request.config.prePublishScript], {
+          cwd: pkg.dir,
+          onOutput: request.onOutput,
+        });
+        request.onProgress({
+          packageName: name,
+          phase: 'pre-publish-script',
+          status: 'done',
+          index,
+          total,
+        });
+      }
+
       request.onProgress({ packageName: name, phase: 'build', status: 'running', index, total });
       const buildOutcome = await buildPackage(pkg, request.onOutput);
       if (buildOutcome === 'skipped') {

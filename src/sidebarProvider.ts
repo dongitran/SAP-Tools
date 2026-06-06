@@ -82,6 +82,7 @@ const MSG_OPEN_HANA_SQL_FILE = 'sapTools.openHanaSqlFile';
 const MSG_RUN_HANA_TABLE_SELECT = 'sapTools.runHanaTableSelect';
 const MSG_OPEN_SQLTOOLS_EXTENSION = 'sapTools.openSqlToolsExtension';
 const MSG_BUILD_PUBLISH_ALL = 'sapTools.buildPublishAll';
+const MSG_BUILD_SINGLE_PACKAGE = 'sapTools.buildSinglePackage';
 const MSG_LOCAL_REGISTRY_START = 'sapTools.localRegistryStart';
 const MSG_LOCAL_REGISTRY_STOP = 'sapTools.localRegistryStop';
 const MSG_LOCAL_REGISTRY_STATUS = 'sapTools.localRegistryStatus';
@@ -522,6 +523,18 @@ export class RegionSidebarProvider
 
     if (type === MSG_BUILD_PUBLISH_ALL) {
       await this.handleBuildPublishAll();
+      return;
+    }
+
+    if (type === MSG_BUILD_SINGLE_PACKAGE) {
+      const payload = message['payload'];
+      if (
+        typeof payload === 'object' &&
+        payload !== null &&
+        typeof (payload as { packageName?: unknown }).packageName === 'string'
+      ) {
+        await this.handleBuildPublishAll((payload as { packageName: string }).packageName);
+      }
       return;
     }
 
@@ -1949,7 +1962,7 @@ export class RegionSidebarProvider
 
   // ── Local package build + publish (Verdaccio) ────────────────────────────
 
-  private async handleBuildPublishAll(): Promise<void> {
+  private async handleBuildPublishAll(targetPackageName?: string): Promise<void> {
     if (this.buildPublishInProgress) {
       this.postBuildResult(false, 'A build & publish run is already in progress.');
       return;
@@ -1983,7 +1996,7 @@ export class RegionSidebarProvider
       });
       await this.postRegistryState();
 
-      const outcome = await runBuildPublishAll({
+      const requestOpts: import('./localPackages/buildPublishOrchestrator').BuildPublishRequest = {
         rootFolderPath,
         config,
         registryUrl: this.verdaccioManager.getRegistryUrl(config.registry.port),
@@ -1997,7 +2010,13 @@ export class RegionSidebarProvider
         onOutput: (chunk) => {
           this.npmBuildChannel.append(chunk);
         },
-      });
+      };
+
+      if (targetPackageName !== undefined) {
+        Object.assign(requestOpts, { targetPackageName });
+      }
+
+      const outcome = await runBuildPublishAll(requestOpts);
 
       const summary =
         `Published ${String(outcome.order.length)} package(s) ` +

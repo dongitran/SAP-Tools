@@ -139,6 +139,7 @@ const SYNC_NOW_MESSAGE_TYPE = 'sapTools.syncNow';
 const LOGOUT_MESSAGE_TYPE = 'sapTools.logout';
 const SELECT_LOCAL_ROOT_FOLDER_MESSAGE_TYPE = 'sapTools.selectLocalRootFolder';
 const BUILD_PUBLISH_ALL_MESSAGE_TYPE = 'sapTools.buildPublishAll';
+const BUILD_SINGLE_PACKAGE_MESSAGE_TYPE = 'sapTools.buildSinglePackage';
 const LOCAL_REGISTRY_START_MESSAGE_TYPE = 'sapTools.localRegistryStart';
 const LOCAL_REGISTRY_STOP_MESSAGE_TYPE = 'sapTools.localRegistryStop';
 const LOCAL_REGISTRY_STATUS_MESSAGE_TYPE = 'sapTools.localRegistryStatus';
@@ -2186,6 +2187,26 @@ function handleServiceExportAction(action, actionElement) {
     buildPublishResultMessage = 'Building & publishing packages…';
     buildPublishResultTone = 'info';
     vscodeApi.postMessage({ type: BUILD_PUBLISH_ALL_MESSAGE_TYPE });
+    return true;
+  }
+
+  if (action === 'build-single-package') {
+    if (vscodeApi === null || !actionElement) {
+      return true;
+    }
+    const packageName = actionElement.dataset.package;
+    if (!packageName) {
+      return true;
+    }
+    buildPublishInProgress = true;
+    buildPublishOrder = [];
+    buildPublishStatuses = {};
+    buildPublishResultMessage = \`Building & publishing \${packageName}…\`;
+    buildPublishResultTone = 'info';
+    vscodeApi.postMessage({
+      type: BUILD_SINGLE_PACKAGE_MESSAGE_TYPE,
+      payload: { packageName },
+    });
     return true;
   }
 
@@ -4450,16 +4471,20 @@ function renderDetectedPackagesInner() {
       )
       .map((pkg) => {
         const roundLabel = typeof pkg.round === 'number' ? `Build ${String(pkg.round + 1)}` : '—';
-        const noBuild = pkg.hasBuildScript
-          ? ''
-          : '<span class="detected-pkg-flag" title="No build script — published without building">no build</span>';
         const version = typeof pkg.version === 'string' ? pkg.version : '';
+        const buildButton = `<button
+          type="button"
+          class="small-action detected-pkg-single-build"
+          data-action="build-single-package"
+          data-package="${escapeHtml(pkg.name)}"
+          title="Build & publish ${escapeHtml(pkg.name)}"
+        >Build</button>`;
         return `
           <li class="detected-pkg">
             <span class="detected-pkg-round" title="Build order (lower builds first)">${escapeHtml(roundLabel)}</span>
             <span class="detected-pkg-name" title="${escapeHtml(pkg.name)}">${escapeHtml(pkg.name)}</span>
             <span class="detected-pkg-version" title="${escapeHtml(version)}">${escapeHtml(version)}</span>
-            ${noBuild}
+            ${buildButton}
           </li>`;
       })
       .join('');

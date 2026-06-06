@@ -2063,10 +2063,17 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
   white-space: nowrap;
 }
 
-.detected-pkg-flag {
-  color: var(--state-danger-fg);
-  font-size: 0.56rem;
-  white-space: nowrap;
+.detected-pkg-single-build {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  padding: 2px 8px;
+  font-size: 0.6rem;
+}
+
+.detected-pkg:hover .detected-pkg-single-build {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .panel-logs-bridge {

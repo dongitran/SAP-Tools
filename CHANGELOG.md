@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.11 (stable)
+- Removed "no build" UI flag; packages without a build script now appear normally.
+- Added a "Build" button to each package in the detected local packages list, appearing on hover to build & publish a single package.
+- Added `sapTools.localPackages.prePublishScript` configuration to allow running custom JS scripts via Node prior to building/publishing packages.
+
 ## 0.10.10 (stable)
 - Fix bug where local packages cache was not persisted across VS Code reloads.
 - Fix missing loading spinner when updating local packages configuration.
