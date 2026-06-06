@@ -153,7 +153,13 @@ function normalizeAppNames(appNames: readonly string[]): string[] {
   return normalizedNames;
 }
 
-async function collectRepoFolders(rootFolderPath: string): Promise<string[]> {
+/**
+ * Walks `rootFolderPath` (depth ≤ {@link MAX_SCAN_DEPTH}, skipping
+ * {@link SKIPPED_DIRECTORIES} such as `node_modules`) and returns every folder that
+ * directly contains a `package.json`. Exported so the local-package scanner can reuse
+ * the exact same traversal rules as the Apps-tab service-folder mapping.
+ */
+export async function collectRepoFolders(rootFolderPath: string): Promise<string[]> {
   const repoFolders: string[] = [];
   await walkDirectories(rootFolderPath, 0, repoFolders);
   return repoFolders;

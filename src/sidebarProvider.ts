@@ -45,6 +45,9 @@ import {
 import { refreshCfSyncSpace } from './cfSpaceRefresh';
 import type { HanaSqlWorkbench } from './hanaSqlWorkbench';
 import { writeScopeIfChanged, type SharedCfScope } from './scopeSync';
+import { readLocalPackagesConfig } from './localPackages/localPackagesConfig';
+import { VerdaccioManager } from './localPackages/verdaccioManager';
+import { runBuildPublishForService } from './localPackages/buildPublishOrchestrator';
 
 export const REGION_VIEW_ID = 'sapTools.regionView';
 
@@ -76,6 +79,10 @@ const MSG_EXPORT_SQLTOOLS_CONFIG = 'sapTools.exportSqlToolsConfig';
 const MSG_OPEN_HANA_SQL_FILE = 'sapTools.openHanaSqlFile';
 const MSG_RUN_HANA_TABLE_SELECT = 'sapTools.runHanaTableSelect';
 const MSG_OPEN_SQLTOOLS_EXTENSION = 'sapTools.openSqlToolsExtension';
+const MSG_BUILD_PUBLISH_PACKAGES = 'sapTools.buildPublishPackages';
+const MSG_LOCAL_REGISTRY_START = 'sapTools.localRegistryStart';
+const MSG_LOCAL_REGISTRY_STOP = 'sapTools.localRegistryStop';
+const MSG_LOCAL_REGISTRY_STATUS = 'sapTools.localRegistryStatus';
 const SQLTOOLS_EXTENSION_ID = 'mtxr.sqltools';
 const SQLTOOLS_ACTIVITY_BAR_COMMAND = 'workbench.view.extension.sqltools-activity-bar';
 const BUILTIN_EXTENSION_OPEN_COMMAND = 'extension.open';
@@ -105,6 +112,10 @@ const MSG_HANA_TABLE_SELECT_RESULT = 'sapTools.hanaTableSelectResult';
 const MSG_REFRESH_HANA_TABLES = 'sapTools.refreshHanaTables';
 const MSG_CF_TOPOLOGY = 'sapTools.cfTopology';
 const MSG_TOPOLOGY_SCOPE_RESOLVED = 'sapTools.topologyScopeResolved';
+const MSG_LOCAL_REGISTRY_STATE = 'sapTools.localRegistryState';
+const MSG_BUILD_PUBLISH_PREVIEW = 'sapTools.buildPublishPreview';
+const MSG_BUILD_PUBLISH_PROGRESS = 'sapTools.buildPublishProgress';
+const MSG_BUILD_PUBLISH_RESULT = 'sapTools.buildPublishResult';
 
 // ── Payload interfaces ───────────────────────────────────────────────────────
 
@@ -272,12 +283,15 @@ export class RegionSidebarProvider
   private readonly serviceFolderSelections = new Map<string, string>();
   private e2eRootDialogStepIndex = 0;
   private exportInProgress = false;
+  private buildPublishInProgress = false;
   private hasAttemptedConfirmedScopeRestore = false;
   private lastLoadedScope: LoadedScopeState | null = null;
   private lastWrittenScope: SharedCfScope | undefined;
   private currentConfirmedScope: SharedCfScope | undefined;
   private externalScopeChangeRequestId = 0;
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly npmBuildChannel: vscode.OutputChannel;
+  private readonly verdaccioManager: VerdaccioManager;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -295,6 +309,10 @@ export class RegionSidebarProvider
       }
     });
     this.disposables.push(cacheSubscription);
+
+    this.npmBuildChannel = vscode.window.createOutputChannel('SAP Tools: NPM Build');
+    this.verdaccioManager = new VerdaccioManager(this.npmBuildChannel);
+    this.disposables.push(this.npmBuildChannel, this.verdaccioManager);
   }
 
   async resolveWebviewView(webviewView: vscode.WebviewView): Promise<void> {
@@ -483,6 +501,26 @@ export class RegionSidebarProvider
 
     if (type === MSG_OPEN_SQLTOOLS_EXTENSION) {
       await this.handleOpenSqlToolsExtension();
+      return;
+    }
+
+    if (type === MSG_BUILD_PUBLISH_PACKAGES && isAppIdMessage(message)) {
+      await this.handleBuildPublishPackages(String(message['appId']));
+      return;
+    }
+
+    if (type === MSG_LOCAL_REGISTRY_START) {
+      await this.startLocalRegistry();
+      return;
+    }
+
+    if (type === MSG_LOCAL_REGISTRY_STOP) {
+      this.stopLocalRegistry();
+      return;
+    }
+
+    if (type === MSG_LOCAL_REGISTRY_STATUS) {
+      await this.postRegistryState();
       return;
     }
 
@@ -1879,6 +1917,117 @@ export class RegionSidebarProvider
         inProgress: false,
       });
     }
+  }
+
+  // ── Local package build + publish (Verdaccio) ────────────────────────────
+
+  private async handleBuildPublishPackages(appId: string): Promise<void> {
+    if (this.buildPublishInProgress) {
+      this.postBuildResult(appId, false, 'A build & publish run is already in progress.');
+      return;
+    }
+
+    const mapping = this.serviceFolderMappings.find((entry) => entry.appId === appId);
+    if (mapping === undefined || mapping.folderPath.length === 0) {
+      this.postBuildResult(
+        appId,
+        false,
+        'This service is not mapped to a local folder. Map it in the Apps tab first.'
+      );
+      return;
+    }
+
+    const rootFolderPath = this.selectedLocalRootFolderPath.trim();
+    if (rootFolderPath.length === 0) {
+      this.postBuildResult(appId, false, 'Select a local root folder before building packages.');
+      return;
+    }
+
+    const config = readLocalPackagesConfig();
+    if (config.namePatterns.trim().length === 0) {
+      this.postBuildResult(
+        appId,
+        false,
+        'Configure "sapTools.localPackages.namePatterns" (e.g. "@example/") to detect your packages.'
+      );
+      return;
+    }
+
+    this.buildPublishInProgress = true;
+    this.npmBuildChannel.show(true);
+    this.npmBuildChannel.appendLine(
+      `\n=== Build & publish for "${mapping.appName}" (${new Date().toISOString()}) ===`
+    );
+
+    try {
+      await this.verdaccioManager.start({
+        port: config.registry.port,
+        scopes: config.registry.scopes,
+      });
+      await this.postRegistryState();
+
+      const outcome = await runBuildPublishForService({
+        rootFolderPath,
+        serviceFolderPath: mapping.folderPath,
+        config,
+        registryUrl: this.verdaccioManager.getRegistryUrl(config.registry.port),
+        authToken: this.verdaccioManager.getAuthToken(),
+        onOrder: (order) => {
+          this.postMessage({ type: MSG_BUILD_PUBLISH_PREVIEW, appId, order: [...order] });
+        },
+        onProgress: (progress) => {
+          this.postMessage({ type: MSG_BUILD_PUBLISH_PROGRESS, appId, ...progress });
+        },
+        onOutput: (chunk) => {
+          this.npmBuildChannel.append(chunk);
+        },
+      });
+
+      const summary =
+        `Published ${String(outcome.order.length)} package(s) for "${mapping.appName}" ` +
+        `(${String(outcome.builtCount)} built, ${String(outcome.skippedCount)} skipped)` +
+        (outcome.installedInService ? ' and reinstalled them in the service.' : '.');
+      this.npmBuildChannel.appendLine(summary);
+      this.postBuildResult(appId, true, summary);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Build & publish failed.';
+      this.npmBuildChannel.appendLine(`ERROR: ${message}`);
+      this.postBuildResult(appId, false, message);
+    } finally {
+      this.buildPublishInProgress = false;
+      await this.postRegistryState();
+    }
+  }
+
+  async startLocalRegistry(): Promise<void> {
+    const config = readLocalPackagesConfig();
+    this.npmBuildChannel.show(true);
+    try {
+      await this.verdaccioManager.start({
+        port: config.registry.port,
+        scopes: config.registry.scopes,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to start local registry.';
+      this.npmBuildChannel.appendLine(`ERROR: ${message}`);
+      void vscode.window.showErrorMessage(`SAP Tools: ${message}`);
+    } finally {
+      await this.postRegistryState();
+    }
+  }
+
+  stopLocalRegistry(): void {
+    this.verdaccioManager.stop();
+    void this.postRegistryState();
+  }
+
+  private async postRegistryState(): Promise<void> {
+    const status = await this.verdaccioManager.status();
+    this.postMessage({ type: MSG_LOCAL_REGISTRY_STATE, ...status });
+  }
+
+  private postBuildResult(appId: string, success: boolean, message: string): void {
+    this.postMessage({ type: MSG_BUILD_PUBLISH_RESULT, appId, success, message });
   }
 
   private async handleExportSqlToolsConfig(
@@ -3334,6 +3483,10 @@ function isNonEmptyString(value: unknown, maxLength: number): value is string {
 
 function isLoginSubmitMessage(value: Record<string, unknown>): boolean {
   return isNonEmptyString(value['email'], 256) && isNonEmptyString(value['password'], 256);
+}
+
+function isAppIdMessage(value: Record<string, unknown>): boolean {
+  return isNonEmptyString(value['appId'], 256);
 }
 
 function readLoginSubmitPayload(value: Record<string, unknown>): {

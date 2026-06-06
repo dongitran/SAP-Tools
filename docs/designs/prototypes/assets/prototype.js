@@ -138,6 +138,10 @@ const UPDATE_SYNC_INTERVAL_MESSAGE_TYPE = 'sapTools.updateSyncInterval';
 const SYNC_NOW_MESSAGE_TYPE = 'sapTools.syncNow';
 const LOGOUT_MESSAGE_TYPE = 'sapTools.logout';
 const SELECT_LOCAL_ROOT_FOLDER_MESSAGE_TYPE = 'sapTools.selectLocalRootFolder';
+const BUILD_PUBLISH_PACKAGES_MESSAGE_TYPE = 'sapTools.buildPublishPackages';
+const LOCAL_REGISTRY_START_MESSAGE_TYPE = 'sapTools.localRegistryStart';
+const LOCAL_REGISTRY_STOP_MESSAGE_TYPE = 'sapTools.localRegistryStop';
+const LOCAL_REGISTRY_STATUS_MESSAGE_TYPE = 'sapTools.localRegistryStatus';
 const REFRESH_SERVICE_FOLDER_MAPPINGS_MESSAGE_TYPE =
   'sapTools.refreshServiceFolderMappings';
 const SELECT_SERVICE_FOLDER_MAPPING_MESSAGE_TYPE = 'sapTools.selectServiceFolderMapping';
@@ -188,6 +192,15 @@ let serviceExportStatusMessage = '';
 let serviceExportStatusTone = 'info';
 let serviceFolderScanInProgress = false;
 let serviceExportInProgress = false;
+let localRegistryRunning = false;
+let localRegistryInstalling = false;
+let localRegistryUrl = '';
+let buildPublishActiveAppId = '';
+let buildPublishInProgress = false;
+let buildPublishOrder = [];
+let buildPublishStatuses = {};
+let buildPublishResultMessage = '';
+let buildPublishResultTone = 'info';
 let hanaServiceOptions = null;
 let selectedHanaServiceId = '';
 let sqlAppSearchKeyword = '';
@@ -564,6 +577,50 @@ window.addEventListener('message', (event) => {
         : success
           ? 'SQLTools config exported.'
           : 'SQLTools config export failed.';
+    refreshUiAfterServiceExportStateChange();
+    return;
+  }
+
+  if (msg.type === 'sapTools.localRegistryState') {
+    localRegistryRunning = msg.running === true;
+    localRegistryInstalling = msg.installing === true;
+    localRegistryUrl = typeof msg.url === 'string' ? msg.url : '';
+    refreshUiAfterServiceExportStateChange();
+    return;
+  }
+
+  if (msg.type === 'sapTools.buildPublishPreview') {
+    if (typeof msg.appId === 'string' && Array.isArray(msg.order)) {
+      buildPublishActiveAppId = msg.appId;
+      buildPublishOrder = msg.order.filter((name) => typeof name === 'string');
+      buildPublishStatuses = {};
+      refreshUiAfterServiceExportStateChange();
+    }
+    return;
+  }
+
+  if (msg.type === 'sapTools.buildPublishProgress') {
+    if (typeof msg.packageName === 'string') {
+      buildPublishStatuses[msg.packageName] = {
+        phase: typeof msg.phase === 'string' ? msg.phase : '',
+        status: typeof msg.status === 'string' ? msg.status : '',
+        message: typeof msg.message === 'string' ? msg.message : '',
+      };
+      refreshUiAfterServiceExportStateChange();
+    }
+    return;
+  }
+
+  if (msg.type === 'sapTools.buildPublishResult') {
+    buildPublishInProgress = false;
+    const success = msg.success === true;
+    buildPublishResultTone = success ? 'success' : 'error';
+    buildPublishResultMessage =
+      typeof msg.message === 'string' && msg.message.length > 0
+        ? msg.message
+        : success
+          ? 'Build & publish completed.'
+          : 'Build & publish failed.';
     refreshUiAfterServiceExportStateChange();
     return;
   }
@@ -2101,6 +2158,40 @@ function handleServiceExportAction(action, actionElement) {
     return triggerSqlToolsConfigExport();
   }
 
+  if (action === 'build-publish-packages') {
+    const appId = actionElement.dataset.appId ?? '';
+    if (appId.length === 0 || vscodeApi === null) {
+      return true;
+    }
+    const mapping = serviceFolderMappings.find((entry) => entry.appId === appId);
+    if (mapping === undefined || !mapping.isMapped) {
+      return true;
+    }
+    buildPublishActiveAppId = appId;
+    buildPublishInProgress = true;
+    buildPublishOrder = [];
+    buildPublishStatuses = {};
+    buildPublishResultMessage = `Building packages for ${mapping.appName}…`;
+    buildPublishResultTone = 'info';
+    vscodeApi.postMessage({ type: BUILD_PUBLISH_PACKAGES_MESSAGE_TYPE, appId });
+    return true;
+  }
+
+  if (action === 'local-registry-toggle') {
+    if (vscodeApi === null) {
+      return true;
+    }
+    vscodeApi.postMessage({
+      type: localRegistryRunning
+        ? LOCAL_REGISTRY_STOP_MESSAGE_TYPE
+        : LOCAL_REGISTRY_START_MESSAGE_TYPE,
+    });
+    if (!localRegistryRunning) {
+      localRegistryInstalling = true;
+    }
+    return true;
+  }
+
   return null;
 }
 
@@ -2634,6 +2725,9 @@ function requestInitialState() {
 
   vscodeApi.postMessage({
     type: REQUEST_INITIAL_STATE_MESSAGE_TYPE,
+  });
+  vscodeApi.postMessage({
+    type: LOCAL_REGISTRY_STATUS_MESSAGE_TYPE,
   });
 }
 
@@ -4202,6 +4296,8 @@ function renderServiceExportTab() {
         </button>
       </section>
 
+      ${renderLocalRegistryRow()}
+
       <label class="service-export-search-row search-input-with-icon">
         <span class="search-input-icon" aria-hidden="true">&#128269;</span>
         <input
@@ -4253,8 +4349,99 @@ function renderServiceExportTab() {
       </div>
 
       ${renderServiceExportStatus()}
+      ${renderLocalPackageBuildPanel()}
     </section>
   `;
+}
+
+function renderLocalRegistryRow() {
+  const stateLabel = localRegistryInstalling
+    ? 'Installing…'
+    : localRegistryRunning
+      ? `Running · ${escapeHtml(localRegistryUrl)}`
+      : 'Stopped';
+  const stateClass = localRegistryInstalling
+    ? 'is-installing'
+    : localRegistryRunning
+      ? 'is-running'
+      : 'is-stopped';
+  const toggleLabel = localRegistryRunning ? 'Stop Registry' : 'Start Registry';
+
+  return `
+    <section class="local-registry-row" aria-label="Local package registry">
+      <span class="local-registry-dot ${stateClass}" aria-hidden="true"></span>
+      <span class="local-registry-state" data-role="local-registry-state">
+        Local registry: ${stateLabel}
+      </span>
+      <button
+        type="button"
+        class="secondary-action local-registry-toggle"
+        data-action="local-registry-toggle"
+        ${localRegistryInstalling ? 'disabled' : ''}
+      >
+        ${toggleLabel}
+      </button>
+    </section>
+  `;
+}
+
+function renderLocalPackageBuildPanel() {
+  if (
+    buildPublishActiveAppId.length === 0 &&
+    buildPublishResultMessage.length === 0 &&
+    buildPublishOrder.length === 0
+  ) {
+    return '';
+  }
+
+  const rows = buildPublishOrder
+    .map((name) => {
+      const state = buildPublishStatuses[name] ?? { phase: '', status: '', message: '' };
+      const badge = resolveBuildBadge(state);
+      const detail = state.message.length > 0 ? ` · ${escapeHtml(state.message)}` : '';
+      return `
+        <li class="build-step build-step-${escapeHtml(badge.tone)}">
+          <span class="build-step-badge">${escapeHtml(badge.label)}</span>
+          <span class="build-step-name">${escapeHtml(name)}</span>
+          <span class="build-step-detail">${detail}</span>
+        </li>
+      `;
+    })
+    .join('');
+
+  const orderMarkup =
+    buildPublishOrder.length > 0
+      ? `<ol class="build-step-list">${rows}</ol>`
+      : '<p class="build-panel-pending">Resolving build order…</p>';
+
+  const resultMarkup =
+    buildPublishResultMessage.length > 0
+      ? `<p class="build-panel-result tone-${escapeHtml(buildPublishResultTone)}">${escapeHtml(buildPublishResultMessage)}</p>`
+      : '';
+
+  return `
+    <section class="build-panel" aria-label="Package build progress" aria-live="polite">
+      <h3 class="build-panel-title">Build &amp; Publish</h3>
+      ${orderMarkup}
+      ${resultMarkup}
+    </section>
+  `;
+}
+
+function resolveBuildBadge(state) {
+  if (state.status === 'failed') {
+    return { label: 'Failed', tone: 'error' };
+  }
+  if (state.status === 'skipped') {
+    return { label: 'Skipped', tone: 'muted' };
+  }
+  if (state.status === 'running') {
+    return { label: state.phase === 'publish' ? 'Publishing' : 'Building', tone: 'info' };
+  }
+  if (state.status === 'done') {
+    return { label: state.phase === 'publish' ? 'Published' : 'Built', tone: 'success' };
+  }
+  return { label: 'Pending', tone: 'muted' };
 }
 
 function renderServiceExportMappingRows(
@@ -4311,17 +4498,31 @@ function renderServiceExportMappingRows(
       `;
     }
 
+    const isBuildingThis =
+      buildPublishInProgress && buildPublishActiveAppId === mapping.appId;
     return `
-      <button
-        type="button"
-        class="service-map-row${isSelected ? ' is-selected' : ''}"
-        data-action="select-export-service"
-        data-app-id="${escapeHtml(mapping.appId)}"
-      >
-        <span class="service-map-name">${escapeHtml(mapping.appName)}</span>
-        <span class="service-map-path" title="${escapeHtml(mapping.folderPath)}">${escapeHtml(folderPathLabel)}</span>
-        <span class="service-map-state">Mapped</span>
-      </button>
+      <div class="service-map-row-group${isSelected ? ' is-selected' : ''}">
+        <button
+          type="button"
+          class="service-map-row${isSelected ? ' is-selected' : ''}"
+          data-action="select-export-service"
+          data-app-id="${escapeHtml(mapping.appId)}"
+        >
+          <span class="service-map-name">${escapeHtml(mapping.appName)}</span>
+          <span class="service-map-path" title="${escapeHtml(mapping.folderPath)}">${escapeHtml(folderPathLabel)}</span>
+          <span class="service-map-state">Mapped</span>
+        </button>
+        <button
+          type="button"
+          class="small-action service-map-build"
+          data-action="build-publish-packages"
+          data-app-id="${escapeHtml(mapping.appId)}"
+          title="Build & publish the npm packages this service needs to the local registry"
+          ${buildPublishInProgress ? 'disabled' : ''}
+        >
+          ${isBuildingThis ? 'Building&#8230;' : 'Build &amp; Publish'}
+        </button>
+      </div>
     `;
   });
 

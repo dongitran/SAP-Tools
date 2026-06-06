@@ -27,6 +27,18 @@ vi.mock('vscode', () => ({
   workspace: {
     getConfiguration: getConfigurationMock,
   },
+  window: {
+    createOutputChannel: vi.fn(() => ({
+      name: 'mock',
+      append: vi.fn(),
+      appendLine: vi.fn(),
+      replace: vi.fn(),
+      clear: vi.fn(),
+      show: vi.fn(),
+      hide: vi.fn(),
+      dispose: vi.fn(),
+    })),
+  },
 }));
 
 vi.mock('./credentialStore', () => ({

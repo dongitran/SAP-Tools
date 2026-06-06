@@ -88,6 +88,13 @@
     "hdbsql",
     "hdbclient",
     "cdsrc",
-    "csdrc"
+    "csdrc",
+    "verdaccio",
+    "htpasswd",
+    "EPUBLISHCONFLICT",
+    "npmjs",
+    "uplink",
+    "uplinks",
+    "prerelease"
   ]
 }

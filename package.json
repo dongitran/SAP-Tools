@@ -2,7 +2,7 @@
   "name": "sap-tools",
   "displayName": "SAP Tools",
   "description": "All-in-one toolbox for SAP BTP development workflows",
-  "version": "0.10.4",
+  "version": "0.10.5",
   "publisher": "dongtran",
   "icon": "resources/icon.png",
   "license": "MIT",
@@ -78,6 +78,53 @@
                 }
               }
             }
+          },
+          "sapTools.localPackages.namePatterns": {
+            "type": "string",
+            "scope": "application",
+            "default": "",
+            "markdownDescription": "Comma-separated patterns identifying which repos under the Apps-tab root folder are locally-developed npm packages (as opposed to service repos). Each pattern is tested against the `name` in a folder's `package.json`; a pattern that is not valid regex is matched literally, so a plain scope prefix like `@example/` works. Detection keys off the package *name*, not the presence of a `build` script (so dependency-only packages such as `@example/core` are still found). Leave empty to disable local-package scanning."
+          },
+          "sapTools.localPackages.versionBumpStrategy": {
+            "type": "string",
+            "scope": "application",
+            "default": "prerelease-timestamp",
+            "enum": ["prerelease-timestamp", "none"],
+            "markdownEnumDescriptions": [
+              "Before publishing, temporarily set a unique prerelease version (`<base>-local.<timestamp>`) so the local registry accepts the republish, then restore the original version in `package.json`.",
+              "Publish the version as-is. Republishing the same version will fail unless you bump it yourself."
+            ],
+            "markdownDescription": "How to make a package version unique for each publish to the local registry. Verdaccio rejects republishing an existing version; `prerelease-timestamp` works around this without editing your git history (the original version is restored after publish)."
+          },
+          "sapTools.localPackages.installInServiceAfterPublish": {
+            "type": "boolean",
+            "scope": "application",
+            "default": true,
+            "markdownDescription": "After building and publishing the packages a service needs, run `npm install` in that service folder (with the configured scopes pointed at the local registry) to pull the freshly published versions."
+          },
+          "sapTools.localRegistry.port": {
+            "type": "number",
+            "scope": "application",
+            "default": 4873,
+            "markdownDescription": "Port the self-hosted local Verdaccio registry listens on (`http://localhost:<port>`)."
+          },
+          "sapTools.localRegistry.scopes": {
+            "type": "string",
+            "scope": "application",
+            "default": "",
+            "markdownDescription": "Comma-separated npm scopes (e.g. `@example`) routed to the local registry when publishing and installing. When empty, SAP Tools derives the scopes from `sapTools.localPackages.namePatterns`."
+          },
+          "sapTools.localRegistry.defaultTag": {
+            "type": "string",
+            "scope": "application",
+            "default": "staging",
+            "markdownDescription": "Fallback npm dist-tag to publish local packages under. SAP Tools first tries to reuse the tag a service requests in its `package.json` (e.g. `\"@example/core\": \"staging\"`); this value is used when that dependency value is a semver range rather than a plain tag."
+          },
+          "sapTools.localRegistry.autoStart": {
+            "type": "boolean",
+            "scope": "application",
+            "default": true,
+            "markdownDescription": "Start the local Verdaccio registry automatically when SAP Tools activates (only takes effect once it has been installed on first use)."
           }
         }
       }
@@ -96,6 +143,16 @@
       {
         "command": "sapTools.runHanaSql",
         "title": "Run HANA SQL",
+        "category": "SAP Tools"
+      },
+      {
+        "command": "sapTools.startLocalRegistry",
+        "title": "Start Local Package Registry",
+        "category": "SAP Tools"
+      },
+      {
+        "command": "sapTools.stopLocalRegistry",
+        "title": "Stop Local Package Registry",
         "category": "SAP Tools"
       }
     ],
@@ -161,6 +218,12 @@
         },
         {
           "command": "sapTools.runHanaSql"
+        },
+        {
+          "command": "sapTools.startLocalRegistry"
+        },
+        {
+          "command": "sapTools.stopLocalRegistry"
         }
       ]
     }

@@ -11,6 +11,8 @@ import { readCurrentScope } from './scopeSync';
 
 const OPEN_REGION_MENU_COMMAND = 'sapTools.selectSapBtpRegion';
 const OPEN_CF_LOGS_PANEL_COMMAND = 'sapTools.openCfLogsPanel';
+const START_LOCAL_REGISTRY_COMMAND = 'sapTools.startLocalRegistry';
+const STOP_LOCAL_REGISTRY_COMMAND = 'sapTools.stopLocalRegistry';
 const OUTPUT_CHANNEL_NAME = 'SAP Tools';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -72,6 +74,20 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   );
 
+  const startLocalRegistryCommand = vscode.commands.registerCommand(
+    START_LOCAL_REGISTRY_COMMAND,
+    async (): Promise<void> => {
+      await regionSidebarProvider.startLocalRegistry();
+    }
+  );
+
+  const stopLocalRegistryCommand = vscode.commands.registerCommand(
+    STOP_LOCAL_REGISTRY_COMMAND,
+    (): void => {
+      regionSidebarProvider.stopLocalRegistry();
+    }
+  );
+
   const scopeConfigurationSubscription = vscode.workspace.onDidChangeConfiguration(
     (event): void => {
       if (!event.affectsConfiguration('sapCap.currentScope')) {
@@ -100,6 +116,8 @@ export function activate(context: vscode.ExtensionContext): void {
     cfLogsPanelRegistration,
     openRegionMenuCommand,
     openCfLogsPanelCommand,
+    startLocalRegistryCommand,
+    stopLocalRegistryCommand,
     scopeConfigurationSubscription
   );
 }

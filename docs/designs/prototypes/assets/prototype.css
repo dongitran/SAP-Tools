@@ -1823,6 +1823,157 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
   color: var(--state-danger-fg);
 }
 
+.local-registry-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px 2px;
+  font-size: 0.68rem;
+}
+
+.local-registry-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--muted-color);
+}
+
+.local-registry-dot.is-running {
+  background: var(--state-success-fg);
+}
+
+.local-registry-dot.is-stopped {
+  background: color-mix(in oklab, var(--muted-color) 70%, var(--mix-base));
+}
+
+.local-registry-dot.is-installing {
+  background: var(--accent-color);
+}
+
+.local-registry-state {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.local-registry-toggle {
+  flex: 0 0 auto;
+}
+
+.service-map-row-group {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  border-bottom: 1px solid color-mix(in oklab, var(--border-color) 76%, var(--mix-base));
+}
+
+.service-map-row-group:last-child {
+  border-bottom: 0;
+}
+
+.service-map-row-group .service-map-row {
+  border-bottom: 0;
+  flex: 1 1 auto;
+}
+
+.service-map-build {
+  flex: 0 0 auto;
+  align-self: center;
+  white-space: nowrap;
+  margin-right: 6px;
+}
+
+.build-panel {
+  margin-top: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px;
+  background: color-mix(in oklab, var(--accent-soft) 14%, var(--frame-bg));
+}
+
+.build-panel-title {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.build-step-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.build-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.68rem;
+}
+
+.build-step-badge {
+  flex: 0 0 auto;
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  background: color-mix(in oklab, var(--muted-color) 24%, var(--frame-bg));
+  color: var(--text-color);
+}
+
+.build-step-info .build-step-badge {
+  background: color-mix(in oklab, var(--accent-color) 30%, var(--frame-bg));
+}
+
+.build-step-success .build-step-badge {
+  background: color-mix(in oklab, var(--state-success-fg) 28%, var(--frame-bg));
+}
+
+.build-step-error .build-step-badge {
+  background: color-mix(in oklab, var(--state-danger-fg) 30%, var(--frame-bg));
+}
+
+.build-step-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.build-step-detail {
+  grid-column: 1 / -1;
+  color: var(--muted-color);
+  font-size: 0.64rem;
+}
+
+.build-panel-pending {
+  margin: 0;
+  font-size: 0.68rem;
+  color: var(--muted-color);
+}
+
+.build-panel-result {
+  margin: 8px 0 0;
+  font-size: 0.68rem;
+}
+
+.build-panel-result.tone-success {
+  color: var(--state-success-fg);
+}
+
+.build-panel-result.tone-error {
+  color: var(--state-danger-fg);
+}
+
+.build-panel-result.tone-info {
+  color: var(--chip-text);
+}
+
 .panel-logs-bridge {
   border: 1px solid var(--border-color);
   border-radius: 10px;
