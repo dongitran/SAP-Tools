@@ -1382,9 +1382,30 @@ function refreshWorkspaceAppsView() {
       totalRowCount: mappingRows.length,
     });
 
+  const registryRowElement = exportTab.querySelector('.local-registry-row');
+  if (registryRowElement instanceof HTMLElement) {
+    registryRowElement.outerHTML = renderLocalRegistryRow();
+  }
+
   const detectedPackagesElement = exportTab.querySelector('[data-role="detected-packages"]');
   if (detectedPackagesElement instanceof HTMLElement) {
-    detectedPackagesElement.innerHTML = renderDetectedPackagesInner();
+    // Save scroll position of the package list
+    const listElement = detectedPackagesElement.querySelector('.detected-pkg-list');
+    const scrollTop = listElement ? listElement.scrollTop : 0;
+
+    // Prevent wiping the list DOM if a single package build is in progress.
+    // The single package build UI is handled via targeted updates in updateSinglePackageBuildUI.
+    if (buildingPackageName.length === 0) {
+      detectedPackagesElement.innerHTML = renderDetectedPackagesInner();
+
+      // Restore scroll position
+      if (scrollTop > 0) {
+        const newListElement = detectedPackagesElement.querySelector('.detected-pkg-list');
+        if (newListElement) {
+          newListElement.scrollTop = scrollTop;
+        }
+      }
+    }
   } else if (localServiceRootFolderPath.length > 0) {
     renderPrototype();
     return;
@@ -2691,6 +2712,11 @@ function applyDesignClasses(root, patternClass, themeClass) {
 }
 
 function renderPrototype() {
+  const groupsContainer = appElement.querySelector('.groups');
+  const groupsScrollTop = groupsContainer ? groupsContainer.scrollTop : 0;
+  const pkgList = appElement.querySelector('.detected-pkg-list');
+  const pkgListScrollTop = pkgList ? pkgList.scrollTop : 0;
+
   const shellMarkup = resolveShellMarkupByMode();
 
   appElement.innerHTML = `
@@ -2698,6 +2724,15 @@ function renderPrototype() {
       ${shellMarkup}
     </section>
   `;
+
+  if (groupsScrollTop > 0) {
+    const newGroups = appElement.querySelector('.groups');
+    if (newGroups) newGroups.scrollTop = groupsScrollTop;
+  }
+  if (pkgListScrollTop > 0) {
+    const newPkgList = appElement.querySelector('.detected-pkg-list');
+    if (newPkgList) newPkgList.scrollTop = pkgListScrollTop;
+  }
   queueSqlTableNameTruncation();
 
   if (mode === 'selection') {
@@ -4509,6 +4544,10 @@ function updateSinglePackageBuildUI(pkgName) {
     
     li.className = 'detected-pkg' + (isBuilding ? ' is-building' : '') + (hasResult ? ' is-result' : '');
     
+    if (li.contains(document.activeElement) && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
     const roundLabel = pkg && typeof pkg.round === 'number' ? `Build ${String(pkg.round + 1)}` : '—';
     li.innerHTML = `
       <span class="detected-pkg-round" title="Build order (lower builds first)">${escapeHtml(roundLabel)}</span>

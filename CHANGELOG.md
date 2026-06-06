@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.22 (stable)
+- Fix package list scroll jumping on UI re-renders by explicitly preserving and restoring the scroll position of both the package list and the main view.
+- Support local registry state updates dynamically without requiring a full package list redraw.
+
 ## 0.10.21 (stable)
 - Fix local package list scroll position jumping to the top when initiating a single package build.
 - Remove hover transform effect on the single package build button and adjust its width.
