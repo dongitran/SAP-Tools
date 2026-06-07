@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.35 (stable)
+- **Fix:** Restored the "Build" button as a disabled button with a spinner during single-package builds, rather than replacing it with plain text.
+- **Fix:** Fixed an issue where "Published" labels on previously built packages would disappear when building another package individually.
+
 ## 0.10.34 (stable)
 - **Feature:** "Building..." UI state now correctly updates on individual packages during the "Build All" flow, providing clearer progress indication.
 - **Fix:** Fixed a potential issue where packages missing a `build` script (e.g. dependency-only packages) would fail during publish due to skipped `npm install` for prepublish requirements. `pnpm install` is now guaranteed to run for all packages.

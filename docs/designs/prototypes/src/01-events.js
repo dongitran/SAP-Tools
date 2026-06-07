@@ -359,7 +359,15 @@ window.addEventListener('message', (event) => {
   if (msg.type === 'sapTools.buildPublishPreview') {
     if (Array.isArray(msg.order)) {
       buildPublishOrder = msg.order.filter((name) => typeof name === 'string');
-      buildPublishStatuses = {};
+      // Only clear ALL statuses if this is a global "Build All" run.
+      // If it's a single build, we keep existing statuses so other packages' "Published" badges remain.
+      if (buildingPackageName.length === 0) {
+        buildPublishStatuses = {};
+      } else {
+        for (const name of buildPublishOrder) {
+          buildPublishStatuses[name] = { phase: '', status: '', message: '' };
+        }
+      }
       buildPublishCompletedCount = 0;
       refreshUiAfterServiceExportStateChange();
     }
@@ -385,6 +393,9 @@ window.addEventListener('message', (event) => {
         updateSinglePackageBuildUI(msg.packageName);
       } else if (buildingPackageName.length === 0) {
         refreshUiAfterServiceExportStateChange();
+      } else {
+        // Update the row individually if we're in a single-package build flow
+        updateSinglePackageBuildUI(msg.packageName);
       }
     }
     return;

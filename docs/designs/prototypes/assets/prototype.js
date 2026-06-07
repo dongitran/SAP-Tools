@@ -610,7 +610,15 @@ window.addEventListener('message', (event) => {
   if (msg.type === 'sapTools.buildPublishPreview') {
     if (Array.isArray(msg.order)) {
       buildPublishOrder = msg.order.filter((name) => typeof name === 'string');
-      buildPublishStatuses = {};
+      // Only clear ALL statuses if this is a global "Build All" run.
+      // If it's a single build, we keep existing statuses so other packages' "Published" badges remain.
+      if (buildingPackageName.length === 0) {
+        buildPublishStatuses = {};
+      } else {
+        for (const name of buildPublishOrder) {
+          buildPublishStatuses[name] = { phase: '', status: '', message: '' };
+        }
+      }
       buildPublishCompletedCount = 0;
       refreshUiAfterServiceExportStateChange();
     }
@@ -636,6 +644,9 @@ window.addEventListener('message', (event) => {
         updateSinglePackageBuildUI(msg.packageName);
       } else if (buildingPackageName.length === 0) {
         refreshUiAfterServiceExportStateChange();
+      } else {
+        // Update the row individually if we're in a single-package build flow
+        updateSinglePackageBuildUI(msg.packageName);
       }
     }
     return;
@@ -4571,7 +4582,7 @@ function updateSinglePackageBuildUI(pkgName) {
       actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(statusObj.message || 'Built & published')}">✓ Published</span>`;
     } else if (isRunning || isSingleBuilding) {
       const phaseLabel = isRunning ? (statusObj.phase === 'publish' ? 'Publishing…' : 'Building…') : 'Building…';
-      actionCell = `<span class="detected-pkg-state is-building" aria-busy="true"><span class="detected-pkg-spinner" aria-hidden="true"></span>${phaseLabel}</span>`;
+      actionCell = `<button type="button" class="small-action detected-pkg-single-build" disabled><span class="detected-pkg-spinner" aria-hidden="true" style="width:10px;height:10px;border-width:2px;flex-shrink:0;margin-right:4px;"></span>${phaseLabel}</button>`;
     } else {
       actionCell = `<button
         type="button"
@@ -4690,7 +4701,7 @@ function renderDetectedPackagesInner() {
           actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(statusObj.message || 'Built & published')}">✓ Published</span>`;
         } else if (isRunning || isSingleBuilding) {
           const phaseLabel = isRunning ? (statusObj.phase === 'publish' ? 'Publishing…' : 'Building…') : 'Building…';
-          actionCell = `<span class="detected-pkg-state is-building" aria-busy="true"><span class="detected-pkg-spinner" aria-hidden="true"></span>${phaseLabel}</span>`;
+          actionCell = `<button type="button" class="small-action detected-pkg-single-build" disabled><span class="detected-pkg-spinner" aria-hidden="true" style="width:10px;height:10px;border-width:2px;flex-shrink:0;margin-right:4px;"></span>${phaseLabel}</button>`;
         } else {
           actionCell = `<button
             type="button"
