@@ -2292,6 +2292,7 @@ function handleServiceExportAction(action, actionElement) {
     buildingPackageName = packageName;
     buildResultPackageName = '';
     buildResultMessage = '';
+    buildPublishStatuses[packageName] = { status: 'running' };
     if (buildResultTimer !== null) {
       clearTimeout(buildResultTimer);
       buildResultTimer = null;
@@ -4536,13 +4537,15 @@ function renderDetectedPackagesList() {
 function updateSinglePackageBuildUI(pkgName) {
   const li = document.querySelector(`li[data-pkg-name="${CSS.escape(pkgName)}"]`);
   if (li) {
-    const isBuilding = buildingPackageName === pkgName;
-    const hasResult = buildResultPackageName === pkgName;
-    const pkg = detectedPackages.find((p) => p.name === pkgName);
-    
+    const isSingleBuilding = buildingPackageName === pkgName;
+    const singleHasResult = buildResultPackageName === pkgName;
+    const statusObj = buildPublishStatuses[pkgName];
+    const isDone = statusObj?.status === 'done';
+    const isFailed = statusObj?.status === 'failed';
+    const isRunning = statusObj?.status === 'running';
+
     let actionCell;
-    const isDone = buildPublishStatuses[pkgName]?.status === 'done';
-    if (hasResult) {
+    if (singleHasResult) {
       if (buildResultSuccess) {
         actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(buildResultMessage)}">✓ Published</span>`;
       } else {
@@ -4555,10 +4558,20 @@ function updateSinglePackageBuildUI(pkgName) {
           aria-label="Build error – click to copy"
         >⚠</button>`;
       }
+    } else if (isFailed) {
+      actionCell = `<button
+        type="button"
+        class="detected-pkg-error-icon"
+        data-action="copy-build-error"
+        data-error="${escapeHtml(statusObj.message)}"
+        title="${escapeHtml(statusObj.message)}"
+        aria-label="Build error – click to copy"
+      >⚠</button>`;
     } else if (isDone) {
-      actionCell = `<span class="detected-pkg-result is-success" title="Built & published">✓ Published</span>`;
-    } else if (isBuilding) {
-      actionCell = `<span class="detected-pkg-state is-building" aria-busy="true"><span class="detected-pkg-spinner" aria-hidden="true"></span>Building…</span>`;
+      actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(statusObj.message || 'Built & published')}">✓ Published</span>`;
+    } else if (isRunning || isSingleBuilding) {
+      const phaseLabel = isRunning ? (statusObj.phase === 'publish' ? 'Publishing…' : 'Building…') : 'Building…';
+      actionCell = `<span class="detected-pkg-state is-building" aria-busy="true"><span class="detected-pkg-spinner" aria-hidden="true"></span>${phaseLabel}</span>`;
     } else {
       actionCell = `<button
         type="button"
@@ -4569,7 +4582,7 @@ function updateSinglePackageBuildUI(pkgName) {
       >Build</button>`;
     }
     
-    li.className = 'detected-pkg' + (isBuilding ? ' is-building' : '') + (hasResult ? ' is-result' : '');
+    li.className = 'detected-pkg' + ((isRunning || isSingleBuilding) ? ' is-building' : '') + (singleHasResult || isDone || isFailed ? ' is-result' : '');
     
     if (li.contains(document.activeElement) && document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -4643,12 +4656,15 @@ function renderDetectedPackagesInner() {
       )
       .map((pkg) => {
         const roundLabel = typeof pkg.round === 'number' ? `${String(pkg.round + 1)}` : '—';
-        const isBuilding = buildingPackageName === pkg.name;
-        const hasResult = buildResultPackageName === pkg.name;
+        const isSingleBuilding = buildingPackageName === pkg.name;
+        const singleHasResult = buildResultPackageName === pkg.name;
+        const statusObj = buildPublishStatuses[pkg.name];
+        const isDone = statusObj?.status === 'done';
+        const isFailed = statusObj?.status === 'failed';
+        const isRunning = statusObj?.status === 'running';
 
         let actionCell;
-        const isDone = buildPublishStatuses[pkg.name]?.status === 'done';
-        if (hasResult) {
+        if (singleHasResult) {
           if (buildResultSuccess) {
             actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(buildResultMessage)}">✓ Published</span>`;
           } else {
@@ -4661,10 +4677,20 @@ function renderDetectedPackagesInner() {
               aria-label="Build error – click to copy"
             >⚠</button>`;
           }
+        } else if (isFailed) {
+          actionCell = `<button
+            type="button"
+            class="detected-pkg-error-icon"
+            data-action="copy-build-error"
+            data-error="${escapeHtml(statusObj.message)}"
+            title="${escapeHtml(statusObj.message)}"
+            aria-label="Build error – click to copy"
+          >⚠</button>`;
         } else if (isDone) {
-          actionCell = `<span class="detected-pkg-result is-success" title="Built & published">✓ Published</span>`;
-        } else if (isBuilding) {
-          actionCell = `<span class="detected-pkg-state is-building" aria-busy="true"><span class="detected-pkg-spinner" aria-hidden="true"></span>Building…</span>`;
+          actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(statusObj.message || 'Built & published')}">✓ Published</span>`;
+        } else if (isRunning || isSingleBuilding) {
+          const phaseLabel = isRunning ? (statusObj.phase === 'publish' ? 'Publishing…' : 'Building…') : 'Building…';
+          actionCell = `<span class="detected-pkg-state is-building" aria-busy="true"><span class="detected-pkg-spinner" aria-hidden="true"></span>${phaseLabel}</span>`;
         } else {
           actionCell = `<button
             type="button"
@@ -4677,8 +4703,8 @@ function renderDetectedPackagesInner() {
 
         const rowClass =
           'detected-pkg' +
-          (isBuilding ? ' is-building' : '') +
-          (hasResult ? ' is-result' : '');
+          ((isRunning || isSingleBuilding) ? ' is-building' : '') +
+          (singleHasResult || isDone || isFailed ? ' is-result' : '');
         return `
           <li class="${rowClass}" data-pkg-name="${escapeHtml(pkg.name)}">
             <span class="detected-pkg-order" title="Build order">#${escapeHtml(roundLabel)}</span>

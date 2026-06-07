@@ -275,6 +275,7 @@ function handleServiceExportAction(action, actionElement) {
     buildingPackageName = packageName;
     buildResultPackageName = '';
     buildResultMessage = '';
+    buildPublishStatuses[packageName] = { status: 'running' };
     if (buildResultTimer !== null) {
       clearTimeout(buildResultTimer);
       buildResultTimer = null;

@@ -21,10 +21,6 @@ export async function buildPackage(
   pkg: LocalPackage,
   options: BuildOptions
 ): Promise<BuildOutcome> {
-  if (pkg.buildScript === undefined) {
-    return 'skipped';
-  }
-  
   const authKey = npmRegistryAuthKey(options.registryUrl);
   
   await runCommand(
@@ -38,6 +34,11 @@ export async function buildPackage(
     ], 
     { cwd: pkg.dir, onOutput: options.onOutput, timeoutMs: 600000 }
   );
+
+  if (pkg.buildScript === undefined) {
+    return 'skipped';
+  }
+  
   await runCommand('npm', ['run', 'build'], { cwd: pkg.dir, onOutput: options.onOutput, timeoutMs: 600000 });
   return 'built';
 }

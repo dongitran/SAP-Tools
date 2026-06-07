@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.34 (stable)
+- **Feature:** "Building..." UI state now correctly updates on individual packages during the "Build All" flow, providing clearer progress indication.
+- **Fix:** Fixed a potential issue where packages missing a `build` script (e.g. dependency-only packages) would fail during publish due to skipped `npm install` for prepublish requirements. `pnpm install` is now guaranteed to run for all packages.
+- **Refactoring:** Unified action-cell state rendering logic for Single and Batch package builds in the UI frontend for better maintainability.
+
 ## 0.10.33 (stable)
 - **Fix:** Fixed issue where the "Build All" button would show a loading state when building a single package.
 - **Fix:** "Published" labels are now preserved correctly when building other packages sequentially.
