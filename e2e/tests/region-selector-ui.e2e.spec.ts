@@ -1419,7 +1419,7 @@ test.describe('SAP Tools region selector', () => {
 
       await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Apps' }));
       await expect(
-        webviewFrame.getByRole('heading', { name: 'Export Service Artifacts' })
+        webviewFrame.getByRole('heading', { name: 'Services & Packages' })
       ).toBeVisible({ timeout: 10000 });
 
       await expect(
@@ -1493,7 +1493,7 @@ test.describe('SAP Tools region selector', () => {
 
       // Select the first mapped service row
       await clickWithFallback(
-        webviewFrame.locator('.service-map-row').filter({ hasText: 'finance_uat_api' }).first()
+        webviewFrame.locator('.service-map-row').filter({ hasText: 'finance-uat-api' }).first()
       );
 
       // The Export Artifacts button must become enabled after service selection
@@ -1834,7 +1834,7 @@ test.describe('SAP Tools region selector', () => {
     }
   });
 
-  test('User can search services in Export Service Artifacts', async () => {
+  test('User can search services in Services & Packages', async () => {
     const session = await launchExtensionHost();
 
     try {
@@ -1847,7 +1847,7 @@ test.describe('SAP Tools region selector', () => {
       await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Apps' }));
 
       const serviceSearchInput = webviewFrame.getByRole('searchbox', {
-        name: 'Search services in Export Service Artifacts',
+        name: 'Search services in Services & Packages',
       });
       await expect(serviceSearchInput).toBeVisible();
       await expect(webviewFrame.locator('.service-map-row')).toHaveCount(3);

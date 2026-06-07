@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.40 (stable)
+- **Fix:** Leaving `sapTools.localRegistry.defaultTag` empty now publishes local packages under a tag derived from the active Cloud Foundry org and space, such as `cf-finance-services-prod-uat`, reducing cross-space package mix-ups when package names are reused.
+- **Fix:** Duplicate local package names under the selected root folder now fail with a clear error instead of silently choosing one folder.
+
 ## 0.10.39 (stable)
 - **UI:** The "Build All" button is now simply disabled (without showing a 0% progress indicator) when a single package build is triggered.
 - **UI:** During a "Build All" operation, hovering over any package row will no longer reveal the "Build" button. The hover capability is restored only after the entire "Build All" process completes.

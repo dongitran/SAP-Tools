@@ -2,7 +2,7 @@
   "name": "sap-tools",
   "displayName": "SAP Tools",
   "description": "All-in-one toolbox for SAP BTP development workflows",
-  "version": "0.10.39",
+  "version": "0.10.40",
   "publisher": "dongtran",
   "icon": "resources/icon.png",
   "license": "MIT",
@@ -130,8 +130,8 @@
           "sapTools.localRegistry.defaultTag": {
             "type": "string",
             "scope": "application",
-            "default": "local",
-            "markdownDescription": "Fallback npm dist-tag to publish local packages under. SAP Tools first tries to reuse the tag a service requests in its `package.json` (e.g. `\"@example/demo\": \"staging\"`); this value is used when that dependency value is a semver range rather than a plain tag."
+            "default": "",
+            "markdownDescription": "Fallback npm dist-tag to publish local packages under. Leave empty to derive a tag from the active Cloud Foundry org and space (for example `cf-finance-services-prod-uat`); when no active scope is available, SAP Tools falls back to `local`."
           },
           "sapTools.localRegistry.autoStart": {
             "type": "boolean",

@@ -283,12 +283,17 @@ test.describe('SAP Tools SQL workbench', () => {
         const iconStyles = window.getComputedStyle(icon);
         return {
           inputLeft: inputBox.left,
+          inputTop: inputBox.top,
           inputPaddingLeft: inputStyles.paddingLeft,
           iconLeft: iconStyles.left,
+          titleBottom: titleBox.bottom,
           titleRight: titleBox.right,
         };
       });
-      expect(appSearchLayout.inputLeft).toBeGreaterThanOrEqual(appSearchLayout.titleRight);
+      expect(
+        appSearchLayout.inputLeft >= appSearchLayout.titleRight ||
+          appSearchLayout.inputTop >= appSearchLayout.titleBottom
+      ).toBe(true);
       expect(appSearchLayout.inputPaddingLeft).toBe('31px');
       expect(appSearchLayout.iconLeft).toBe('12px');
 

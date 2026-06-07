@@ -48,9 +48,9 @@ export function matchesAnyPattern(name: string, patterns: readonly RegExp[]): bo
 /**
  * Scans `rootFolderPath` for locally-developed packages whose `package.json` `name`
  * matches one of the configured `namePatterns`. Reuses the Apps-tab folder walk
- * (depth ≤ 6, skips `node_modules`/`dist`/`.git`). Returns at most one entry per
- * package name (the shallowest path wins on duplicates). Returns `[]` when no
- * patterns are configured.
+ * (depth ≤ 6, skips `node_modules`/`dist`/`.git`). Throws when more than one
+ * matching folder declares the same package name because silently picking one can
+ * publish the wrong space's package. Returns `[]` when no patterns are configured.
  */
 export async function scanLocalPackages(
   rootFolderPath: string,
@@ -75,9 +75,13 @@ export async function scanLocalPackages(
       continue;
     }
     const existing = byName.get(localPackage.name);
-    if (existing === undefined || isShallower(localPackage.dir, existing.dir)) {
-      byName.set(localPackage.name, localPackage);
+    if (existing !== undefined) {
+      throw new Error(formatDuplicatePackageNameError(localPackage.name, [
+        existing.dir,
+        localPackage.dir,
+      ]));
     }
+    byName.set(localPackage.name, localPackage);
   }
 
   return [...byName.values()].sort((left, right) => left.name.localeCompare(right.name));
@@ -148,16 +152,19 @@ function readDependencySpecs(dependencies: unknown): Record<string, string> {
   return specs;
 }
 
-function isShallower(candidate: string, current: string): boolean {
-  return pathDepth(candidate) < pathDepth(current);
-}
-
-function pathDepth(value: string): number {
-  return value.split(/[\\/]+/).length;
-}
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function formatDuplicatePackageNameError(
+  packageName: string,
+  folderPaths: readonly string[]
+): string {
+  return [
+    `Duplicate local package name "${packageName}" found under the selected root folder.`,
+    'Select a narrower root folder or rename one package before building.',
+    ...folderPaths.map((folderPath) => `- ${folderPath}`),
+  ].join('\n');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

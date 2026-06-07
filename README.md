@@ -16,7 +16,7 @@ SAP Tools is a VS Code extension focused on SAP BTP development workflows.
 - `sapTools.localPackages.namePatterns` (User settings): comma-separated patterns matched against each repo's `package.json` `name` to mark which folders under the root are locally-developed npm packages (e.g. `@example/`). A pattern that is not valid regex is matched literally. Detection keys off the name, not a `build` script, so dependency-only packages are still found. Empty disables local-package scanning.
 - `sapTools.localPackages.versionBumpStrategy` (`prerelease-timestamp` | `none`, default `prerelease-timestamp`): make each publish version unique so the local registry accepts the republish, restoring the original `package.json` version afterward.
 - `sapTools.localPackages.installInServiceAfterPublish` (default `true`): run `npm install` in the service after publishing so it picks up the fresh package versions.
-- `sapTools.localRegistry.port` (default `4873`), `sapTools.localRegistry.scopes` (default derived from `namePatterns`), `sapTools.localRegistry.defaultTag` (default `staging`), and `sapTools.localRegistry.autoStart` (default `true`) configure the self-hosted Verdaccio registry.
+- `sapTools.localRegistry.port` (default `4873`), `sapTools.localRegistry.scopes` (default derived from `namePatterns`), `sapTools.localRegistry.defaultTag` (empty means derive from the active Cloud Foundry org and space, e.g. `cf-finance-services-prod-uat`; falls back to `local` when no scope is active), and `sapTools.localRegistry.autoStart` (default `true`) configure the self-hosted Verdaccio registry.
 
 ## Development
 ```bash

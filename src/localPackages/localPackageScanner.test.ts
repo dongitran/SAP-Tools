@@ -104,4 +104,20 @@ describe('scanLocalPackages', () => {
     await writePackage(join(root, 'core'), { name: '@example/demo' });
     expect(await scanLocalPackages(root, '')).toEqual([]);
   });
+
+  it('rejects duplicate package names instead of selecting one implicitly', async () => {
+    const root = await makeRoot();
+    await writePackage(join(root, 'space-a', 'common'), {
+      name: '@example/common',
+      version: '1.0.0',
+    });
+    await writePackage(join(root, 'space-b', 'common'), {
+      name: '@example/common',
+      version: '1.0.0',
+    });
+
+    await expect(scanLocalPackages(root, '@example/')).rejects.toThrow(
+      'Duplicate local package name "@example/common"'
+    );
+  });
 });

@@ -9,9 +9,14 @@ import * as vscode from 'vscode';
 
 const CONFIG_SECTION = 'sapTools';
 const DEFAULT_PORT = 4873;
-const DEFAULT_TAG = 'staging';
+const FALLBACK_DEFAULT_TAG = 'local';
 
 export type VersionBumpStrategy = 'prerelease-timestamp' | 'none';
+
+export interface LocalRegistryScope {
+  readonly orgName: string;
+  readonly spaceName: string;
+}
 
 export interface LocalRegistryConfig {
   readonly port: number;
@@ -29,7 +34,9 @@ export interface LocalPackagesConfig {
   readonly registry: LocalRegistryConfig;
 }
 
-export function readLocalPackagesConfig(): LocalPackagesConfig {
+export function readLocalPackagesConfig(
+  scope: LocalRegistryScope | undefined
+): LocalPackagesConfig {
   const config = vscode.workspace.getConfiguration(CONFIG_SECTION);
 
   const namePatterns = readString(config, 'localPackages.namePatterns', '');
@@ -43,7 +50,7 @@ export function readLocalPackagesConfig(): LocalPackagesConfig {
   const explicitScopes = parseScopes(readString(config, 'localRegistry.scopes', ''));
   const scopes = explicitScopes.length > 0 ? explicitScopes : deriveScopes(namePatterns);
 
-  const configuredTag = readString(config, 'localRegistry.defaultTag', DEFAULT_TAG);
+  const configuredTag = readString(config, 'localRegistry.defaultTag', '');
 
   return {
     namePatterns,
@@ -53,10 +60,29 @@ export function readLocalPackagesConfig(): LocalPackagesConfig {
     registry: {
       port: readPort(config),
       scopes,
-      defaultTag: configuredTag.length > 0 ? configuredTag : DEFAULT_TAG,
+      defaultTag:
+        configuredTag.length > 0
+          ? configuredTag
+          : deriveLocalRegistryTagFromScope(scope),
       autoStart: config.get<boolean>('localRegistry.autoStart', true),
     },
   };
+}
+
+export function deriveLocalRegistryTagFromScope(
+  scope: LocalRegistryScope | undefined
+): string {
+  if (scope === undefined) {
+    return FALLBACK_DEFAULT_TAG;
+  }
+
+  const orgPart = toDistTagPart(scope.orgName);
+  const spacePart = toDistTagPart(scope.spaceName);
+  if (orgPart.length === 0 || spacePart.length === 0) {
+    return FALLBACK_DEFAULT_TAG;
+  }
+
+  return `cf-${orgPart}-${spacePart}`;
 }
 
 function readString(
@@ -104,4 +130,13 @@ export function deriveScopes(namePatterns: string): string[] {
     scopes.add(match[0]);
   }
   return [...scopes];
+}
+
+function toDistTagPart(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '');
 }

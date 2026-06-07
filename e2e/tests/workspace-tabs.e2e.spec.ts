@@ -304,7 +304,7 @@ test.describe('SAP Tools workspace tabs', () => {
     try {
       await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Apps' }));
       await expect(
-        webviewFrame.getByRole('heading', { name: 'Service Artifacts' })
+        webviewFrame.getByRole('heading', { name: 'Services & Packages' })
       ).toBeVisible();
       await expect(
         webviewFrame.getByRole('tab', { name: 'Debug' })
@@ -397,7 +397,7 @@ test.describe('SAP Tools workspace tabs', () => {
 
       await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Apps' }));
       await expect(
-        webviewFrame.getByRole('heading', { name: 'Service Artifacts' })
+        webviewFrame.getByRole('heading', { name: 'Services & Packages' })
       ).toBeVisible();
       const appsSnapshot = await readWorkspaceTabHeightSnapshot(webviewFrame, {
         list: '[data-role="service-mapping-list"]',

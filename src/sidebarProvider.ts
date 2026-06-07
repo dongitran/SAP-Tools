@@ -1974,7 +1974,7 @@ export class RegionSidebarProvider
       return;
     }
 
-    const config = readLocalPackagesConfig();
+    const config = readLocalPackagesConfig(this.currentConfirmedScope);
     if (config.namePatterns.trim().length === 0) {
       this.postBuildResult(
         false,
@@ -2036,7 +2036,7 @@ export class RegionSidebarProvider
   }
 
   async startLocalRegistry(): Promise<void> {
-    const config = readLocalPackagesConfig();
+    const config = readLocalPackagesConfig(this.currentConfirmedScope);
     this.npmBuildChannel.show(true);
     try {
       await this.verdaccioManager.start({
@@ -2070,7 +2070,7 @@ export class RegionSidebarProvider
    */
   private async postDetectedLocalPackages(): Promise<void> {
     const rootFolderPath = this.selectedLocalRootFolderPath.trim();
-    const patterns = readLocalPackagesConfig().namePatterns.trim();
+    const patterns = readLocalPackagesConfig(this.currentConfirmedScope).namePatterns.trim();
 
     if (rootFolderPath.length === 0 || patterns.length === 0) {
       this.postMessage({ type: MSG_LOCAL_PACKAGES_LOADING, loading: false });

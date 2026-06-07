@@ -125,4 +125,22 @@ describe('Extension manifest feature surface', () => {
       expect.objectContaining({ scope: 'application', type: 'array' })
     );
   });
+
+  it('leaves the local registry default tag empty so runtime can derive it from scope', () => {
+    const manifest = readExtensionManifest();
+    const configuration = manifest.contributes['configuration'];
+    expect(Array.isArray(configuration)).toBe(true);
+
+    const properties = configuration
+      .filter(isRecord)
+      .map((entry) => readRecord(entry['properties']))
+      .find((entry) => entry['sapTools.localRegistry.defaultTag'] !== undefined);
+
+    expect(properties?.['sapTools.localRegistry.defaultTag']).toEqual(
+      expect.objectContaining({
+        default: '',
+        type: 'string',
+      })
+    );
+  });
 });
