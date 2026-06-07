@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.10.32 (stable)
+- **Refactoring:** Split `07-render.js` (3385 lines) into 6 focused source modules (`07a` through `07f`) — core render, topology, selection screen, workspace, SQL workbench, and shared utils. Zero code changes; build output remains identical.
+
 ## 0.10.31 (stable)
 - **Fix:** "Services & Packages" title no longer reverts to "Export Service Artifacts" when the registry badge appears after a build.
 - **Fix:** "Published" badge on single package build now stays visible permanently (no longer fades out after 2s).

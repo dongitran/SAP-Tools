@@ -16,7 +16,12 @@ const files = [
   '04-hana-sql.js',
   '05-quick-selection.js',
   '06-utils.js',
-  '07-render.js',
+  '07a-render-core.js',
+  '07b-render-topology.js',
+  '07c-render-selection.js',
+  '07d-render-workspace.js',
+  '07e-render-sql.js',
+  '07f-render-utils.js',
   '08-cf-logs.js'
 ];
 

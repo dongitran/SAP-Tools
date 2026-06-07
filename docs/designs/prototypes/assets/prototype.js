@@ -2746,7 +2746,7 @@ function applyDesignClasses(root, patternClass, themeClass) {
 
 // --- END 06-utils.js ---
 
-// --- BEGIN 07-render.js ---
+// --- BEGIN 07a-render-core.js ---
 function renderPrototype() {
   const groupsContainer = appElement.querySelector('.groups');
   const groupsScrollTop = groupsContainer ? groupsContainer.scrollTop : 0;
@@ -3048,6 +3048,9 @@ function postLogout() {
     type: LOGOUT_MESSAGE_TYPE,
   });
 }
+// --- END 07a-render-core.js ---
+
+// --- BEGIN 07b-render-topology.js ---
 
 function applyCfTopologySnapshot(rawTopology) {
   const wasReady = cfTopology.ready === true;
@@ -3516,7 +3519,9 @@ function applyRestoredConfirmedScope(scope) {
 
   renderPrototype();
 }
+// --- END 07b-render-topology.js ---
 
+// --- BEGIN 07c-render-selection.js ---
 function renderSelectionScreen() {
   const showTabs = cfTopology.ready === true;
   const isQuick = showTabs && activeSelectionMode === 'quick';
@@ -4285,7 +4290,9 @@ function renderEmptyRegionPanel() {
     </section>
   `;
 }
+// --- END 07c-render-selection.js ---
 
+// --- BEGIN 07d-render-workspace.js ---
 function renderWorkspaceScreen() {
   const selectedRegion = resolveSelectedRegion();
   const selectedSpace = selectedSpaceId.length > 0 ? selectedSpaceId : 'No space selected';
@@ -5109,7 +5116,9 @@ function readSqlTablesListScrollTop(tablesPanel) {
   const tablesList = tablesPanel.querySelector('[data-role="hana-tables-list"]');
   return tablesList instanceof HTMLElement ? tablesList.scrollTop : 0;
 }
+// --- END 07d-render-workspace.js ---
 
+// --- BEGIN 07e-render-sql.js ---
 function restoreSqlTablesListScrollTop(tablesPanel, scrollTop) {
   const tablesList = tablesPanel.querySelector('[data-role="hana-tables-list"]');
   if (tablesList instanceof HTMLElement && scrollTop > 0) {
@@ -5968,7 +5977,9 @@ function shouldUseReadableHanaTableWords(segment, words) {
   }
   return !words.every((word) => word.length === 1);
 }
+// --- END 07e-render-sql.js ---
 
+// --- BEGIN 07f-render-utils.js ---
 function getFilteredLogs() {
   const keyword = searchKeyword.trim().toLowerCase();
 
@@ -6132,7 +6143,7 @@ function resolveServiceExportRows(availableApps) {
   const runningApps = filterLoggableCatalogApps(availableApps);
   const mappingByAppId = new Map(serviceFolderMappings.map((mapping) => [mapping.appId, mapping]));
   return runningApps.map((app) => {
-// --- END 07-render.js ---
+// --- END 07f-render-utils.js ---
 
 // --- BEGIN 08-cf-logs.js ---
     const existingMapping = mappingByAppId.get(app.id);
