@@ -4543,6 +4543,7 @@ function renderDetectedPackagesList() {
 function updateSinglePackageBuildUI(pkgName) {
   const li = document.querySelector(`li[data-pkg-name="${CSS.escape(pkgName)}"]`);
   if (li) {
+    const pkg = detectedPackages.find((p) => p.name === pkgName);
     const isSingleBuilding = buildingPackageName === pkgName;
     const singleHasResult = buildResultPackageName === pkgName;
     const statusObj = buildPublishStatuses[pkgName];

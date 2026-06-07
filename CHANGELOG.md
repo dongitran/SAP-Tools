@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.10.38 (stable)
+- **Fix:** Fixed a JavaScript ReferenceError (`pkg is not defined`) in `updateSinglePackageBuildUI` that was causing the UI updates to silently crash when clicking the "Build" button or during progress updates.
+
 ## 0.10.37 (stable)
 - **Feature:** Added the ability to hover over a "Published" package row to reveal the "Build" button again, allowing users to quickly manually trigger rebuilds for already-published packages.
 
