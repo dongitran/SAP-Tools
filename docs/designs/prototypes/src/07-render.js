@@ -1825,7 +1825,9 @@ function updateSinglePackageBuildUI(pkgName) {
   if (buildAllBtn instanceof HTMLButtonElement) {
     if (buildPublishInProgress) {
       buildAllBtn.disabled = true;
-      buildAllBtn.innerHTML = 'Building&#8230;';
+      const total = detectedPackages.length;
+      const pct = total > 0 ? Math.round((buildPublishCompletedCount / total) * 100) : 0;
+      buildAllBtn.innerHTML = `<span class="detected-pkg-spinner" aria-hidden="true" style="width:10px;height:10px;border-width:2px;flex-shrink:0"></span>Build All – ${String(pct)}%`;
     } else {
       buildAllBtn.disabled = false;
       buildAllBtn.textContent = 'Build All';
@@ -1923,13 +1925,25 @@ function renderDetectedPackagesInner() {
 
   const buildAllButton =
     count > 0
-      ? `<button
-          type="button"
-          class="small-action detected-packages-build"
-          data-action="build-publish-all"
-          title="Build &amp; publish all detected packages to the local registry, in dependency order"
-          ${buildPublishInProgress ? 'disabled' : ''}
-        >${buildPublishInProgress ? 'Building&#8230;' : 'Build All'}</button>`
+      ? (() => {
+          if (buildPublishInProgress) {
+            const total = count;
+            const pct = total > 0 ? Math.round((buildPublishCompletedCount / total) * 100) : 0;
+            return `<button
+                type="button"
+                class="small-action detected-packages-build"
+                data-action="build-publish-all"
+                title="Build &amp; publish all detected packages to the local registry, in dependency order"
+                disabled
+              ><span class="detected-pkg-spinner" aria-hidden="true" style="width:10px;height:10px;border-width:2px;flex-shrink:0"></span>Build All – ${String(pct)}%</button>`;
+          }
+          return `<button
+              type="button"
+              class="small-action detected-packages-build"
+              data-action="build-publish-all"
+              title="Build &amp; publish all detected packages to the local registry, in dependency order"
+            >Build All</button>`;
+        })()
       : '';
 
   // Build All keeps a compact result line inside the package list (the old

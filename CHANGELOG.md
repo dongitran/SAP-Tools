@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.31 (stable)
+- **Fix:** "Services & Packages" title no longer reverts to "Export Service Artifacts" when the registry badge appears after a build.
+- **Fix:** "Published" badge on single package build now stays visible permanently (no longer fades out after 2s).
+- **Feature:** Build All button now shows a spinner and real-time `%` progress (e.g. `⟳ Build All – 40%`) during bulk builds.
+- **Feature:** Each package that completes during a Build All run immediately shows a permanent ✓ Published badge on its row.
+- **Fix (packageBuilder.ts):** Added `--config.node-linker=hoisted` flag alongside `--shamefully-hoist` to pnpm install so the hoisted layout is applied consistently.
+
 ## 0.10.30 (stable)
 - **UI/UX Tweaks:** Adjusted layout balance in the service export tab so the Packages list takes up to a maximum of 40% height, granting the Apps list a minimum of 60% height.
 

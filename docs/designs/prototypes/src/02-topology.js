@@ -359,7 +359,7 @@ function refreshWorkspaceAppsView() {
     // Badge newly appeared — re-render the header h2.
     const h2 = exportTab.querySelector('.service-export-header h2');
     if (h2 instanceof HTMLElement) {
-      h2.innerHTML = `Export Service Artifacts ${newBadgeHtml}`;
+      h2.innerHTML = `Services &amp; Packages ${newBadgeHtml}`;
     }
   }
 

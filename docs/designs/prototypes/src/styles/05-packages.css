@@ -50,6 +50,9 @@
 .detected-packages-build {
   flex: 0 0 auto;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .detected-packages-empty {

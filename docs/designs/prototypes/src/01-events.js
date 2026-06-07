@@ -360,6 +360,7 @@ window.addEventListener('message', (event) => {
     if (Array.isArray(msg.order)) {
       buildPublishOrder = msg.order.filter((name) => typeof name === 'string');
       buildPublishStatuses = {};
+      buildPublishCompletedCount = 0;
       refreshUiAfterServiceExportStateChange();
     }
     return;
@@ -367,12 +368,22 @@ window.addEventListener('message', (event) => {
 
   if (msg.type === 'sapTools.buildPublishProgress') {
     if (typeof msg.packageName === 'string') {
+      const prevStatus = buildPublishStatuses[msg.packageName];
+      const newStatus = typeof msg.status === 'string' ? msg.status : '';
       buildPublishStatuses[msg.packageName] = {
         phase: typeof msg.phase === 'string' ? msg.phase : '',
-        status: typeof msg.status === 'string' ? msg.status : '',
+        status: newStatus,
         message: typeof msg.message === 'string' ? msg.message : '',
       };
-      if (buildingPackageName.length === 0) {
+      // When a package finishes successfully in a Build All run, show its Published badge
+      // and increment the completed counter for progress tracking.
+      if (newStatus === 'done' && prevStatus?.status !== 'done' && buildingPackageName.length === 0) {
+        buildResultPackageName = msg.packageName;
+        buildResultSuccess = true;
+        buildResultMessage = 'Built & published';
+        buildPublishCompletedCount += 1;
+        updateSinglePackageBuildUI(msg.packageName);
+      } else if (buildingPackageName.length === 0) {
         refreshUiAfterServiceExportStateChange();
       }
     }
@@ -381,6 +392,7 @@ window.addEventListener('message', (event) => {
 
   if (msg.type === 'sapTools.buildPublishResult') {
     buildPublishInProgress = false;
+    buildPublishCompletedCount = 0;
     const success = msg.success === true;
     const resultText =
       typeof msg.message === 'string' && msg.message.length > 0
@@ -402,14 +414,6 @@ window.addEventListener('message', (event) => {
         buildResultTimer = null;
       }
       updateSinglePackageBuildUI(pkgName);
-      if (success) {
-        // Keep the green confirmation for ~2s, then quietly fade it away.
-        buildResultTimer = setTimeout(() => {
-          buildResultTimer = null;
-          buildResultPackageName = '';
-          updateSinglePackageBuildUI(pkgName);
-        }, 2000);
-      }
     } else {
       buildPublishResultMessage = resultText;
       buildPublishResultTone = success ? 'success' : 'error';

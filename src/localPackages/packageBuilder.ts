@@ -32,6 +32,7 @@ export async function buildPackage(
     [
       'i', 
       '--shamefully-hoist',
+      '--config.node-linker=hoisted',
       '--registry', options.registryUrl,
       `--${authKey}:_authToken=${options.authToken}`
     ], 

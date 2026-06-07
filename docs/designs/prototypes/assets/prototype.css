@@ -1930,6 +1930,9 @@ body.vscode-high-contrast-light.prototype-page .service-export-button {
 .detected-packages-build {
   flex: 0 0 auto;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .detected-packages-empty {

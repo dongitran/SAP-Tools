@@ -200,6 +200,7 @@ let localRegistryUrl = '';
 let buildPublishInProgress = false;
 let buildPublishOrder = [];
 let buildPublishStatuses = {};
+let buildPublishCompletedCount = 0;
 let buildPublishResultMessage = '';
 let buildPublishResultTone = 'info';
 // Per-package single-build effect state (in-list, no separate panel).

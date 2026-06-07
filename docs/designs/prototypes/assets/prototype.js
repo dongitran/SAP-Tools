@@ -201,6 +201,7 @@ let localRegistryUrl = '';
 let buildPublishInProgress = false;
 let buildPublishOrder = [];
 let buildPublishStatuses = {};
+let buildPublishCompletedCount = 0;
 let buildPublishResultMessage = '';
 let buildPublishResultTone = 'info';
 // Per-package single-build effect state (in-list, no separate panel).
@@ -610,6 +611,7 @@ window.addEventListener('message', (event) => {
     if (Array.isArray(msg.order)) {
       buildPublishOrder = msg.order.filter((name) => typeof name === 'string');
       buildPublishStatuses = {};
+      buildPublishCompletedCount = 0;
       refreshUiAfterServiceExportStateChange();
     }
     return;
@@ -617,12 +619,22 @@ window.addEventListener('message', (event) => {
 
   if (msg.type === 'sapTools.buildPublishProgress') {
     if (typeof msg.packageName === 'string') {
+      const prevStatus = buildPublishStatuses[msg.packageName];
+      const newStatus = typeof msg.status === 'string' ? msg.status : '';
       buildPublishStatuses[msg.packageName] = {
         phase: typeof msg.phase === 'string' ? msg.phase : '',
-        status: typeof msg.status === 'string' ? msg.status : '',
+        status: newStatus,
         message: typeof msg.message === 'string' ? msg.message : '',
       };
-      if (buildingPackageName.length === 0) {
+      // When a package finishes successfully in a Build All run, show its Published badge
+      // and increment the completed counter for progress tracking.
+      if (newStatus === 'done' && prevStatus?.status !== 'done' && buildingPackageName.length === 0) {
+        buildResultPackageName = msg.packageName;
+        buildResultSuccess = true;
+        buildResultMessage = 'Built & published';
+        buildPublishCompletedCount += 1;
+        updateSinglePackageBuildUI(msg.packageName);
+      } else if (buildingPackageName.length === 0) {
         refreshUiAfterServiceExportStateChange();
       }
     }
@@ -631,6 +643,7 @@ window.addEventListener('message', (event) => {
 
   if (msg.type === 'sapTools.buildPublishResult') {
     buildPublishInProgress = false;
+    buildPublishCompletedCount = 0;
     const success = msg.success === true;
     const resultText =
       typeof msg.message === 'string' && msg.message.length > 0
@@ -652,14 +665,6 @@ window.addEventListener('message', (event) => {
         buildResultTimer = null;
       }
       updateSinglePackageBuildUI(pkgName);
-      if (success) {
-        // Keep the green confirmation for ~2s, then quietly fade it away.
-        buildResultTimer = setTimeout(() => {
-          buildResultTimer = null;
-          buildResultPackageName = '';
-          updateSinglePackageBuildUI(pkgName);
-        }, 2000);
-      }
     } else {
       buildPublishResultMessage = resultText;
       buildPublishResultTone = success ? 'success' : 'error';
@@ -1397,7 +1402,7 @@ function refreshWorkspaceAppsView() {
     // Badge newly appeared — re-render the header h2.
     const h2 = exportTab.querySelector('.service-export-header h2');
     if (h2 instanceof HTMLElement) {
-      h2.innerHTML = `Export Service Artifacts ${newBadgeHtml}`;
+      h2.innerHTML = `Services &amp; Packages ${newBadgeHtml}`;
     }
   }
 
@@ -2261,6 +2266,7 @@ function handleServiceExportAction(action, actionElement) {
     buildPublishInProgress = true;
     buildPublishOrder = [];
     buildPublishStatuses = {};
+    buildPublishCompletedCount = 0;
     buildPublishResultMessage = 'Building & publishing packages…';
     buildPublishResultTone = 'info';
     vscodeApi.postMessage({ type: BUILD_PUBLISH_ALL_MESSAGE_TYPE });
@@ -4568,7 +4574,9 @@ function updateSinglePackageBuildUI(pkgName) {
   if (buildAllBtn instanceof HTMLButtonElement) {
     if (buildPublishInProgress) {
       buildAllBtn.disabled = true;
-      buildAllBtn.innerHTML = 'Building&#8230;';
+      const total = detectedPackages.length;
+      const pct = total > 0 ? Math.round((buildPublishCompletedCount / total) * 100) : 0;
+      buildAllBtn.innerHTML = `<span class="detected-pkg-spinner" aria-hidden="true" style="width:10px;height:10px;border-width:2px;flex-shrink:0"></span>Build All – ${String(pct)}%`;
     } else {
       buildAllBtn.disabled = false;
       buildAllBtn.textContent = 'Build All';
@@ -4666,13 +4674,25 @@ function renderDetectedPackagesInner() {
 
   const buildAllButton =
     count > 0
-      ? `<button
-          type="button"
-          class="small-action detected-packages-build"
-          data-action="build-publish-all"
-          title="Build &amp; publish all detected packages to the local registry, in dependency order"
-          ${buildPublishInProgress ? 'disabled' : ''}
-        >${buildPublishInProgress ? 'Building&#8230;' : 'Build All'}</button>`
+      ? (() => {
+          if (buildPublishInProgress) {
+            const total = count;
+            const pct = total > 0 ? Math.round((buildPublishCompletedCount / total) * 100) : 0;
+            return `<button
+                type="button"
+                class="small-action detected-packages-build"
+                data-action="build-publish-all"
+                title="Build &amp; publish all detected packages to the local registry, in dependency order"
+                disabled
+              ><span class="detected-pkg-spinner" aria-hidden="true" style="width:10px;height:10px;border-width:2px;flex-shrink:0"></span>Build All – ${String(pct)}%</button>`;
+          }
+          return `<button
+              type="button"
+              class="small-action detected-packages-build"
+              data-action="build-publish-all"
+              title="Build &amp; publish all detected packages to the local registry, in dependency order"
+            >Build All</button>`;
+        })()
       : '';
 
   // Build All keeps a compact result line inside the package list (the old
