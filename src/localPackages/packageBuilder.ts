@@ -36,8 +36,8 @@ export async function buildPackage(
       '--registry', options.registryUrl,
       `--${authKey}:_authToken=${options.authToken}`
     ], 
-    { cwd: pkg.dir, onOutput: options.onOutput }
+    { cwd: pkg.dir, onOutput: options.onOutput, timeoutMs: 600000 }
   );
-  await runCommand('npm', ['run', 'build'], { cwd: pkg.dir, onOutput: options.onOutput });
+  await runCommand('npm', ['run', 'build'], { cwd: pkg.dir, onOutput: options.onOutput, timeoutMs: 600000 });
   return 'built';
 }

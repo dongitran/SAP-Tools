@@ -659,6 +659,9 @@ window.addEventListener('message', (event) => {
       buildResultPackageName = pkgName;
       buildResultSuccess = success;
       buildResultMessage = success ? 'Built & published' : resultText;
+      if (success) {
+        buildPublishStatuses[pkgName] = { phase: 'publish', status: 'done', message: 'Built & published' };
+      }
 
       if (buildResultTimer !== null) {
         clearTimeout(buildResultTimer);
@@ -4538,6 +4541,7 @@ function updateSinglePackageBuildUI(pkgName) {
     const pkg = detectedPackages.find((p) => p.name === pkgName);
     
     let actionCell;
+    const isDone = buildPublishStatuses[pkgName]?.status === 'done';
     if (hasResult) {
       if (buildResultSuccess) {
         actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(buildResultMessage)}">✓ Published</span>`;
@@ -4551,6 +4555,8 @@ function updateSinglePackageBuildUI(pkgName) {
           aria-label="Build error – click to copy"
         >⚠</button>`;
       }
+    } else if (isDone) {
+      actionCell = `<span class="detected-pkg-result is-success" title="Built & published">✓ Published</span>`;
     } else if (isBuilding) {
       actionCell = `<span class="detected-pkg-state is-building" aria-busy="true"><span class="detected-pkg-spinner" aria-hidden="true"></span>Building…</span>`;
     } else {
@@ -4579,11 +4585,13 @@ function updateSinglePackageBuildUI(pkgName) {
   
   const buildAllBtn = document.querySelector('.detected-packages-build');
   if (buildAllBtn instanceof HTMLButtonElement) {
-    if (buildPublishInProgress) {
+    if (buildPublishInProgress && buildPublishOrder.length > 0) {
       buildAllBtn.disabled = true;
       const total = detectedPackages.length;
       const pct = total > 0 ? Math.round((buildPublishCompletedCount / total) * 100) : 0;
       buildAllBtn.innerHTML = `<span class="detected-pkg-spinner" aria-hidden="true" style="width:10px;height:10px;border-width:2px;flex-shrink:0"></span>Build All – ${String(pct)}%`;
+    } else if (buildPublishInProgress) {
+      buildAllBtn.disabled = true;
     } else {
       buildAllBtn.disabled = false;
       buildAllBtn.textContent = 'Build All';
@@ -4639,6 +4647,7 @@ function renderDetectedPackagesInner() {
         const hasResult = buildResultPackageName === pkg.name;
 
         let actionCell;
+        const isDone = buildPublishStatuses[pkg.name]?.status === 'done';
         if (hasResult) {
           if (buildResultSuccess) {
             actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(buildResultMessage)}">✓ Published</span>`;
@@ -4652,6 +4661,8 @@ function renderDetectedPackagesInner() {
               aria-label="Build error – click to copy"
             >⚠</button>`;
           }
+        } else if (isDone) {
+          actionCell = `<span class="detected-pkg-result is-success" title="Built & published">✓ Published</span>`;
         } else if (isBuilding) {
           actionCell = `<span class="detected-pkg-state is-building" aria-busy="true"><span class="detected-pkg-spinner" aria-hidden="true"></span>Building…</span>`;
         } else {
@@ -4682,7 +4693,7 @@ function renderDetectedPackagesInner() {
   const buildAllButton =
     count > 0
       ? (() => {
-          if (buildPublishInProgress) {
+          if (buildPublishInProgress && buildPublishOrder.length > 0) {
             const total = count;
             const pct = total > 0 ? Math.round((buildPublishCompletedCount / total) * 100) : 0;
             return `<button
@@ -4692,6 +4703,15 @@ function renderDetectedPackagesInner() {
                 title="Build &amp; publish all detected packages to the local registry, in dependency order"
                 disabled
               ><span class="detected-pkg-spinner" aria-hidden="true" style="width:10px;height:10px;border-width:2px;flex-shrink:0"></span>Build All – ${String(pct)}%</button>`;
+          }
+          if (buildPublishInProgress) {
+            return `<button
+                type="button"
+                class="small-action detected-packages-build"
+                data-action="build-publish-all"
+                title="Build &amp; publish all detected packages to the local registry, in dependency order"
+                disabled
+              >Build All</button>`;
           }
           return `<button
               type="button"

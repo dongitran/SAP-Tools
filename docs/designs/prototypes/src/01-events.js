@@ -408,6 +408,9 @@ window.addEventListener('message', (event) => {
       buildResultPackageName = pkgName;
       buildResultSuccess = success;
       buildResultMessage = success ? 'Built & published' : resultText;
+      if (success) {
+        buildPublishStatuses[pkgName] = { phase: 'publish', status: 'done', message: 'Built & published' };
+      }
 
       if (buildResultTimer !== null) {
         clearTimeout(buildResultTimer);

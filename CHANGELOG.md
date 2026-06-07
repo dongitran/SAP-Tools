@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.33 (stable)
+- **Fix:** Fixed issue where the "Build All" button would show a loading state when building a single package.
+- **Fix:** "Published" labels are now preserved correctly when building other packages sequentially.
+- **Fix:** "Build All" flow now properly applies the "Published" label to each completed package inline.
+- **Fix:** Added a 10-minute timeout to `npm run build` and `pnpm install` during the package publish flow to prevent indefinite hangs and surface errors if they stall at ~60%.
+
 ## 0.10.32 (stable)
 - **Refactoring:** Split `07-render.js` (3385 lines) into 6 focused source modules (`07a` through `07f`) — core render, topology, selection screen, workspace, SQL workbench, and shared utils. Zero code changes; build output remains identical.
 

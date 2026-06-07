@@ -90,7 +90,7 @@ export async function publishPackage(
         options.tag,
         `--${authKey}:_authToken=${options.authToken}`,
       ],
-      { cwd: pkg.dir, onOutput: options.onOutput }
+      { cwd: pkg.dir, onOutput: options.onOutput, timeoutMs: 600000 }
     );
     return { publishedVersion: publishVersion, tag: options.tag };
   } catch (error) {
