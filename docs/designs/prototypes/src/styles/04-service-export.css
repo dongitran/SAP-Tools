@@ -256,11 +256,9 @@
 }
 
 /* The mapped folder path lives in this badge's tooltip (hover to view), so it no
-   longer takes up a full row column. */
+   longer takes up a full row column. Keep the badge clean without a dotted underline. */
 .service-map-state-mapped {
   cursor: help;
-  text-decoration: underline dotted;
-  text-underline-offset: 2px;
 }
 
 .service-export-selected {

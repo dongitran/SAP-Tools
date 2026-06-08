@@ -19,6 +19,7 @@ export interface PublishOptions {
   readonly tag: string;
   readonly authToken: string;
   readonly versionBumpStrategy: VersionBumpStrategy;
+  readonly versionSuffix: string;
   readonly onOutput: (chunk: string) => void;
 }
 
@@ -31,13 +32,21 @@ export interface PublishResult {
 export function computePublishVersion(
   baseVersion: string,
   strategy: VersionBumpStrategy,
-  now: number
+  now: number,
+  versionSuffix = 'local'
 ): string {
   if (strategy === 'none') {
     return baseVersion;
   }
-  const base = baseVersion.replace(/-local\.\d+$/, '');
-  return `${base}-local.${String(now)}`;
+
+  const normalizedSuffix = normalizeVersionSuffix(versionSuffix);
+  if (normalizedSuffix === 'local') {
+    const base = baseVersion.replace(/-local\.\d+$/, '');
+    return `${base}-local.${String(now)}`;
+  }
+
+  const base = readSemverCore(baseVersion);
+  return `${base}-${normalizedSuffix}-${String(now)}`;
 }
 
 /** Turns a registry URL into the npm auth config key, e.g. `//localhost:4873/`. */
@@ -70,7 +79,8 @@ export async function publishPackage(
   const publishVersion = computePublishVersion(
     pkg.version,
     options.versionBumpStrategy,
-    Date.now()
+    Date.now(),
+    options.versionSuffix
   );
   const mutatesVersion =
     options.versionBumpStrategy !== 'none' && publishVersion !== pkg.version;
@@ -110,6 +120,21 @@ async function writeVersion(
   const parsed: unknown = JSON.parse(originalContent);
   const next = { ...(parsed as Record<string, unknown>), version };
   await writeFile(packageJsonPath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+}
+
+function normalizeVersionSuffix(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '');
+  return normalized.length > 0 ? normalized : 'local';
+}
+
+function readSemverCore(version: string): string {
+  const match = /^(\d+\.\d+\.\d+)/.exec(version.trim());
+  return match?.[1] ?? version.replace(/-[0-9A-Za-z-]+-\d+$/, '');
 }
 
 function friendlyPublishError(packageName: string, error: unknown): Error {

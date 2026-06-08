@@ -404,7 +404,7 @@ window.addEventListener('message', (event) => {
       typeof msg.message === 'string' && msg.message.length > 0
         ? msg.message
         : success
-          ? 'Build & publish completed.'
+          ? ''
           : 'Build & publish failed.';
 
     // Single-package build → show an in-list result on that package row only.

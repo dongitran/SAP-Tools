@@ -2,7 +2,7 @@
   "name": "sap-tools",
   "displayName": "SAP Tools",
   "description": "All-in-one toolbox for SAP BTP development workflows",
-  "version": "0.10.40",
+  "version": "0.10.44",
   "publisher": "dongtran",
   "icon": "resources/icon.png",
   "license": "MIT",
@@ -104,10 +104,16 @@
               "none"
             ],
             "markdownEnumDescriptions": [
-              "Before publishing, temporarily set a unique prerelease version (`<base>-local.<timestamp>`) so the local registry accepts the republish, then restore the original version in `package.json`.",
+              "Before publishing, temporarily set a unique prerelease version (`<base>-<space>-<org>-<timestamp>`) so the local registry accepts the republish per active CF space/org, then restore the original version in `package.json`.",
               "Publish the version as-is. Republishing the same version will fail unless you bump it yourself."
             ],
-            "markdownDescription": "How to make a package version unique for each publish to the local registry. Verdaccio rejects republishing an existing version; `prerelease-timestamp` works around this without editing your git history (the original version is restored after publish)."
+            "markdownDescription": "How to make a package version unique for each publish to the local registry. Verdaccio rejects republishing an existing version; `prerelease-timestamp` adds the active CF space/org to avoid collisions across org-space package sets without editing your git history (the original version is restored after publish)."
+          },
+          "sapTools.localPackages.deleteNpmrcBeforeBuild": {
+            "type": "boolean",
+            "scope": "application",
+            "default": true,
+            "markdownDescription": "Before building each local package, delete the package-level `.npmrc` file so stale registry/auth overrides cannot conflict with the managed local registry publish flow. Disable this only when the package intentionally needs its own `.npmrc` during build."
           },
           "sapTools.localPackages.installInServiceAfterPublish": {
             "type": "boolean",
@@ -131,7 +137,7 @@
             "type": "string",
             "scope": "application",
             "default": "",
-            "markdownDescription": "Fallback npm dist-tag to publish local packages under. Leave empty to derive a tag from the active Cloud Foundry org and space (for example `cf-finance-services-prod-uat`); when no active scope is available, SAP Tools falls back to `local`."
+            "markdownDescription": "Fallback npm dist-tag to publish local packages under. Leave empty to derive a tag from the active Cloud Foundry space and org (for example `cf-uat-finance-services-prod`); when no active scope is available, SAP Tools falls back to `local`."
           },
           "sapTools.localRegistry.autoStart": {
             "type": "boolean",

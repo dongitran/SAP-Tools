@@ -266,7 +266,7 @@ function updateSinglePackageBuildUI(pkgName) {
           data-error="${escapeHtml(buildResultMessage)}"
           title="${escapeHtml(buildResultMessage)}"
           aria-label="Build error – click to copy"
-        >⚠</button>`;
+        >⚠</button>${buildButtonHtml}`;
       }
     } else if (isFailed) {
       actionCell = `<button
@@ -276,7 +276,7 @@ function updateSinglePackageBuildUI(pkgName) {
         data-error="${escapeHtml(statusObj.message)}"
         title="${escapeHtml(statusObj.message)}"
         aria-label="Build error – click to copy"
-      >⚠</button>`;
+      >⚠</button>${buildButtonHtml}`;
     } else if (isDone) {
       actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(statusObj.message || 'Built & published')}">✓ Published</span>${buildButtonHtml}`;
     } else if (isRunning || isSingleBuilding) {
@@ -388,7 +388,7 @@ function renderDetectedPackagesInner() {
               data-error="${escapeHtml(buildResultMessage)}"
               title="${escapeHtml(buildResultMessage)}"
               aria-label="Build error – click to copy"
-            >⚠</button>`;
+            >⚠</button>${buildButtonHtml}`;
           }
         } else if (isFailed) {
           actionCell = `<button
@@ -398,7 +398,7 @@ function renderDetectedPackagesInner() {
             data-error="${escapeHtml(statusObj.message)}"
             title="${escapeHtml(statusObj.message)}"
             aria-label="Build error – click to copy"
-          >⚠</button>`;
+          >⚠</button>${buildButtonHtml}`;
         } else if (isDone) {
           actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(statusObj.message || 'Built & published')}">✓ Published</span>${buildButtonHtml}`;
         } else if (isRunning || isSingleBuilding) {
@@ -456,9 +456,8 @@ function renderDetectedPackagesInner() {
         })()
       : '';
 
-  // Build All keeps a compact result line inside the package list (the old
-  // "Build & Publish" panel below Export Artifacts was removed). Per-package
-  // single builds report inline on their own row instead.
+  // Build All keeps only error feedback in this compact result line; successful
+  // package completions report inline on each package row instead.
   const buildAllResult =
     buildResultPackageName.length === 0 && buildPublishResultMessage.length > 0
       ? `<p class="detected-packages-result tone-${escapeHtml(buildPublishResultTone)}">${escapeHtml(buildPublishResultMessage)}</p>`

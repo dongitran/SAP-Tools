@@ -1,7 +1,21 @@
 # Changelog
 
+## 0.10.44 (stable)
+- **Fix:** Removed the dotted underline from the Apps tab `Mapped` service badges while keeping the folder path tooltip available.
+
+## 0.10.43 (stable)
+- **Fix:** Failed package rows now include the retry Build action on hover, matching published rows while keeping the warning icon visible at rest for error details.
+
+## 0.10.42 (stable)
+- **Feature:** Added `sapTools.localPackages.deleteNpmrcBeforeBuild`, a default-enabled Configure checkbox that deletes each local package's `.npmrc` before the package install/build step to avoid stale registry overrides.
+
+## 0.10.41 (stable)
+- **Fix:** Build All no longer shows the transient "Building & publishing packages…" line or the final published-count summary in the sidebar; package rows still update inline.
+- **Fix:** Local package publish versions now use the active CF `space-org` suffix (for example `1.0.0-uat-origin-1700`) instead of carrying older `org-space` prerelease suffixes.
+- **Fix:** Empty `sapTools.localRegistry.defaultTag` now derives tags in `space-org` order, such as `cf-uat-finance-services-prod`, to match the local publish-version namespace.
+
 ## 0.10.40 (stable)
-- **Fix:** Leaving `sapTools.localRegistry.defaultTag` empty now publishes local packages under a tag derived from the active Cloud Foundry org and space, such as `cf-finance-services-prod-uat`, reducing cross-space package mix-ups when package names are reused.
+- **Fix:** Leaving `sapTools.localRegistry.defaultTag` empty now publishes local packages under a tag derived from the active Cloud Foundry space and org, such as `cf-uat-finance-services-prod`, reducing cross-space package mix-ups when package names are reused.
 - **Fix:** Duplicate local package names under the selected root folder now fail with a clear error instead of silently choosing one folder.
 
 ## 0.10.39 (stable)

@@ -253,7 +253,7 @@ function handleServiceExportAction(action, actionElement) {
     buildPublishOrder = [];
     buildPublishStatuses = {};
     buildPublishCompletedCount = 0;
-    buildPublishResultMessage = 'Building & publishing packages…';
+    buildPublishResultMessage = '';
     buildPublishResultTone = 'info';
     vscodeApi.postMessage({ type: BUILD_PUBLISH_ALL_MESSAGE_TYPE });
     return true;

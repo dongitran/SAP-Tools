@@ -115,6 +115,7 @@ export async function runBuildPublishAll(
       const buildOutcome = await buildPackage(pkg, {
         registryUrl: request.registryUrl,
         authToken: request.authToken,
+        deleteNpmrcBeforeBuild: request.config.deleteNpmrcBeforeBuild,
         onOutput: request.onOutput,
       });
       if (buildOutcome === 'skipped') {
@@ -137,6 +138,7 @@ export async function runBuildPublishAll(
         tag,
         authToken: request.authToken,
         versionBumpStrategy: request.config.versionBumpStrategy,
+        versionSuffix: request.config.registry.versionSuffix,
         onOutput: request.onOutput,
       });
       request.onProgress({

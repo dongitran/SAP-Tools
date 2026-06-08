@@ -2024,7 +2024,7 @@ export class RegionSidebarProvider
         `(${String(outcome.builtCount)} built, ${String(outcome.skippedCount)} skipped) ` +
         'to the local registry.';
       this.npmBuildChannel.appendLine(summary);
-      this.postBuildResult(true, summary);
+      this.postBuildResult(true, targetPackageName === undefined ? '' : summary);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Build & publish failed.';
       this.npmBuildChannel.appendLine(`ERROR: ${message}`);

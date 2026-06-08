@@ -1780,11 +1780,18 @@ function updateSinglePackageBuildUI(pkgName) {
     const isBuilding = buildingPackageName === pkgName;
     const hasResult = buildResultPackageName === pkgName;
     const pkg = detectedPackages.find((p) => p.name === pkgName);
+    const buildButtonHtml = `<button
+      type="button"
+      class="small-action detected-pkg-single-build"
+      data-action="build-single-package"
+      data-package="${escapeHtml(pkgName)}"
+      title="Build & publish ${escapeHtml(pkgName)}"
+    >Build</button>`;
     
     let actionCell;
     if (hasResult) {
       if (buildResultSuccess) {
-        actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(buildResultMessage)}">✓ Published</span>`;
+        actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(buildResultMessage)}">✓ Published</span>${buildButtonHtml}`;
       } else {
         actionCell = `<button
           type="button"
@@ -1793,7 +1800,7 @@ function updateSinglePackageBuildUI(pkgName) {
           data-error="${escapeHtml(buildResultMessage)}"
           title="${escapeHtml(buildResultMessage)}"
           aria-label="Build error – click to copy"
-        >⚠</button>`;
+        >⚠</button>${buildButtonHtml}`;
       }
     } else if (isBuilding) {
       actionCell = `<span class="detected-pkg-state is-building" aria-busy="true"><span class="detected-pkg-spinner" aria-hidden="true"></span>Building…</span>`;
@@ -1885,7 +1892,7 @@ function renderDetectedPackagesInner() {
         let actionCell;
         if (hasResult) {
           if (buildResultSuccess) {
-            actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(buildResultMessage)}">✓ Published</span>`;
+            actionCell = `<span class="detected-pkg-result is-success" title="${escapeHtml(buildResultMessage)}">✓ Published</span>${buildButtonHtml}`;
           } else {
             actionCell = `<button
               type="button"
@@ -1894,7 +1901,7 @@ function renderDetectedPackagesInner() {
               data-error="${escapeHtml(buildResultMessage)}"
               title="${escapeHtml(buildResultMessage)}"
               aria-label="Build error – click to copy"
-            >⚠</button>`;
+            >⚠</button>${buildButtonHtml}`;
           }
         } else if (isBuilding) {
           actionCell = `<span class="detected-pkg-state is-building" aria-busy="true"><span class="detected-pkg-spinner" aria-hidden="true"></span>Building…</span>`;
@@ -1946,9 +1953,8 @@ function renderDetectedPackagesInner() {
         })()
       : '';
 
-  // Build All keeps a compact result line inside the package list (the old
-  // "Build & Publish" panel below Export Artifacts was removed). Per-package
-  // single builds report inline on their own row instead.
+  // Build All keeps only error feedback in this compact result line; successful
+  // package completions report inline on each package row instead.
   const buildAllResult =
     buildResultPackageName.length === 0 && buildPublishResultMessage.length > 0
       ? `<p class="detected-packages-result tone-${escapeHtml(buildPublishResultTone)}">${escapeHtml(buildPublishResultMessage)}</p>`

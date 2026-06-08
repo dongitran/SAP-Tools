@@ -126,6 +126,24 @@ describe('Extension manifest feature surface', () => {
     );
   });
 
+  it('contributes the package .npmrc cleanup checkbox enabled by default', () => {
+    const manifest = readExtensionManifest();
+    const configuration = manifest.contributes['configuration'];
+    expect(Array.isArray(configuration)).toBe(true);
+
+    const properties = configuration
+      .filter(isRecord)
+      .map((entry) => readRecord(entry['properties']))
+      .find((entry) => entry['sapTools.localPackages.deleteNpmrcBeforeBuild'] !== undefined);
+
+    expect(properties?.['sapTools.localPackages.deleteNpmrcBeforeBuild']).toEqual(
+      expect.objectContaining({
+        default: true,
+        type: 'boolean',
+      })
+    );
+  });
+
   it('leaves the local registry default tag empty so runtime can derive it from scope', () => {
     const manifest = readExtensionManifest();
     const configuration = manifest.contributes['configuration'];

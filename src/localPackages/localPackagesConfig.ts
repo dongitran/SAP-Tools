@@ -23,6 +23,8 @@ export interface LocalRegistryConfig {
   /** npm scopes (e.g. `@example`) routed to the local registry for publish/install. */
   readonly scopes: readonly string[];
   readonly defaultTag: string;
+  /** Semver prerelease prefix used to isolate local publishes per active CF space/org. */
+  readonly versionSuffix: string;
   readonly autoStart: boolean;
 }
 
@@ -30,6 +32,11 @@ export interface LocalPackagesConfig {
   readonly namePatterns: string;
   readonly prePublishScript: string;
   readonly versionBumpStrategy: VersionBumpStrategy;
+  /**
+   * Delete a package-level .npmrc before dependency install/build to avoid stale
+   * registry overrides.
+   */
+  readonly deleteNpmrcBeforeBuild: boolean;
   readonly installInServiceAfterPublish: boolean;
   readonly registry: LocalRegistryConfig;
 }
@@ -42,6 +49,10 @@ export function readLocalPackagesConfig(
   const namePatterns = readString(config, 'localPackages.namePatterns', '');
   const prePublishScript = readString(config, 'localPackages.prePublishScript', '');
   const versionBumpStrategy = readVersionBumpStrategy(config);
+  const deleteNpmrcBeforeBuild = config.get<boolean>(
+    'localPackages.deleteNpmrcBeforeBuild',
+    true
+  );
   const installInServiceAfterPublish = config.get<boolean>(
     'localPackages.installInServiceAfterPublish',
     true
@@ -56,6 +67,7 @@ export function readLocalPackagesConfig(
     namePatterns,
     prePublishScript,
     versionBumpStrategy,
+    deleteNpmrcBeforeBuild,
     installInServiceAfterPublish,
     registry: {
       port: readPort(config),
@@ -64,6 +76,7 @@ export function readLocalPackagesConfig(
         configuredTag.length > 0
           ? configuredTag
           : deriveLocalRegistryTagFromScope(scope),
+      versionSuffix: deriveLocalRegistryVersionSuffixFromScope(scope),
       autoStart: config.get<boolean>('localRegistry.autoStart', true),
     },
   };
@@ -82,7 +95,23 @@ export function deriveLocalRegistryTagFromScope(
     return FALLBACK_DEFAULT_TAG;
   }
 
-  return `cf-${orgPart}-${spacePart}`;
+  return `cf-${spacePart}-${orgPart}`;
+}
+
+export function deriveLocalRegistryVersionSuffixFromScope(
+  scope: LocalRegistryScope | undefined
+): string {
+  if (scope === undefined) {
+    return FALLBACK_DEFAULT_TAG;
+  }
+
+  const orgPart = toDistTagPart(scope.orgName);
+  const spacePart = toDistTagPart(scope.spaceName);
+  if (orgPart.length === 0 || spacePart.length === 0) {
+    return FALLBACK_DEFAULT_TAG;
+  }
+
+  return `${spacePart}-${orgPart}`;
 }
 
 function readString(

@@ -248,6 +248,12 @@
   animation: detected-pkg-result-in 0.2s ease;
 }
 
+
+.detected-pkg:hover .detected-pkg-error-icon {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .detected-pkg-error-icon:hover {
   transform: scale(1.15);
   background: color-mix(in oklab, var(--state-danger-fg) 24%, transparent);

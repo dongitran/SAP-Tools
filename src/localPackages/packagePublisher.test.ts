@@ -7,10 +7,16 @@ import {
 } from './packagePublisher';
 
 describe('computePublishVersion', () => {
-  it('appends a unique local prerelease suffix', () => {
+  it('appends a unique local prerelease suffix by default', () => {
     expect(computePublishVersion('1.0.0-origin-staging-5', 'prerelease-timestamp', 1700)).toBe(
       '1.0.0-origin-staging-5-local.1700'
     );
+  });
+
+  it('replaces an older org-space publish suffix with the active space-org suffix', () => {
+    expect(
+      computePublishVersion('1.0.0-origin-uat-10', 'prerelease-timestamp', 1700, 'uat-origin')
+    ).toBe('1.0.0-uat-origin-1700');
   });
 
   it('does not stack local suffixes across republishes', () => {
