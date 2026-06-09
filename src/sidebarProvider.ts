@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { access } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import {
   cfLogin,
@@ -77,6 +78,7 @@ const MSG_SELECT_LOCAL_ROOT_FOLDER = 'sapTools.selectLocalRootFolder';
 const MSG_REFRESH_SERVICE_FOLDER_MAPPINGS = 'sapTools.refreshServiceFolderMappings';
 const MSG_SELECT_SERVICE_FOLDER_MAPPING = 'sapTools.selectServiceFolderMapping';
 const MSG_EXPORT_SERVICE_ARTIFACTS = 'sapTools.exportServiceArtifacts';
+const MSG_REPLACE_SERVICE_PACKAGE_PLACEHOLDER = 'sapTools.replaceServicePackagePlaceholder';
 const MSG_EXPORT_SQLTOOLS_CONFIG = 'sapTools.exportSqlToolsConfig';
 const MSG_OPEN_HANA_SQL_FILE = 'sapTools.openHanaSqlFile';
 const MSG_RUN_HANA_TABLE_SELECT = 'sapTools.runHanaTableSelect';
@@ -489,6 +491,14 @@ export class RegionSidebarProvider
         includeDefaultEnv: true,
         includePnpmLock: true,
       });
+      return;
+    }
+
+    if (type === MSG_REPLACE_SERVICE_PACKAGE_PLACEHOLDER) {
+      const appId = (message as { appId?: unknown }).appId;
+      if (typeof appId === 'string' && appId.length > 0) {
+        await this.handleReplaceServicePackagePlaceholder(appId);
+      }
       return;
     }
 
@@ -2032,6 +2042,56 @@ export class RegionSidebarProvider
     } finally {
       this.buildPublishInProgress = false;
       await this.postRegistryState();
+    }
+  }
+
+  private async handleReplaceServicePackagePlaceholder(appId: string): Promise<void> {
+    const mapping = this.serviceFolderMappings.find(
+      (m) => m.appId === appId && m.folderPath.length > 0
+    );
+    if (mapping === undefined) {
+      void vscode.window.showErrorMessage(
+        `SAP Tools: No mapped folder found for service "${appId}".`
+      );
+      return;
+    }
+
+    const config = readLocalPackagesConfig(this.currentConfirmedScope);
+    const placeholders = config.packageJsonTagPlaceholder
+      .split(',')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    if (placeholders.length === 0) {
+      void vscode.window.showWarningMessage(
+        'SAP Tools: No placeholder configured. Set "sapTools.localPackages.packageJsonTagPlaceholder" first.'
+      );
+      return;
+    }
+
+    const tag = config.registry.defaultTag;
+    const packageJsonPath = join(mapping.folderPath, 'package.json');
+
+    try {
+      const content = await readFile(packageJsonPath, 'utf8');
+      const hasAny = placeholders.some((p) => content.includes(p));
+      if (!hasAny) {
+        void vscode.window.showInformationMessage(
+          `SAP Tools: No placeholder found in package.json for "${mapping.appName}".`
+        );
+        return;
+      }
+      const patched = placeholders.reduce(
+        (acc, placeholder) => acc.replaceAll(placeholder, tag),
+        content
+      );
+      await writeFile(packageJsonPath, patched, 'utf8');
+      void vscode.window.showInformationMessage(
+        `SAP Tools: Replaced placeholder with "${tag}" in package.json for "${mapping.appName}".`
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      void vscode.window.showErrorMessage(`SAP Tools: Failed to update package.json: ${msg}`);
     }
   }
 

@@ -165,7 +165,6 @@
   gap: 8px;
   text-align: left;
   padding: 8px 10px;
-  cursor: pointer;
   width: 100%;
   min-width: 0;
 }
@@ -258,9 +257,42 @@
 /* The mapped folder path lives in this badge's tooltip (hover to view), so it no
    longer takes up a full row column. */
 .service-map-state-mapped {
-  cursor: help;
-  text-decoration: underline dotted;
-  text-underline-offset: 2px;
+  grid-column: 2;
+  grid-row: 1;
+  transition: opacity 0.15s ease;
+}
+
+.service-map-hover-actions {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.service-map-row:hover .service-map-hover-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.service-map-row:hover .service-map-state-mapped {
+  opacity: 0;
+}
+
+.service-map-export-btn,
+.service-map-replace-btn {
+  padding: 1px 8px;
+  min-height: 18px;
+  font-size: 0.6rem;
+}
+
+.service-map-export-btn:hover,
+.service-map-replace-btn:hover {
+  transform: none !important;
 }
 
 .service-export-selected {
@@ -269,36 +301,8 @@
   color: var(--muted-color);
 }
 
-.service-export-actions {
-  margin-top: 2px;
-}
-
-.service-export-button {
-  min-width: 132px;
-  border-color: #0f7f70;
-  background: linear-gradient(180deg, #15a58f, #0f7f70);
-  color: #f6fffd;
-}
-
 .service-export-sqltools-button {
   min-height: 36px;
-}
-
-.service-export-button:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-body.vscode-dark.prototype-page .service-export-button {
-  border-color: #58c9b6;
-  background: linear-gradient(180deg, #2aa995, #157b6b);
-  color: #eafffa;
-}
-
-body.vscode-high-contrast.prototype-page .service-export-button,
-body.vscode-high-contrast-light.prototype-page .service-export-button {
-  border-color: var(--focus-ring-color);
-  background: var(--focus-ring-color);
-  color: var(--mix-base);
 }
 
 .service-export-status {

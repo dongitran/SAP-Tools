@@ -168,8 +168,8 @@ function shouldRefreshWorkspaceLogsOnly(action, modeBeforeAction, tabBeforeActio
 function shouldRefreshWorkspaceAppsOnly(action, modeBeforeAction, tabBeforeAction) {
   const isAppsAction =
     action === 'select-local-root-folder' ||
-    action === 'select-export-service' ||
-    action === 'export-service-artifacts' ||
+    action === 'export-service-now' ||
+    action === 'replace-service-package-placeholder' ||
     action === 'export-sqltools-config';
   if (!isAppsAction) {
     return false;
@@ -314,14 +314,6 @@ function refreshWorkspaceAppsView() {
   const availableApps = resolveCurrentSpaceApps();
   const mappingRows = resolveServiceExportRows(availableApps);
   const filteredMappingRows = filterServiceExportRows(mappingRows);
-  const selectedMapping = mappingRows.find(
-    (mapping) => mapping.appId === selectedServiceExportAppId && mapping.isMapped
-  );
-  const selectedSpaceLabel =
-    selectedSpaceId.length > 0 ? selectedSpaceId : 'Select a space first';
-  const selectedServiceLabel =
-    selectedMapping === undefined ? 'No service selected' : selectedMapping.appName;
-  const canExport = selectedMapping !== undefined && !serviceExportInProgress;
   const rootFolderLabel =
     localServiceRootFolderPath.length > 0 ? localServiceRootFolderPath : 'Not selected';
 
@@ -393,11 +385,6 @@ function refreshWorkspaceAppsView() {
   const exportSearchInput = exportTab.querySelector('[data-role="service-export-search"]');
   if (exportSearchInput instanceof HTMLInputElement) {
     exportSearchInput.value = serviceExportSearchKeyword;
-  }
-
-  const exportButton = exportTab.querySelector('[data-action="export-service-artifacts"]');
-  if (exportButton instanceof HTMLButtonElement) {
-    exportButton.disabled = !canExport;
   }
 
   const statusElement = exportTab.querySelector('[data-role="service-export-status"]');

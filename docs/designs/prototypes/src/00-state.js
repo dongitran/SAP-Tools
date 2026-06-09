@@ -148,6 +148,7 @@ const REFRESH_SERVICE_FOLDER_MAPPINGS_MESSAGE_TYPE =
   'sapTools.refreshServiceFolderMappings';
 const SELECT_SERVICE_FOLDER_MAPPING_MESSAGE_TYPE = 'sapTools.selectServiceFolderMapping';
 const EXPORT_SERVICE_ARTIFACTS_MESSAGE_TYPE = 'sapTools.exportServiceArtifacts';
+const REPLACE_SERVICE_PACKAGE_PLACEHOLDER_MESSAGE_TYPE = 'sapTools.replaceServicePackagePlaceholder';
 const EXPORT_SQLTOOLS_CONFIG_MESSAGE_TYPE = 'sapTools.exportSqlToolsConfig';
 const OPEN_HANA_SQL_FILE_MESSAGE_TYPE = 'sapTools.openHanaSqlFile';
 const RUN_HANA_TABLE_SELECT_MESSAGE_TYPE = 'sapTools.runHanaTableSelect';

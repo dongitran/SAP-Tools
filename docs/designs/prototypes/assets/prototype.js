@@ -149,6 +149,7 @@ const REFRESH_SERVICE_FOLDER_MAPPINGS_MESSAGE_TYPE =
   'sapTools.refreshServiceFolderMappings';
 const SELECT_SERVICE_FOLDER_MAPPING_MESSAGE_TYPE = 'sapTools.selectServiceFolderMapping';
 const EXPORT_SERVICE_ARTIFACTS_MESSAGE_TYPE = 'sapTools.exportServiceArtifacts';
+const REPLACE_SERVICE_PACKAGE_PLACEHOLDER_MESSAGE_TYPE = 'sapTools.replaceServicePackagePlaceholder';
 const EXPORT_SQLTOOLS_CONFIG_MESSAGE_TYPE = 'sapTools.exportSqlToolsConfig';
 const OPEN_HANA_SQL_FILE_MESSAGE_TYPE = 'sapTools.openHanaSqlFile';
 const RUN_HANA_TABLE_SELECT_MESSAGE_TYPE = 'sapTools.runHanaTableSelect';
@@ -1220,8 +1221,8 @@ function shouldRefreshWorkspaceLogsOnly(action, modeBeforeAction, tabBeforeActio
 function shouldRefreshWorkspaceAppsOnly(action, modeBeforeAction, tabBeforeAction) {
   const isAppsAction =
     action === 'select-local-root-folder' ||
-    action === 'select-export-service' ||
-    action === 'export-service-artifacts' ||
+    action === 'export-service-now' ||
+    action === 'replace-service-package-placeholder' ||
     action === 'export-sqltools-config';
   if (!isAppsAction) {
     return false;
@@ -1366,14 +1367,6 @@ function refreshWorkspaceAppsView() {
   const availableApps = resolveCurrentSpaceApps();
   const mappingRows = resolveServiceExportRows(availableApps);
   const filteredMappingRows = filterServiceExportRows(mappingRows);
-  const selectedMapping = mappingRows.find(
-    (mapping) => mapping.appId === selectedServiceExportAppId && mapping.isMapped
-  );
-  const selectedSpaceLabel =
-    selectedSpaceId.length > 0 ? selectedSpaceId : 'Select a space first';
-  const selectedServiceLabel =
-    selectedMapping === undefined ? 'No service selected' : selectedMapping.appName;
-  const canExport = selectedMapping !== undefined && !serviceExportInProgress;
   const rootFolderLabel =
     localServiceRootFolderPath.length > 0 ? localServiceRootFolderPath : 'Not selected';
 
@@ -1445,11 +1438,6 @@ function refreshWorkspaceAppsView() {
   const exportSearchInput = exportTab.querySelector('[data-role="service-export-search"]');
   if (exportSearchInput instanceof HTMLInputElement) {
     exportSearchInput.value = serviceExportSearchKeyword;
-  }
-
-  const exportButton = exportTab.querySelector('[data-action="export-service-artifacts"]');
-  if (exportButton instanceof HTMLButtonElement) {
-    exportButton.disabled = !canExport;
   }
 
   const statusElement = exportTab.querySelector('[data-role="service-export-status"]');
@@ -2240,23 +2228,29 @@ function handleServiceExportAction(action, actionElement) {
     return true;
   }
 
-  if (action === 'select-export-service') {
+  if (action === 'export-service-now') {
     const appId = actionElement.dataset.appId ?? '';
-    if (appId.length === 0) {
-      return false;
-    }
-    const mapping = serviceFolderMappings.find((entry) => entry.appId === appId);
-    if (mapping === undefined || !mapping.isMapped) {
+    if (appId.length === 0 || serviceExportInProgress) {
       return true;
     }
     selectedServiceExportAppId = appId;
     serviceExportStatusTone = 'info';
     serviceExportStatusMessage = '';
-    return true;
+    return triggerServiceExport();
   }
 
-  if (action === 'export-service-artifacts') {
-    return triggerServiceExport();
+  if (action === 'replace-service-package-placeholder') {
+    const appId = actionElement.dataset.appId ?? '';
+    if (appId.length === 0) {
+      return true;
+    }
+    if (vscodeApi !== null) {
+      vscodeApi.postMessage({
+        type: REPLACE_SERVICE_PACKAGE_PLACEHOLDER_MESSAGE_TYPE,
+        appId,
+      });
+    }
+    return true;
   }
 
   if (action === 'export-sqltools-config') {
@@ -4440,14 +4434,6 @@ function renderServiceExportTab() {
   const availableApps = resolveCurrentSpaceApps();
   const mappingRows = resolveServiceExportRows(availableApps);
   const filteredMappingRows = filterServiceExportRows(mappingRows);
-  const selectedMapping = mappingRows.find(
-    (mapping) => mapping.appId === selectedServiceExportAppId && mapping.isMapped
-  );
-  const selectedSpaceLabel =
-    selectedSpaceId.length > 0 ? selectedSpaceId : 'Select a space first';
-  const selectedServiceLabel =
-    selectedMapping === undefined ? 'No service selected' : selectedMapping.appName;
-  const canExport = selectedMapping !== undefined && !serviceExportInProgress;
   const hasSearchKeyword = serviceExportSearchKeyword.trim().length > 0;
 
   return `
@@ -4505,17 +4491,6 @@ function renderServiceExportTab() {
       </section>
 
       ${renderDetectedPackagesList()}
-
-      <div class="toolbar-row service-export-actions" role="group" aria-label="Service export actions">
-        <button
-          type="button"
-          class="primary-action service-export-button"
-          data-action="export-service-artifacts"
-          ${canExport ? '' : 'disabled'}
-        >
-          Export Artifacts
-        </button>
-      </div>
 
       ${renderServiceExportStatus()}
     </section>
@@ -4842,18 +4817,31 @@ function renderServiceExportMappingRows(
     }
 
     return `
-      <button
-        type="button"
-        class="service-map-row${isSelected ? ' is-selected' : ''}"
-        data-action="select-export-service"
-        data-app-id="${escapeHtml(mapping.appId)}"
-      >
+      <div class="service-map-row${isSelected ? ' is-selected' : ''}">
         <span class="service-map-name">${escapeHtml(mapping.appName)}</span>
         <span
           class="service-map-state service-map-state-mapped"
           title="${escapeHtml(mapping.folderPath)}"
         >Mapped</span>
-      </button>
+        <div class="service-map-hover-actions">
+          <button
+            type="button"
+            class="small-action service-map-replace-btn"
+            data-action="replace-service-package-placeholder"
+            data-app-id="${escapeHtml(mapping.appId)}"
+            title="Replace placeholder in package.json for ${escapeHtml(mapping.appName)}"
+            ${serviceExportInProgress ? 'disabled' : ''}
+          >Replace</button>
+          <button
+            type="button"
+            class="small-action service-map-export-btn"
+            data-action="export-service-now"
+            data-app-id="${escapeHtml(mapping.appId)}"
+            title="Export artifacts for ${escapeHtml(mapping.appName)}"
+            ${serviceExportInProgress ? 'disabled' : ''}
+          >Export</button>
+        </div>
+      </div>
     `;
   });
 

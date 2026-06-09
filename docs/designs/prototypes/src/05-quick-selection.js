@@ -214,23 +214,29 @@ function handleServiceExportAction(action, actionElement) {
     return true;
   }
 
-  if (action === 'select-export-service') {
+  if (action === 'export-service-now') {
     const appId = actionElement.dataset.appId ?? '';
-    if (appId.length === 0) {
-      return false;
-    }
-    const mapping = serviceFolderMappings.find((entry) => entry.appId === appId);
-    if (mapping === undefined || !mapping.isMapped) {
+    if (appId.length === 0 || serviceExportInProgress) {
       return true;
     }
     selectedServiceExportAppId = appId;
     serviceExportStatusTone = 'info';
     serviceExportStatusMessage = '';
-    return true;
+    return triggerServiceExport();
   }
 
-  if (action === 'export-service-artifacts') {
-    return triggerServiceExport();
+  if (action === 'replace-service-package-placeholder') {
+    const appId = actionElement.dataset.appId ?? '';
+    if (appId.length === 0) {
+      return true;
+    }
+    if (vscodeApi !== null) {
+      vscodeApi.postMessage({
+        type: REPLACE_SERVICE_PACKAGE_PLACEHOLDER_MESSAGE_TYPE,
+        appId,
+      });
+    }
+    return true;
   }
 
   if (action === 'export-sqltools-config') {

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.10.47 (stable)
+- **Feature:** Removed the standalone "Export Artifacts" button. Each mapped service row now shows **Export** and **Replace** buttons on hover (at the position of the "Mapped" badge). **Export** triggers artifact export directly; **Replace** permanently replaces the configured `packageJsonTagPlaceholder` strings in the service's `package.json` with the active CF dist-tag (no revert).
+
 ## 0.10.46 (stable)
 - **Fix:** "Published" labels in the Packages list no longer flicker when clicking an app in the Services list. The packages section now skips DOM mutation when its rendered content is unchanged.
 
