@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.10.46 (stable)
+- **Fix:** "Published" labels in the Packages list no longer flicker when clicking an app in the Services list. The packages section now skips DOM mutation when its rendered content is unchanged.
+
 ## 0.10.45 (stable)
 - **Enhancement:** `sapTools.localPackages.packageJsonTagPlaceholder` now accepts multiple comma-separated placeholders (e.g. `${BRANCH}, {branch}`); each is trimmed and all occurrences in `package.json` are replaced with the active CF dist-tag before building.
 

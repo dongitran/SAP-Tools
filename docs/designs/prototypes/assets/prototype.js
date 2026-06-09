@@ -1424,13 +1424,16 @@ function refreshWorkspaceAppsView() {
     // Prevent wiping the list DOM if a single package build is in progress.
     // The single package build UI is handled via targeted updates in updateSinglePackageBuildUI.
     if (buildingPackageName.length === 0) {
-      detectedPackagesElement.innerHTML = renderDetectedPackagesInner();
+      const newHtml = renderDetectedPackagesInner();
+      if (detectedPackagesElement.innerHTML !== newHtml) {
+        detectedPackagesElement.innerHTML = newHtml;
 
-      // Restore scroll position
-      if (scrollTop > 0) {
-        const newListElement = detectedPackagesElement.querySelector('.detected-pkg-list');
-        if (newListElement) {
-          newListElement.scrollTop = scrollTop;
+        // Restore scroll position
+        if (scrollTop > 0) {
+          const newListElement = detectedPackagesElement.querySelector('.detected-pkg-list');
+          if (newListElement) {
+            newListElement.scrollTop = scrollTop;
+          }
         }
       }
     }
