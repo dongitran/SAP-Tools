@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest';
 
 import {
   HanaQueryError,
+  buildHdbCreateClientArgs,
   classifyHanaSqlStatement,
   executeHanaQuery,
   executeHanaQueryBatch,
@@ -530,6 +531,49 @@ describe('formatHanaCellValue', () => {
 
   test('serializes plain objects as JSON', () => {
     expect(formatHanaCellValue({ x: 1, y: 'z' })).toBe('{"x":1,"y":"z"}');
+  });
+});
+
+describe('buildHdbCreateClientArgs', () => {
+  test('requests data format level 7 so BOOLEAN columns keep their native wire type', () => {
+    const args = buildHdbCreateClientArgs({
+      host: 'h',
+      port: 443,
+      user: 'u',
+      password: 'p',
+    });
+
+    expect(args).toEqual({
+      host: 'h',
+      port: 443,
+      user: 'u',
+      password: 'p',
+      encrypt: true,
+      sslValidateCertificate: true,
+      initializationTimeout: 60_000,
+      dataFormatSupport: 7,
+    });
+  });
+
+  test('adds databaseName only when the connection has a non-empty database', () => {
+    const withDatabase = buildHdbCreateClientArgs({
+      host: 'h',
+      port: 443,
+      user: 'u',
+      password: 'p',
+      database: 'HXE',
+    });
+    expect(withDatabase.databaseName).toBe('HXE');
+    expect(withDatabase.dataFormatSupport).toBe(7);
+
+    const withoutDatabase = buildHdbCreateClientArgs({
+      host: 'h',
+      port: 443,
+      user: 'u',
+      password: 'p',
+      database: '',
+    });
+    expect(withoutDatabase).not.toHaveProperty('databaseName');
   });
 });
 

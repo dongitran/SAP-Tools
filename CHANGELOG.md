@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.10.48 (stable)
+- **Fix:** SQL workbench result tables now display BOOLEAN columns as `true`/`false` instead of `0`/`1`. The HANA connection now requests data format version 7, so the server sends BOOLEAN columns with their native wire type instead of downgrading them to TINYINT.
+
 ## 0.10.47 (stable)
 - **Feature:** Removed the standalone "Export Artifacts" button. Each mapped service row now shows **Export** and **Replace** buttons on hover (at the position of the "Mapped" badge). **Export** triggers artifact export directly; **Replace** permanently replaces the configured `packageJsonTagPlaceholder` strings in the service's `package.json` with the active CF dist-tag (no revert).
 

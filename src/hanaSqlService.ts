@@ -8,6 +8,15 @@ const HANA_QUERY_RESULT_PREVIEW_BYTES = 4096;
 const HDB_BOOLEAN_TYPE_CODE = 28;
 
 /**
+ * The hdb driver still negotiates data format version 1 by default, and at
+ * that level HANA downgrades BOOLEAN columns to TINYINT on the wire — the
+ * client then receives 0/1 with TINYINT metadata, so results render as `0`/`1`
+ * even though the column is BOOLEAN. Level 7 is where the protocol ships
+ * BOOLEAN natively (type code 28), letting the boolean formatting kick in.
+ */
+const HANA_DATA_FORMAT_SUPPORT_LEVEL = 7;
+
+/**
  * The hdb driver aborts the connection with "No initialization reply received
  * within 5 sec" if HANA does not answer the protocol handshake within its
  * default 5s window. HANA Cloud instances auto-suspend when idle and need
@@ -112,6 +121,7 @@ export interface HdbCreateClientArgs {
   readonly encrypt?: boolean;
   readonly sslValidateCertificate?: boolean;
   readonly initializationTimeout?: number;
+  readonly dataFormatSupport?: number;
 }
 
 export interface HdbModule {
@@ -964,8 +974,7 @@ export function loadHdbModule(distDir: string = __dirname): HdbModule {
   return cachedHdbModule;
 }
 
-function createDefaultHdbClient(connection: HanaConnection): HdbClient {
-  const hdbModule = loadHdbModule();
+export function buildHdbCreateClientArgs(connection: HanaConnection): HdbCreateClientArgs {
   const args: HdbCreateClientArgs = {
     host: connection.host,
     port: connection.port,
@@ -974,9 +983,14 @@ function createDefaultHdbClient(connection: HanaConnection): HdbClient {
     encrypt: true,
     sslValidateCertificate: true,
     initializationTimeout: HANA_CONNECT_INIT_TIMEOUT_MS,
+    dataFormatSupport: HANA_DATA_FORMAT_SUPPORT_LEVEL,
   };
   if (connection.database !== undefined && connection.database.length > 0) {
-    return hdbModule.createClient({ ...args, databaseName: connection.database });
+    return { ...args, databaseName: connection.database };
   }
-  return hdbModule.createClient(args);
+  return args;
+}
+
+function createDefaultHdbClient(connection: HanaConnection): HdbClient {
+  return loadHdbModule().createClient(buildHdbCreateClientArgs(connection));
 }
