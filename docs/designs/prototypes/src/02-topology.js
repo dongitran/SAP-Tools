@@ -306,10 +306,6 @@ function refreshWorkspaceLogsView() {
     statusElement.textContent = statusMessage;
   }
 
-  const syncElement = appElement.querySelector('[data-role="workspace-last-sync"]');
-  if (syncElement instanceof HTMLElement) {
-    syncElement.textContent = `Last sync: ${lastSyncLabel}`;
-  }
 }
 
 function refreshWorkspaceAppsView() {
@@ -540,4 +536,3 @@ function handleSpaceSelection(nextSpaceId) {
 
   appsLoadingState = 'idle';
 }
-

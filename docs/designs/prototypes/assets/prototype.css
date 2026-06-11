@@ -1367,18 +1367,6 @@ body.vscode-high-contrast-light.prototype-page .confirm-button {
   padding-inline: 12px;
   font-size: 0.8rem;
 }
-
-.workspace-footer {
-  border-top: 1px solid var(--border-color);
-  background: color-mix(in oklab, var(--surface-bg) 92%, var(--mix-base));
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  font-size: 0.77rem;
-  color: var(--muted-color);
-}
 /* --- END 02-components.css --- */
 
 /* --- BEGIN 03-logs-panel.css --- */
@@ -1761,9 +1749,9 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   background: transparent;
   color: inherit;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  column-gap: 8px;
   text-align: left;
   padding: 8px 10px;
   width: 100%;
@@ -1786,11 +1774,12 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 .service-map-row.is-unmapped {
   cursor: default;
   opacity: 0.8;
+  grid-template-columns: 18px minmax(0, 1fr);
 }
 
 .service-map-row.is-conflict {
   cursor: default;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) auto;
+  grid-template-columns: 18px minmax(0, 1fr) minmax(0, 1.7fr) auto;
 }
 
 .service-map-row.is-conflict:hover {
@@ -1822,12 +1811,47 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 }
 
 .service-map-name {
+  grid-column: 2;
   font-size: 0.69rem;
   color: var(--text-color);
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.service-map-status-icon {
+  grid-column: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  color: var(--muted-color);
+  background: color-mix(in oklab, var(--surface-bg) 86%, var(--mix-base));
+  flex: 0 0 auto;
+}
+
+.service-map-status-icon svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.service-map-status-icon.is-mapped {
+  color: var(--state-success-fg);
+  background: color-mix(in oklab, var(--state-success-fg) 13%, transparent);
+}
+
+.service-map-status-icon.is-unmapped {
+  color: var(--state-danger-fg);
+  background: color-mix(in oklab, var(--state-danger-bg) 78%, var(--mix-base));
 }
 
 .service-map-path {
@@ -1840,6 +1864,7 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 }
 
 .service-map-state {
+  grid-column: 4;
   border: 1px solid color-mix(in oklab, var(--border-color) 84%, var(--mix-base));
   border-radius: 999px;
   padding: 2px 8px;
@@ -1849,22 +1874,8 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   background: color-mix(in oklab, var(--surface-bg) 86%, var(--mix-base));
 }
 
-.service-map-row.is-unmapped .service-map-state {
-  color: var(--state-danger-fg);
-  border-color: var(--state-danger-border);
-  background: color-mix(in oklab, var(--state-danger-bg) 80%, var(--mix-base));
-}
-
-/* The mapped folder path lives in this badge's tooltip (hover to view), so it no
-   longer takes up a full row column. */
-.service-map-state-mapped {
-  grid-column: 2;
-  grid-row: 1;
-  transition: opacity 0.15s ease;
-}
-
 .service-map-hover-actions {
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1;
   justify-self: end;
   display: flex;
@@ -1873,15 +1884,14 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
+  position: relative;
+  z-index: 2;
 }
 
-.service-map-row:hover .service-map-hover-actions {
+.service-map-row:hover .service-map-hover-actions,
+.service-map-hover-actions:focus-within {
   opacity: 1;
   pointer-events: auto;
-}
-
-.service-map-row:hover .service-map-state-mapped {
-  opacity: 0;
 }
 
 .service-map-export-btn,
@@ -3204,13 +3214,6 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
     padding: 8px;
   }
 
-  .workspace-footer {
-    padding: 8px;
-    flex-direction: row;
-    justify-content: flex-start;
-    align-items: center;
-  }
-
   .workspace-header .shell-header-row {
     align-items: flex-start;
     flex-wrap: wrap;
@@ -3236,13 +3239,27 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   }
 
   .service-map-row {
-    grid-template-columns: 1fr;
-    gap: 4px;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    column-gap: 6px;
     align-items: start;
   }
 
+  .service-map-row.is-unmapped {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+
+  .service-map-row.is-conflict {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+
+  .service-map-picker,
   .service-map-state {
+    grid-column: 2;
     justify-self: start;
+  }
+
+  .service-map-hover-actions {
+    grid-column: 3;
   }
 }
 /* --- END 06-hana-sql.css --- */

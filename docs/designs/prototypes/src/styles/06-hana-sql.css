@@ -789,13 +789,6 @@
     padding: 8px;
   }
 
-  .workspace-footer {
-    padding: 8px;
-    flex-direction: row;
-    justify-content: flex-start;
-    align-items: center;
-  }
-
   .workspace-header .shell-header-row {
     align-items: flex-start;
     flex-wrap: wrap;
@@ -821,12 +814,26 @@
   }
 
   .service-map-row {
-    grid-template-columns: 1fr;
-    gap: 4px;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    column-gap: 6px;
     align-items: start;
   }
 
+  .service-map-row.is-unmapped {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+
+  .service-map-row.is-conflict {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+
+  .service-map-picker,
   .service-map-state {
+    grid-column: 2;
     justify-self: start;
+  }
+
+  .service-map-hover-actions {
+    grid-column: 3;
   }
 }

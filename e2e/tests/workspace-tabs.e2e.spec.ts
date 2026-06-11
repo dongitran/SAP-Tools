@@ -1,8 +1,11 @@
+import fs from 'node:fs';
+
 import { test, expect, type Frame } from '@playwright/test';
 
 import {
   cleanupExtensionHost,
   clickWithFallback,
+  createServiceRootMappingFixture,
   launchExtensionHost,
   openSapToolsSidebar,
   selectDefaultScope,
@@ -50,6 +53,11 @@ interface SettingsLayoutSnapshot {
   readonly secondSectionBottomToBodyBottom: number;
   readonly statusScrollOverflow: number;
   readonly syncPickerToMetaGap: number;
+}
+
+interface ServiceMapIconPositionSnapshot {
+  readonly iconLeft: number;
+  readonly nameLeft: number;
 }
 
 async function readWorkspaceTabHeightSnapshot(
@@ -204,6 +212,33 @@ function expectCompactSettingsLayout(snapshot: SettingsLayoutSnapshot): void {
   expect(snapshot.secondSectionBottomToBodyBottom).toBeGreaterThan(20);
   expect(snapshot.maxInlineOverflow).toBeLessThanOrEqual(1);
   expect(snapshot.statusScrollOverflow).toBeLessThanOrEqual(1);
+}
+
+async function readServiceMapIconPositionSnapshot(
+  webviewFrame: Frame,
+  appName: string
+): Promise<ServiceMapIconPositionSnapshot> {
+  return webviewFrame.evaluate((targetAppName) => {
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('.service-map-row'));
+    const row = rows.find((candidate) => {
+      const name = candidate.querySelector('.service-map-name');
+      return name instanceof HTMLElement && name.textContent.trim() === targetAppName;
+    });
+    if (!(row instanceof HTMLElement)) {
+      throw new Error(`Service row not found for ${targetAppName}.`);
+    }
+
+    const icon = row.querySelector('.service-map-status-icon');
+    const name = row.querySelector('.service-map-name');
+    if (!(icon instanceof HTMLElement) || !(name instanceof HTMLElement)) {
+      throw new Error(`Service row icon/name missing for ${targetAppName}.`);
+    }
+
+    return {
+      iconLeft: icon.getBoundingClientRect().left,
+      nameLeft: name.getBoundingClientRect().left,
+    };
+  }, appName);
 }
 
 test.describe('SAP Tools workspace tabs', () => {
@@ -409,6 +444,78 @@ test.describe('SAP Tools workspace tabs', () => {
       expect(appsSnapshot.listMaxHeight).toBe('none');
     } finally {
       await cleanupExtensionHost(session);
+    }
+  });
+
+  test('User can see service mapping icons at row start and use hover actions', async () => {
+    const fixtureRootPath = createServiceRootMappingFixture();
+    const session = await launchExtensionHost({
+      extraEnv: {
+        SAP_TOOLS_E2E_ROOT_DIALOG_STEPS: 'select',
+        SAP_TOOLS_E2E_ROOT_FOLDER_PATH: fixtureRootPath,
+      },
+    });
+
+    try {
+      const webviewFrame = await openSapToolsSidebar(session.window);
+      await selectDefaultScope(webviewFrame);
+      await clickWithFallback(
+        webviewFrame.getByRole('button', { name: 'Confirm Scope' })
+      );
+      await expect(
+        webviewFrame.getByRole('heading', { name: 'Monitoring Workspace' })
+      ).toBeVisible();
+
+      await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Apps' }));
+      await expect(
+        webviewFrame.getByRole('heading', { name: 'Services & Packages' })
+      ).toBeVisible();
+
+      await expect(webviewFrame.locator('[data-role="workspace-last-sync"]')).toHaveCount(0);
+      await expect(webviewFrame.getByText(/^Last sync:/i)).toHaveCount(0);
+
+      const apiRow = webviewFrame.locator('.service-map-row', {
+        has: webviewFrame.locator('.service-map-name', { hasText: /^finance-uat-api$/ }),
+      });
+      await expect(apiRow.getByRole('img', { name: 'Unmapped service' })).toBeVisible();
+      await expect(apiRow.locator('.service-map-state', { hasText: /^Unmapped$/i })).toHaveCount(0);
+
+      await clickWithFallback(webviewFrame.getByRole('button', { name: 'Select Root Folder' }));
+      await expect(
+        webviewFrame.getByRole('img', { name: 'Mapped service' })
+      ).toHaveCount(3, { timeout: 10000 });
+      await expect(webviewFrame.locator('.service-map-state', { hasText: /^Mapped$/i })).toHaveCount(0);
+
+      const mappedApiRow = webviewFrame.locator('.service-map-row', {
+        has: webviewFrame.locator('.service-map-name', { hasText: /^finance-uat-api$/ }),
+      });
+      await expect(
+        mappedApiRow.getByRole('img', { name: 'Mapped service' })
+      ).toHaveAttribute('title', /\/finance_uat_api$/);
+
+      const position = await readServiceMapIconPositionSnapshot(
+        webviewFrame,
+        'finance-uat-api'
+      );
+      expect(position.iconLeft).toBeLessThan(position.nameLeft);
+
+      await mappedApiRow.hover();
+      const replaceButton = mappedApiRow.getByRole('button', { name: 'Replace' });
+      const exportButton = mappedApiRow.getByRole('button', { name: 'Export' });
+      await expect(replaceButton).toBeVisible();
+      await expect(exportButton).toBeVisible();
+      await clickWithFallback(replaceButton);
+      await expect(
+        session.window.getByRole('alert').filter({ hasText: /No placeholder configured/i })
+      ).toBeVisible({ timeout: 10000 });
+      await mappedApiRow.hover();
+      await clickWithFallback(exportButton);
+      await expect(webviewFrame.getByText(/No active CF scope session/i)).toBeVisible({
+        timeout: 20000,
+      });
+    } finally {
+      await cleanupExtensionHost(session);
+      fs.rmSync(fixtureRootPath, { recursive: true, force: true });
     }
   });
 });

@@ -38,10 +38,6 @@ function renderWorkspaceScreen() {
     <section class="${workspaceBodyClass}">
       ${renderWorkspaceTabContent()}
     </section>
-
-    <footer class="workspace-footer">
-      <span data-role="workspace-last-sync">Last sync: ${lastSyncLabel}</span>
-    </footer>
   `;
 }
 
@@ -465,6 +461,31 @@ function roundOrInfinity(pkg) {
   return typeof pkg.round === 'number' ? pkg.round : Number.MAX_SAFE_INTEGER;
 }
 
+function renderServiceMapStatusIcon(isMapped, folderPath = '') {
+  const stateClass = isMapped ? 'is-mapped' : 'is-unmapped';
+  const label = isMapped ? 'Mapped service' : 'Unmapped service';
+  const title = isMapped && folderPath.length > 0 ? folderPath : label;
+  const iconMarkup = isMapped
+    ? `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07l-1.22 1.22"></path>
+        <path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 0 0 7.07 7.07l1.22-1.22"></path>
+      </svg>`
+    : `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07l-.82.82"></path>
+        <path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 0 0 7.07 7.07l.82-.82"></path>
+        <path d="M4 4l16 16"></path>
+      </svg>`;
+
+  return `
+    <span
+      class="service-map-status-icon ${stateClass}"
+      role="img"
+      aria-label="${label}"
+      title="${escapeHtml(title)}"
+    >${iconMarkup}</span>
+  `;
+}
+
 function renderServiceExportMappingRows(
   mappingRows,
   options = { hasSearchKeyword: false, totalRowCount: 0 }
@@ -495,6 +516,7 @@ function renderServiceExportMappingRows(
       ].join('');
       return `
         <div class="service-map-row is-conflict${mapping.isMapped ? ' is-resolved' : ''}">
+          ${renderServiceMapStatusIcon(mapping.isMapped, mapping.folderPath)}
           <span class="service-map-name">${escapeHtml(mapping.appName)}</span>
           <label class="service-map-picker">
             <select data-role="service-folder-path-select" data-app-id="${escapeHtml(mapping.appId)}">
@@ -509,19 +531,16 @@ function renderServiceExportMappingRows(
     if (!mapping.isMapped) {
       return `
         <div class="service-map-row is-unmapped" aria-disabled="true">
+          ${renderServiceMapStatusIcon(false)}
           <span class="service-map-name">${escapeHtml(mapping.appName)}</span>
-          <span class="service-map-state">Unmapped</span>
         </div>
       `;
     }
 
     return `
       <div class="service-map-row${isSelected ? ' is-selected' : ''}">
+        ${renderServiceMapStatusIcon(true, mapping.folderPath)}
         <span class="service-map-name">${escapeHtml(mapping.appName)}</span>
-        <span
-          class="service-map-state service-map-state-mapped"
-          title="${escapeHtml(mapping.folderPath)}"
-        >Mapped</span>
         <div class="service-map-hover-actions">
           <button
             type="button"

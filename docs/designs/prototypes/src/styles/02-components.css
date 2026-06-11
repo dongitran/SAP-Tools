@@ -424,15 +424,3 @@ body.vscode-high-contrast-light.prototype-page .confirm-button {
   padding-inline: 12px;
   font-size: 0.8rem;
 }
-
-.workspace-footer {
-  border-top: 1px solid var(--border-color);
-  background: color-mix(in oklab, var(--surface-bg) 92%, var(--mix-base));
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  font-size: 0.77rem;
-  color: var(--muted-color);
-}

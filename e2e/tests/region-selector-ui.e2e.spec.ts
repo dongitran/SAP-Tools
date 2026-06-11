@@ -79,6 +79,18 @@ function getOrgStageButtons(webviewFrame: Frame): Locator {
     .getByTestId('org-option');
 }
 
+function getMappedServiceIcons(webviewFrame: Frame): Locator {
+  return webviewFrame.getByRole('img', { name: 'Mapped service' });
+}
+
+function getMappedServiceIconForApp(webviewFrame: Frame, appName: string): Locator {
+  return webviewFrame
+    .locator('.service-map-row', {
+      has: webviewFrame.locator('.service-map-name', { hasText: appName }),
+    })
+    .getByRole('img', { name: 'Mapped service' });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -1431,7 +1443,7 @@ test.describe('SAP Tools region selector', () => {
 
       await expect(
         webviewFrame.getByRole('button', { name: 'Export Artifacts' })
-      ).toBeDisabled();
+      ).toHaveCount(0);
 
       await expect(webviewFrame.locator('.service-export-root-row')).toHaveCount(1);
       await expect(
@@ -1456,7 +1468,7 @@ test.describe('SAP Tools region selector', () => {
     }
   });
 
-  test('User can enable artifact export after selecting a mapped service', async () => {
+  test('User can reveal artifact actions on mapped service rows', async () => {
     const fixtureRootPath = createServiceRootMappingFixture();
     const session = await launchExtensionHost({
       extraEnv: {
@@ -1479,27 +1491,18 @@ test.describe('SAP Tools region selector', () => {
       });
       await clickWithFallback(selectRootFolderButton);
 
-      // Wait for folder scan to complete (all 3 services become mapped)
-      const mappedStateCells = webviewFrame.locator(
-        '.service-map-row .service-map-state',
-        { hasText: /^Mapped$/i }
-      );
-      await expect(mappedStateCells).toHaveCount(3, { timeout: 10000 });
-
-      // The Export Artifacts button is still disabled — no service selected yet
       await expect(
         webviewFrame.getByRole('button', { name: 'Export Artifacts' })
-      ).toBeDisabled();
+      ).toHaveCount(0);
+      await expect(getMappedServiceIcons(webviewFrame)).toHaveCount(3, { timeout: 10000 });
 
-      // Select the first mapped service row
-      await clickWithFallback(
-        webviewFrame.locator('.service-map-row').filter({ hasText: 'finance-uat-api' }).first()
-      );
-
-      // The Export Artifacts button must become enabled after service selection
-      await expect(
-        webviewFrame.getByRole('button', { name: 'Export Artifacts' })
-      ).toBeEnabled({ timeout: 5000 });
+      const apiRow = webviewFrame
+        .locator('.service-map-row')
+        .filter({ hasText: 'finance-uat-api' })
+        .first();
+      await apiRow.hover();
+      await expect(apiRow.getByRole('button', { name: 'Replace' })).toBeVisible();
+      await expect(apiRow.getByRole('button', { name: 'Export' })).toBeVisible();
     } finally {
       await cleanupExtensionHost(session);
       fs.rmSync(fixtureRootPath, { recursive: true, force: true });
@@ -1531,10 +1534,7 @@ test.describe('SAP Tools region selector', () => {
       });
       await clickWithFallback(selectRootFolderButton);
 
-      const mappedStateCells = webviewFrame.locator(
-        '.service-map-row .service-map-state',
-        { hasText: /^Mapped$/i }
-      );
+      const mappedStateCells = getMappedServiceIcons(webviewFrame);
       await expect(mappedStateCells).toHaveCount(3, { timeout: 10000 });
       await expect(webviewFrame.locator('.service-export-path')).toContainText(fixtureRootPath);
 
@@ -1605,10 +1605,7 @@ test.describe('SAP Tools region selector', () => {
       const selectRootFolderButton = webviewFrame.getByRole('button', {
         name: 'Select Root Folder',
       });
-      const mappedStateCells = webviewFrame.locator(
-        '.service-map-row .service-map-state',
-        { hasText: /^Mapped$/i }
-      );
+      const mappedStateCells = getMappedServiceIcons(webviewFrame);
       const rootPathLabel = webviewFrame.locator('.service-export-path');
 
       await clickWithFallback(selectRootFolderButton);
@@ -1646,9 +1643,7 @@ test.describe('SAP Tools region selector', () => {
       await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Apps' }));
 
       await clickWithFallback(webviewFrame.getByRole('button', { name: 'Select Root Folder' }));
-      const mappedStateCells = webviewFrame.locator('.service-map-row .service-map-state', {
-        hasText: /^Mapped$/i,
-      });
+      const mappedStateCells = getMappedServiceIcons(webviewFrame);
       await expect(mappedStateCells).toHaveCount(3, { timeout: 10000 });
       await expect(webviewFrame.locator('.service-export-path')).toContainText(fixtureRootPath);
 
@@ -1666,12 +1661,7 @@ test.describe('SAP Tools region selector', () => {
           }
         });
 
-      const reopenedMappedStateCells = reopenedFrame.locator(
-        '.service-map-row .service-map-state',
-        {
-          hasText: /^Mapped$/i,
-        }
-      );
+      const reopenedMappedStateCells = getMappedServiceIcons(reopenedFrame);
       await expect(reopenedFrame.locator('.service-export-path')).toContainText(fixtureRootPath, {
         timeout: 15000,
       });
@@ -1702,9 +1692,7 @@ test.describe('SAP Tools region selector', () => {
       await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Apps' }));
       await clickWithFallback(webviewFrame.getByRole('button', { name: 'Select Root Folder' }));
 
-      const mappedStateCells = webviewFrame.locator('.service-map-row .service-map-state', {
-        hasText: /^Mapped$/i,
-      });
+      const mappedStateCells = getMappedServiceIcons(webviewFrame);
       await expect(mappedStateCells).toHaveCount(3, { timeout: 15000 });
       await expect(webviewFrame.locator('.service-export-path')).toContainText(fixtureRootPath);
 
@@ -1722,12 +1710,7 @@ test.describe('SAP Tools region selector', () => {
           }
         });
 
-      const reopenedMappedStateCells = reopenedFrame.locator(
-        '.service-map-row .service-map-state',
-        {
-          hasText: /^Mapped$/i,
-        }
-      );
+      const reopenedMappedStateCells = getMappedServiceIcons(reopenedFrame);
       await expect(reopenedMappedStateCells).toHaveCount(3, { timeout: 15000 });
       await expect(reopenedFrame.locator('.service-map-row.is-unmapped')).toHaveCount(0);
       await expect(reopenedFrame.locator('.service-export-path')).toContainText(fixtureRootPath);
@@ -1756,9 +1739,7 @@ test.describe('SAP Tools region selector', () => {
       await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Apps' }));
       await clickWithFallback(webviewFrame.getByRole('button', { name: 'Select Root Folder' }));
 
-      const mappedStateCells = webviewFrame.locator('.service-map-row .service-map-state', {
-        hasText: /^Mapped$/i,
-      });
+      const mappedStateCells = getMappedServiceIcons(webviewFrame);
       await expect(mappedStateCells).toHaveCount(3, { timeout: 15000 });
       await expect(webviewFrame.locator('.service-export-path')).toContainText(fixtureRootPath);
 
@@ -1777,22 +1758,8 @@ test.describe('SAP Tools region selector', () => {
       ).toBeVisible({ timeout: 10000 });
       await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Apps' }));
       await expect(webviewFrame.locator('.service-map-row')).toHaveCount(3, { timeout: 15000 });
-
-      const immediateMappingSnapshot = await webviewFrame.evaluate(() => {
-        const stateElements = Array.from(
-          document.querySelectorAll('.service-map-row .service-map-state')
-        );
-        const states = stateElements.map((element) => {
-          return element.textContent.trim();
-        });
-        return {
-          mappedCount: states.filter((state) => /^mapped$/i.test(state)).length,
-          unmappedCount: states.filter((state) => /^unmapped$/i.test(state)).length,
-        };
-      });
-
-      expect(immediateMappingSnapshot.mappedCount).toBe(3);
-      expect(immediateMappingSnapshot.unmappedCount).toBe(0);
+      await expect(getMappedServiceIcons(webviewFrame)).toHaveCount(3);
+      await expect(webviewFrame.getByRole('img', { name: 'Unmapped service' })).toHaveCount(0);
       await expect(webviewFrame.locator('.service-export-path')).toContainText(fixtureRootPath);
     } finally {
       await cleanupExtensionHost(session);
@@ -1905,14 +1872,17 @@ test.describe('SAP Tools region selector', () => {
 
       await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Apps' }));
       await expect(
-        webviewFrame.getByRole('button', { name: 'Export Artifacts' })
+        webviewFrame.getByRole('heading', { name: 'Services & Packages' })
       ).toBeVisible();
+      await expect(
+        webviewFrame.getByRole('button', { name: 'Export Artifacts' })
+      ).toHaveCount(0);
     } finally {
       await cleanupExtensionHost(session);
     }
   });
 
-  test('User can see the mapped folder path via the Mapped badge tooltip when root path is long', async () => {
+  test('User can see the mapped folder path via the mapped icon tooltip when root path is long', async () => {
     const fixtureRootPath = createLongServiceRootMappingFixture();
     const session = await launchExtensionHost({
       extraEnv: {
@@ -1931,18 +1901,13 @@ test.describe('SAP Tools region selector', () => {
       await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Apps' }));
       await clickWithFallback(webviewFrame.getByRole('button', { name: 'Select Root Folder' }));
 
-      const mappedStateCells = webviewFrame.locator('.service-map-row .service-map-state', {
-        hasText: /^Mapped$/i,
-      });
-      await expect(mappedStateCells).toHaveCount(3, { timeout: 10000 });
+      await expect(getMappedServiceIcons(webviewFrame)).toHaveCount(3, { timeout: 10000 });
 
       // The long folder path is no longer rendered inline to save row space; it is
-      // exposed through the "Mapped" badge tooltip instead.
-      const apiMappedBadge = webviewFrame.locator('.service-map-row', {
-        has: webviewFrame.locator('.service-map-name', { hasText: 'finance-uat-api' }),
-      }).locator('.service-map-state');
-      await expect(apiMappedBadge).toHaveText(/^Mapped$/);
-      await expect(apiMappedBadge).toHaveAttribute('title', /\/finance_uat_api$/);
+      // exposed through the mapped status icon tooltip instead.
+      await expect(
+        getMappedServiceIconForApp(webviewFrame, 'finance-uat-api')
+      ).toHaveAttribute('title', /\/finance_uat_api$/);
 
       const mappingListSizeSnapshot = await webviewFrame.evaluate(() => {
         const mappingList = document.querySelector('.service-mapping-list');

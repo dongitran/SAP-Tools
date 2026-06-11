@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.50 (stable)
+- **UI:** Services & Packages now shows mapped/unmapped service state as compact leading icons: a green link for mapped services and a red unlink for unmapped services. The old trailing text badges were removed.
+- **Fix:** Mapped service row hover actions remain visible and clickable for **Replace** and **Export**.
+- **UI:** Removed the workspace footer "Last sync" line from the extension sidebar.
+
 ## 0.10.49 (stable)
 - **Feature:** The CFLogs panel toolbar gained a file-logging dropdown (left of the gear button, default **No file log**). Choosing **Log to file** keeps streaming as before and additionally writes each app's logs to a timestamped file (`<app-name>_<YYYY-MM-DD_HH-mm-ss>.log`) — one fresh file per logging run, surviving stream reconnects. The target folder is configurable via the new `sapTools.cfLogs.fileLogDirectory` setting (defaults to `~/.saptools/cflogs`).
 - **Feature:** Active app logs in the sidebar can now be **paused and resumed**, not just stopped. Pausing freezes the CFLogs panel display so collected rows stay reviewable while the `cf logs` session keeps running in the background (file logging keeps capturing); resuming flushes the lines buffered during the pause. The panel summary shows a paused/live indicator for the selected app.
