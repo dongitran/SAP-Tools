@@ -3333,16 +3333,14 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   text-transform: uppercase;
 }
 
-.tool-choice-copy strong,
-.tool-workbench-head h2 {
+.tool-choice-copy strong {
   min-width: 0;
   margin: 0;
   color: var(--text-color);
   font-size: 0.9rem;
 }
 
-.tool-choice-copy span:last-child,
-.tool-workbench-head p {
+.tool-choice-copy span:last-child {
   min-width: 0;
   margin: 0;
   color: var(--muted-color);
@@ -3352,16 +3350,9 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 
 .tool-workbench {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 8px;
   min-height: 0;
-}
-
-.tool-workbench-head {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
 }
 
 .tool-panel {
@@ -3407,6 +3398,63 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 .tool-field input:focus {
   border-color: color-mix(in oklab, var(--accent-color) 62%, var(--mix-base));
   outline: none;
+}
+
+.tool-field-secret {
+  align-content: start;
+}
+
+.tool-field-secret label {
+  min-width: 0;
+}
+
+.tool-secret-input-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: center;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid color-mix(in oklab, var(--border-color) 82%, var(--mix-base));
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--surface-bg) 94%, var(--frame-bg));
+}
+
+.tool-secret-input-shell:focus-within {
+  border-color: color-mix(in oklab, var(--accent-color) 62%, var(--mix-base));
+}
+
+.tool-secret-input-shell input {
+  height: 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.tool-secret-input-shell input:focus {
+  border-color: transparent;
+}
+
+.tool-secret-toggle {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 28px;
+  min-width: 30px;
+  border: 0;
+  border-left: 1px solid color-mix(in oklab, var(--border-color) 74%, var(--mix-base));
+  border-radius: 0 6px 6px 0;
+  background: transparent;
+  color: var(--muted-color);
+  cursor: pointer;
+}
+
+.tool-secret-toggle:hover {
+  color: var(--text-color);
+  background: color-mix(in oklab, var(--accent-soft) 48%, transparent);
+}
+
+.tool-secret-toggle svg {
+  display: block;
 }
 
 .tool-run-row {

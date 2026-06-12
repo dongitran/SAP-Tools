@@ -255,6 +255,10 @@ let microsoftGraphToolRunInProgress = false;
 let microsoftGraphToolStatusMessage = '';
 let microsoftGraphToolStatusTone = 'info';
 let microsoftGraphToolSteps = [];
+let microsoftGraphClientSecretVisibleByTool = {
+  outlook: false,
+  sharepoint: false,
+};
 let microsoftGraphToolFormValues = {
   outlook: {
     clientId: '',

@@ -256,6 +256,10 @@ let microsoftGraphToolRunInProgress = false;
 let microsoftGraphToolStatusMessage = '';
 let microsoftGraphToolStatusTone = 'info';
 let microsoftGraphToolSteps = [];
+let microsoftGraphClientSecretVisibleByTool = {
+  outlook: false,
+  sharepoint: false,
+};
 let microsoftGraphToolFormValues = {
   outlook: {
     clientId: '',
@@ -318,17 +322,26 @@ function renderToolsIcon() {
 }
 
 function renderToolsScreen() {
+  const heading = resolveToolsHeaderTitle();
+  const action = activeSupportToolId.length === 0 ? 'close-tools' : 'back-to-tools-list';
+  const label = activeSupportToolId.length === 0 ? 'Back' : 'All Tools';
+  const ariaLabel = activeSupportToolId.length === 0 ? 'Close Tools' : 'Back to tool list';
   return `
     <header class="shell-header tools-header">
       <div class="shell-header-row">
-        <h1>Tools</h1>
-        <button type="button" class="stage-reset" data-action="close-tools" aria-label="Close Tools">Back</button>
+        <h1>${escapeHtml(heading)}</h1>
+        <button type="button" class="stage-reset" data-action="${action}" aria-label="${ariaLabel}">${label}</button>
       </div>
     </header>
     <section class="tools-body">
       ${activeSupportToolId.length === 0 ? renderToolChooser() : renderActiveTool()}
     </section>
   `;
+}
+
+function resolveToolsHeaderTitle() {
+  const tool = resolveSupportTool(activeSupportToolId);
+  return tool?.title ?? 'Tools';
 }
 
 function renderToolChooser() {
@@ -360,13 +373,6 @@ function renderActiveTool() {
 
   return `
     <section class="tool-workbench" aria-label="${escapeHtml(tool.title)} tool">
-      <div class="tool-workbench-head">
-        <button type="button" class="stage-reset" data-action="back-to-tools-list">Tools</button>
-        <div>
-          <p>${escapeHtml(tool.eyebrow)}</p>
-          <h2>${escapeHtml(tool.title)}</h2>
-        </div>
-      </div>
       ${tool.id === 'outlook' ? renderOutlookToolForm() : renderSharePointToolForm()}
       ${renderMicrosoftGraphToolSteps(tool.id)}
     </section>
@@ -405,6 +411,9 @@ function renderSharePointToolForm() {
 }
 
 function renderToolInput(toolId, field, label, type = 'text', placeholder = '') {
+  if (field === 'clientSecret') {
+    return renderClientSecretInput(toolId, label, placeholder);
+  }
   const value = microsoftGraphToolFormValues[toolId]?.[field] ?? '';
   const inputId = `tool-${toolId}-${field}`;
   return `
@@ -421,6 +430,54 @@ function renderToolInput(toolId, field, label, type = 'text', placeholder = '') 
         autocomplete="off"
       />
     </label>
+  `;
+}
+
+function renderClientSecretInput(toolId, label, placeholder = '') {
+  const value = microsoftGraphToolFormValues[toolId]?.clientSecret ?? '';
+  const inputId = `tool-${toolId}-clientSecret`;
+  const isVisible = microsoftGraphClientSecretVisibleByTool[toolId] === true;
+  const toggleLabel = isVisible ? 'Hide Client Secret' : 'Show Client Secret';
+  return `
+    <div class="tool-field tool-field-secret">
+      <label for="${inputId}">${escapeHtml(label)}</label>
+      <span class="tool-secret-input-shell">
+        <input
+          id="${inputId}"
+          type="${isVisible ? 'text' : 'password'}"
+          data-role="microsoft-graph-tool-field"
+          data-tool-id="${toolId}"
+          data-field="clientSecret"
+          value="${escapeHtml(value)}"
+          placeholder="${escapeHtml(placeholder)}"
+          autocomplete="off"
+        />
+        <button
+          type="button"
+          class="tool-secret-toggle"
+          data-action="toggle-client-secret-visibility"
+          data-tool-id="${toolId}"
+          aria-label="${toggleLabel}"
+          aria-pressed="${isVisible}"
+          title="${toggleLabel}"
+        >
+          ${renderClientSecretVisibilityIcon(isVisible)}
+        </button>
+      </span>
+    </div>
+  `;
+}
+
+function renderClientSecretVisibilityIcon(isVisible) {
+  const slash = isVisible
+    ? '<path d="M5 5l14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'
+    : '';
+  return `
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <circle cx="12" cy="12" r="2.6" fill="none" stroke="currentColor" stroke-width="1.7"/>
+      ${slash}
+    </svg>
   `;
 }
 
@@ -1140,13 +1197,16 @@ appElement.addEventListener('click', (event) => {
     return;
   }
 
-  const target = eventTarget instanceof HTMLElement ? eventTarget : eventTarget.parentElement;
+  const actionTarget = eventTarget.closest('[data-action]');
+  const target = eventTarget instanceof HTMLElement
+    ? eventTarget
+    : actionTarget ?? eventTarget.parentElement;
   if (!(target instanceof HTMLElement)) {
     return;
   }
 
   const clickedContextMenu = target.closest('[data-role="sql-result-context-menu"]');
-  const clickedAction = target.closest('[data-action]');
+  const clickedAction = actionTarget ?? target.closest('[data-action]');
   if (
     hanaSqlResultContextMenuState !== null &&
     !(clickedContextMenu instanceof HTMLElement) &&
@@ -2467,6 +2527,18 @@ function handleSelectionFlowAction(action, actionElement) {
 
   if (action === 'run-support-tool') {
     return triggerMicrosoftGraphToolRun();
+  }
+
+  if (action === 'toggle-client-secret-visibility') {
+    const toolId = actionElement.dataset.toolId ?? '';
+    if (!isSupportedToolId(toolId)) {
+      return false;
+    }
+    microsoftGraphClientSecretVisibleByTool = {
+      ...microsoftGraphClientSecretVisibleByTool,
+      [toolId]: microsoftGraphClientSecretVisibleByTool[toolId] !== true,
+    };
+    return true;
   }
 
   if (action === 'set-sync-interval') {

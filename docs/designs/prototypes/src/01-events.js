@@ -540,13 +540,16 @@ appElement.addEventListener('click', (event) => {
     return;
   }
 
-  const target = eventTarget instanceof HTMLElement ? eventTarget : eventTarget.parentElement;
+  const actionTarget = eventTarget.closest('[data-action]');
+  const target = eventTarget instanceof HTMLElement
+    ? eventTarget
+    : actionTarget ?? eventTarget.parentElement;
   if (!(target instanceof HTMLElement)) {
     return;
   }
 
   const clickedContextMenu = target.closest('[data-role="sql-result-context-menu"]');
-  const clickedAction = target.closest('[data-action]');
+  const clickedAction = actionTarget ?? target.closest('[data-action]');
   if (
     hanaSqlResultContextMenuState !== null &&
     !(clickedContextMenu instanceof HTMLElement) &&

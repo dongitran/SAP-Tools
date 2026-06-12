@@ -65,11 +65,10 @@ describe('runMicrosoftGraphTool', () => {
     expect(readMicrosoftGraphToolRunRequest({ toolId: 'unknown', input: {} })).toBeNull();
   });
 
-  it('validates Outlook OAuth2 credentials, resolves sender, and sends mail', async () => {
+  it('validates Outlook OAuth2 credentials and sends mail without requiring user read permission', async () => {
     const progress: MicrosoftGraphToolStepProgress[] = [];
     const fetchMock = vi.fn<MicrosoftGraphFetch>()
       .mockResolvedValueOnce(jsonResponse({ access_token: 'graph-token' }))
-      .mockResolvedValueOnce(jsonResponse({ id: 'sender-id' }))
       .mockResolvedValueOnce(emptyResponse());
 
     const result = await runMicrosoftGraphTool(
@@ -94,8 +93,6 @@ describe('runMicrosoftGraphTool', () => {
     expect(progress.map((step) => `${step.stepId}:${step.status}`)).toEqual([
       'token:running',
       'token:done',
-      'sender:running',
-      'sender:done',
       'send-mail:running',
       'send-mail:done',
     ]);
@@ -110,13 +107,55 @@ describe('runMicrosoftGraphTool', () => {
     expect(tokenBody.get('grant_type')).toBe('client_credentials');
     expect(tokenBody.get('client_secret')).toBe('client-secret');
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
-      'https://graph.microsoft.com/v1.0/users/sender%40example.com?$select=id,mail,userPrincipalName'
-    );
-    expect(fetchMock.mock.calls[2]?.[0]).toBe(
       'https://graph.microsoft.com/v1.0/users/sender%40example.com/sendMail'
     );
-    const sendMailBody = readJsonBody(fetchMock.mock.calls[2]?.[1].body);
+    const sendMailBody = readJsonBody(fetchMock.mock.calls[1]?.[1].body);
     expect(JSON.stringify(sendMailBody)).toContain('recipient@example.com');
+  });
+
+  it('explains Outlook sendMail 403 without leaking the client secret', async () => {
+    const progress: MicrosoftGraphToolStepProgress[] = [];
+    const fetchMock = vi.fn<MicrosoftGraphFetch>()
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'graph-token' }))
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: {
+              code: 'ErrorAccessDenied',
+              message: 'Access is denied. secret-value should never be echoed.',
+            },
+          },
+          403
+        )
+      );
+
+    const result = await runMicrosoftGraphTool(
+      {
+        toolId: 'outlook',
+        input: {
+          clientId: 'client-id',
+          clientSecret: 'secret-value',
+          tenantId: 'tenant-id',
+          senderEmail: 'sender@example.com',
+          recipientEmail: 'recipient@example.com',
+        },
+      },
+      { fetch: fetchMock, onProgress: (step) => progress.push(step) }
+    );
+
+    expect(result).toEqual({
+      success: false,
+      toolId: 'outlook',
+      message: 'Outlook test failed at "Send test email".',
+    });
+    expect(progress.at(-1)).toEqual({
+      toolId: 'outlook',
+      stepId: 'send-mail',
+      status: 'failed',
+      message:
+        'Outlook sendMail request failed (403, ErrorAccessDenied). Check Microsoft Graph Mail.Send application permission, admin consent, and Exchange application access policy for the sender mailbox.',
+    });
+    expect(JSON.stringify(progress)).not.toContain('secret-value');
   });
 
   it('runs the SharePoint site, drive, root, create, upload, and cleanup checks', async () => {

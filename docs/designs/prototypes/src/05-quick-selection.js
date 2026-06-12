@@ -75,6 +75,18 @@ function handleSelectionFlowAction(action, actionElement) {
     return triggerMicrosoftGraphToolRun();
   }
 
+  if (action === 'toggle-client-secret-visibility') {
+    const toolId = actionElement.dataset.toolId ?? '';
+    if (!isSupportedToolId(toolId)) {
+      return false;
+    }
+    microsoftGraphClientSecretVisibleByTool = {
+      ...microsoftGraphClientSecretVisibleByTool,
+      [toolId]: microsoftGraphClientSecretVisibleByTool[toolId] !== true,
+    };
+    return true;
+  }
+
   if (action === 'set-sync-interval') {
     return null;
   }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.53 (stable)
+- **UI:** Microsoft Graph tool screens now use the selected tool name as the main header, removing the duplicate inner `Tools` title row.
+- **UI:** Outlook OAuth2 and SharePoint client secret fields now include an eye toggle so the entered secret can be reviewed and hidden again without leaving the form.
+
 ## 0.10.52 (stable)
 - **UI:** Renamed the Apps workspace header from **Monitoring Workspace** to **BTP Workspace** and added a Tools icon between **Change Region** and Settings.
 - **Feature:** Added a Microsoft Graph Tools screen with Outlook OAuth2 mail testing and SharePoint smoke testing, including credential validation, real test actions, and animated verification steps.

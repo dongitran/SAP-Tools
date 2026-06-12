@@ -123,7 +123,6 @@ async function runOutlookTool(
 ): Promise<MicrosoftGraphToolRunResult> {
   const input = normalizeOutlookInput(rawInput);
   const token = await runGraphStep(context, tokenStep(() => acquireToken(context, input)));
-  await runGraphStep(context, senderStep(() => verifyOutlookSender(context, token, input)));
   await runGraphStep(context, mailStep(() => sendOutlookTestMail(context, token, input)));
 
   return {
@@ -188,19 +187,6 @@ async function acquireToken(
     'OAuth2 token request'
   );
   return readRequiredString(payload, 'access_token', 'OAuth2 token response');
-}
-
-async function verifyOutlookSender(
-  context: GraphRunContext,
-  token: string,
-  input: OutlookToolInput
-): Promise<void> {
-  await requestJson(
-    context.fetch,
-    graphUrl(`/users/${encodeURIComponent(input.senderEmail)}?$select=id,mail,userPrincipalName`),
-    { method: 'GET', headers: authHeaders(token) },
-    'Outlook sender lookup'
-  );
 }
 
 async function sendOutlookTestMail(
@@ -440,10 +426,6 @@ function tokenStep(run: () => Promise<string>): GraphStep<string> {
   };
 }
 
-function senderStep(run: () => Promise<void>): GraphStep<void> {
-  return { id: 'sender', label: 'Verify sender mailbox', run, doneMessage: 'Sender mailbox resolved.' };
-}
-
 function mailStep(run: () => Promise<void>): GraphStep<void> {
   return { id: 'send-mail', label: 'Send test email', run, doneMessage: 'Test email sent.' };
 }
@@ -545,18 +527,35 @@ function formatHttpFailure(
   payload: unknown
 ): string {
   const code = readSafeGraphErrorCode(payload);
-  return `${label} failed (${String(response.status)}${code}).`;
+  const hint = buildGraphFailureHint(label, response.status);
+  return `${label} failed (${String(response.status)}${code}).${hint}`;
 }
 
 function readSafeGraphErrorCode(payload: unknown): string {
-  if (!isRecord(payload) || typeof payload['error'] !== 'string') {
+  if (!isRecord(payload)) {
     return '';
   }
-  const code = payload['error'].trim();
+  const rawError = payload['error'];
+  const code =
+    typeof rawError === 'string'
+      ? rawError.trim()
+      : isRecord(rawError) && typeof rawError['code'] === 'string'
+        ? rawError['code'].trim()
+        : '';
   return /^[A-Za-z0-9_.-]{1,80}$/.test(code) ? `, ${code}` : '';
 }
 
-function sanitizeGraphMessage(message: string): string {
+function buildGraphFailureHint(label: string, status: number): string {
+  if (label === 'Outlook sendMail request' && status === 403) {
+    return (
+      ' Check Microsoft Graph Mail.Send application permission, admin consent, ' +
+      'and Exchange application access policy for the sender mailbox.'
+    );
+  }
+  return '';
+}
+
+export function sanitizeGraphMessage(message: string): string {
   return message
     .replaceAll(/client_secret=[^&\s]+/gi, 'client_secret=[redacted]')
     .replaceAll(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [redacted]')

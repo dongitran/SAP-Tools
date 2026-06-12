@@ -62,6 +62,8 @@ import {
   readMicrosoftGraphToolRunRequest,
   runMicrosoftGraphTool,
   type MicrosoftGraphToolRunRequest,
+  type MicrosoftGraphToolStepProgress,
+  sanitizeGraphMessage,
 } from './microsoftGraphTools';
 
 export const REGION_VIEW_ID = 'sapTools.regionView';
@@ -315,6 +317,7 @@ export class RegionSidebarProvider
   private externalScopeChangeRequestId = 0;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly npmBuildChannel: vscode.OutputChannel;
+  private readonly microsoftGraphChannel: vscode.OutputChannel;
   private readonly verdaccioManager: VerdaccioManager;
 
   constructor(
@@ -335,8 +338,13 @@ export class RegionSidebarProvider
     this.disposables.push(cacheSubscription);
 
     this.npmBuildChannel = vscode.window.createOutputChannel('SAP Tools: NPM Build');
+    this.microsoftGraphChannel = vscode.window.createOutputChannel('SAP Tools: Microsoft Graph');
     this.verdaccioManager = new VerdaccioManager(this.npmBuildChannel);
-    this.disposables.push(this.npmBuildChannel, this.verdaccioManager);
+    this.disposables.push(
+      this.npmBuildChannel,
+      this.microsoftGraphChannel,
+      this.verdaccioManager
+    );
 
     // Re-scan local packages whenever the user changes sapTools.localPackages settings
     // (e.g. namePatterns) without requiring a VSCode restart.
@@ -2260,12 +2268,44 @@ export class RegionSidebarProvider
   private async handleMicrosoftGraphToolRun(
     request: MicrosoftGraphToolRunRequest
   ): Promise<void> {
+    this.microsoftGraphChannel.show(true);
+    this.appendMicrosoftGraphToolLog(request.toolId, 'run', 'started', 'Run started.');
     const result = await runMicrosoftGraphTool(request, {
       onProgress: (progress) => {
+        this.appendMicrosoftGraphToolProgress(progress);
         this.postMessage({ type: MSG_MICROSOFT_GRAPH_TOOL_PROGRESS, ...progress });
       },
     });
+    this.appendMicrosoftGraphToolLog(
+      result.toolId,
+      'result',
+      result.success ? 'done' : 'failed',
+      result.message
+    );
     this.postMessage({ type: MSG_MICROSOFT_GRAPH_TOOL_RESULT, ...result });
+  }
+
+  private appendMicrosoftGraphToolProgress(
+    progress: MicrosoftGraphToolStepProgress
+  ): void {
+    this.appendMicrosoftGraphToolLog(
+      progress.toolId,
+      progress.stepId,
+      progress.status,
+      progress.message
+    );
+  }
+
+  private appendMicrosoftGraphToolLog(
+    toolId: string,
+    stepId: string,
+    status: string,
+    message: string
+  ): void {
+    this.microsoftGraphChannel.appendLine(
+      `[${new Date().toISOString()}] ${toolId} ${stepId} ${status}: ` +
+        sanitizeGraphMessage(message)
+    );
   }
 
   private async handleExportSqlToolsConfig(
