@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.10.54 (stable)
+- **Feature:** Normalize SharePoint URL protocol and rename OAuth2 references to Entra ID.
+
 ## 0.10.53 (stable)
 - **UI:** Microsoft Graph tool screens now use the selected tool name as the main header, removing the duplicate inner `Tools` title row.
 - **UI:** Outlook OAuth2 and SharePoint client secret fields now include an eye toggle so the entered secret can be reviewed and hidden again without leaving the form.
