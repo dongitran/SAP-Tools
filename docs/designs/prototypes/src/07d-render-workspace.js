@@ -113,7 +113,7 @@ function renderLogsTab() {
           data-role="app-log-search"
           value="${escapeHtml(appCatalogSearchKeyword)}"
           placeholder="Search services by name"
-          aria-label="Search services in Apps Log Control"
+          aria-label="Search services in Apps & APIs"
         />
       </label>
       <section class="app-log-catalog" aria-label="Apps in selected space" data-role="app-log-catalog">

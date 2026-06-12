@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.61 (stable)
+- Fix APIs Explorer E2E test timeout and webview crash.
+- Ensure only single call to acquireVsCodeApi in webview scripts.
+
 ## 0.10.59 (stable)
 - Fix APIs Explorer webview panel E2E tests and layout gap issues.
 - Re-architected APIs Explorer to run as a full Webview Panel instead of a sidebar frame.

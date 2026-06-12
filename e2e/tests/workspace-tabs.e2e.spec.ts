@@ -248,7 +248,7 @@ test.describe('SAP Tools workspace tabs', () => {
     try {
       const tabs = webviewFrame.getByRole('tab');
       await expect(tabs).toHaveCount(3);
-      await expect(tabs.nth(0)).toHaveText('Logs');
+      await expect(tabs.nth(0)).toHaveText('Logs/APIs');
       await expect(tabs.nth(1)).toHaveText('Apps');
       await expect(tabs.nth(2)).toHaveText('SQL');
       await expect(
@@ -355,7 +355,7 @@ test.describe('SAP Tools workspace tabs', () => {
 
       await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Logs' }));
       await expect(
-        webviewFrame.getByRole('heading', { name: 'Apps Log Control' })
+        webviewFrame.getByRole('heading', { name: 'Apps & APIs' })
       ).toBeVisible();
       await expect(
         webviewFrame.getByRole('tab', { name: 'Debug' })
@@ -410,7 +410,7 @@ test.describe('SAP Tools workspace tabs', () => {
         webviewFrame.getByRole('heading', { name: 'BTP Workspace' })
       ).toBeVisible({ timeout: 10000 });
       await expect(
-        webviewFrame.getByRole('heading', { name: 'Apps Log Control' })
+        webviewFrame.getByRole('heading', { name: 'Apps & APIs' })
       ).toBeVisible();
     } finally {
       await cleanupExtensionHost(session);

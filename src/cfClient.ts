@@ -810,3 +810,76 @@ async function sleep(delayMs: number): Promise<void> {
     setTimeout(resolve, delayMs);
   });
 }
+
+/**
+ * Fetch the route URL for a specific app from Cloud Foundry.
+ */
+export async function fetchAppRouteUrlFromTarget(params: {
+  readonly appName: string;
+  readonly apiEndpoint: string;
+  readonly email: string;
+  readonly password: string;
+  readonly orgName: string;
+  readonly spaceName: string;
+  readonly cfHomeDir?: string;
+}): Promise<string | null> {
+  await prepareCfCliSession(params);
+
+  const cfHomeOptions = buildCfHomeOptions(params.cfHomeDir);
+  const guidStdout = await runCfCommand(['app', params.appName, '--guid'], {
+    ...cfHomeOptions,
+    failureMessage: `Failed to fetch GUID for app ${params.appName}`,
+  });
+  const encodedGuid = encodeURIComponent(guidStdout.trim());
+
+  const routesStdout = await runCfCommand(['curl', `/v3/apps/${encodedGuid}/routes`], {
+    ...cfHomeOptions,
+    failureMessage: `Failed to fetch routes for app ${params.appName}`,
+  });
+
+  try {
+    const routesData = JSON.parse(routesStdout) as unknown;
+    if (
+      typeof routesData === 'object' &&
+      routesData !== null &&
+      'resources' in routesData &&
+      Array.isArray((routesData as { resources: unknown[] }).resources) &&
+      (routesData as { resources: unknown[] }).resources.length > 0
+    ) {
+      const firstResource = (routesData as { resources: { url?: string }[] }).resources[0];
+      if (firstResource !== undefined && typeof firstResource.url === 'string') {
+        return firstResource.url;
+      }
+    }
+  } catch {
+    // Ignore JSON parse errors
+  }
+
+  return null;
+}
+
+export async function fetchCfOauthTokenFromTarget(params: {
+  apiEndpoint: string;
+  email: string;
+  password: string;
+  orgName: string;
+  spaceName: string;
+  cfHomeDir?: string;
+}): Promise<string | null> {
+  await prepareCfCliSession(params);
+  const homeDir = params.cfHomeDir ?? process.env['CF_HOME'] ?? process.cwd();
+
+  try {
+    const { stdout } = await execFileAsync('cf', ['oauth-token'], {
+      env: { ...process.env, CF_HOME: homeDir },
+      timeout: 5000
+    });
+    const token = stdout.trim();
+    if (token.startsWith('bearer ') || token.startsWith('Bearer ')) {
+      return token;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

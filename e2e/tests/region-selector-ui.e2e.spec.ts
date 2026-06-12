@@ -908,7 +908,7 @@ test.describe('SAP Tools region selector', () => {
         webviewFrame.getByRole('heading', { name: 'Active Apps Log' })
       ).toBeVisible();
       await expect(
-        webviewFrame.getByRole('heading', { name: 'Apps Log Control' })
+        webviewFrame.getByRole('heading', { name: 'Apps & APIs' })
       ).toBeVisible();
       await expect(
         webviewFrame.getByRole('button', { name: 'Start App Logging' })
@@ -1382,7 +1382,7 @@ test.describe('SAP Tools region selector', () => {
     }
   });
 
-  test('User can toggle app selection by clicking app row in Apps Log Control', async () => {
+  test('User can toggle app selection by clicking app row in Apps & APIs', async () => {
     const session = await launchExtensionHost();
 
     try {
@@ -1767,7 +1767,7 @@ test.describe('SAP Tools region selector', () => {
     }
   });
 
-  test('User can search services in Apps Log Control', async () => {
+  test('User can search services in Apps & APIs', async () => {
     const session = await launchExtensionHost();
 
     try {
@@ -1779,7 +1779,7 @@ test.describe('SAP Tools region selector', () => {
       await clickWithFallback(confirmButton);
 
       const appLogSearchInput = webviewFrame.getByRole('searchbox', {
-        name: 'Search services in Apps Log Control',
+        name: 'Search services in Apps & APIs',
       });
       await expect(appLogSearchInput).toBeVisible();
       await expect(webviewFrame.locator('.app-log-item')).toHaveCount(3);

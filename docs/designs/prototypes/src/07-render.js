@@ -1636,7 +1636,7 @@ function renderLogsTab() {
         <h3>Active Apps Log</h3>
         <div data-role="active-app-log-list">${activeAppsMarkup}</div>
       </section>
-      <h2>Apps Log Control</h2>
+      <h2>Apps & APIs</h2>
       <p class="logs-intro">Select app(s) in <strong>${escapeHtml(spaceLabel)}</strong> to stream logs.</p>
       <label class="app-log-search-row search-input-with-icon">
         <span class="search-input-icon" aria-hidden="true">&#128269;</span>
@@ -1646,7 +1646,7 @@ function renderLogsTab() {
           data-role="app-log-search"
           value="${escapeHtml(appCatalogSearchKeyword)}"
           placeholder="Search services by name"
-          aria-label="Search services in Apps Log Control"
+          aria-label="Search services in Apps & APIs"
         />
       </label>
       <section class="app-log-catalog" aria-label="Apps in selected space" data-role="app-log-catalog">

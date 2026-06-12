@@ -487,7 +487,20 @@ export class RegionSidebarProvider
 
     if (type === MSG_OPEN_APIS_EXPLORER) {
       const appId = message['appId'] as string;
-      if (appId !== '') {
+      if (appId !== '' && this.currentConfirmedScope !== undefined) {
+        const credentials = await getEffectiveCredentials(this.context);
+        if (credentials !== null) {
+          this.apisExplorerPanelManager.openApisExplorer(appId, {
+            apiEndpoint: getCfApiEndpoint(this.currentConfirmedScope.regionCode),
+            email: credentials.email,
+            password: credentials.password,
+            orgName: this.currentConfirmedScope.orgName,
+            spaceName: this.currentConfirmedScope.spaceName
+          });
+        } else {
+          this.apisExplorerPanelManager.openApisExplorer(appId);
+        }
+      } else if (appId !== '') {
         this.apisExplorerPanelManager.openApisExplorer(appId);
       }
       return;

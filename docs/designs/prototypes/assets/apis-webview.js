@@ -14,6 +14,9 @@ let apiResultStatus = '';
 let apiResultPayload = null;
 let apiActiveView = 'json';
 
+// Global VS Code API reference
+const vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
+
 // We just copy the mock data from 07h-render-apis.js for independence in the webview
 const API_MOCK_CATALOG = {
   'demo-app': {
@@ -228,7 +231,7 @@ function renderWebview() {
       </main>
     `;
   } else {
-    const routeBase = `https://demo-env-${apiSelectedAppId}.cfapps.region.hana.ondemand.com`;
+    const routeBase = currentCatalog.baseUrl || `https://demo-env-${apiSelectedAppId}.cfapps.region.hana.ondemand.com`;
     const fullUrl = `${routeBase}${currentCatalog.servicePath}/${apiSelectedEntity}${buildApiQueryString()}`;
 
     workbenchHtml = `
@@ -323,19 +326,26 @@ appElement.addEventListener('click', (event) => {
     apiResultState = 'loading';
     renderWebview();
 
-    setTimeout(() => {
+    const entityName = apiSelectedEntity;
+    const methodBadge = document.querySelector('.api-method-badge');
+    const method = methodBadge ? methodBadge.textContent.trim() : 'GET';
+    const urlInput = document.querySelector('.api-url-display input') || document.querySelector('.api-url-input');
+    const url = urlInput ? urlInput.value : '';
+
+
+    if (vscodeApi) {
+      document.body.insertAdjacentHTML('beforeend', '<div id="debug-flag">POST MESSAGE CALLED: ' + method + ' ' + url + '</div>');
+      vscodeApi.postMessage({
+        type: 'sapTools.apis.executeRequest',
+        payload: { url, method, auth: apiAuthMethod }
+      });
+    } else {
+      // Fallback for prototype testing without VS Code extension host
       apiResultState = 'done';
-      apiResultTime = Math.floor(100 + Math.random() * 80);
-      apiResultStatus = '200 OK';
-
-      const appResponses = API_MOCK_RESPONSES[apiSelectedAppId] || API_MOCK_RESPONSES['demo-app'];
-      const response = appResponses[apiSelectedEntity] || {
-        value: [{ info: "No mock data configured for this entity", entity: apiSelectedEntity }]
-      };
-      apiResultPayload = response;
-
+      apiResultStatus = 'Error';
+      apiResultPayload = { error: "VS Code API is not available in prototype mode." };
       renderWebview();
-    }, 850);
+    }
   }
 });
 
@@ -373,7 +383,7 @@ appElement.addEventListener('input', (event) => {
       const urlInput = appElement.querySelector('.api-url-input');
       if (urlInput instanceof HTMLInputElement) {
         const currentCatalog = API_MOCK_CATALOG[apiSelectedAppId] || API_MOCK_CATALOG['demo-app'];
-        const routeBase = `https://demo-env-${apiSelectedAppId}.cfapps.region.hana.ondemand.com`;
+        const routeBase = currentCatalog.baseUrl || `https://demo-env-${apiSelectedAppId}.cfapps.region.hana.ondemand.com`;
         const fullUrl = `${routeBase}${currentCatalog.servicePath}/${apiSelectedEntity}${buildApiQueryString()}`;
         urlInput.value = fullUrl;
       }
@@ -400,7 +410,43 @@ function initWebview() {
 
 // Listen to messages from gallery.js for subsequent updates
 window.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'saptools.prototype.apis.appSelected') {
+  if (!event.data) return;
+
+  if (event.data.type === 'sapTools.apis.catalogLoaded') {
+    const catalog = event.data.payload;
+    if (catalog) {
+      // Overwrite the mock catalog with the real data from the backend
+      API_MOCK_CATALOG[catalog.name] = {
+        name: catalog.name,
+        baseUrl: catalog.baseUrl,
+        servicePath: '',
+        entities: catalog.entities
+      };
+      
+      // If this is the currently selected app, refresh UI
+      if (apiSelectedAppId === catalog.name) {
+        if (catalog.entities.length > 0) {
+          apiSelectedEntity = catalog.entities[0].name;
+        } else {
+          apiSelectedEntity = '';
+        }
+        apiResultState = 'idle';
+        apiResultPayload = null;
+        renderWebview();
+      }
+    }
+  }
+
+  if (event.data.type === 'sapTools.apis.executeResponse') {
+    const payload = event.data.payload;
+    apiResultState = 'done';
+    apiResultTime = payload.time;
+    apiResultStatus = payload.status;
+    apiResultPayload = payload.data;
+    renderWebview();
+  }
+
+  if (event.data.type === 'saptools.prototype.apis.appSelected') {
     apiSelectedAppId = event.data.payload.appId;
     
     // Select the first entity automatically if available
