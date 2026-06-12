@@ -395,12 +395,20 @@ function handleLogsSelectionAction(action, actionElement) {
 
 function handleLogsControlAction(action, actionElement) {
   if (action === 'open-app-apis') {
-    const appId = actionElement.dataset.appId ?? '';
+    const appId = actionElement.dataset.appId || 'demo-app';
     if (appId) {
       if (typeof window !== 'undefined' && window.sessionStorage) {
         sessionStorage.setItem('saptools.apis.selectedAppId', appId);
       }
-      activeTabId = 'apis';
+      
+      if (vscodeApi !== null) {
+        vscodeApi.postMessage({ type: 'saptools.openApisExplorer', appId });
+      } else if (typeof window !== 'undefined' && window.parent) {
+        window.parent.postMessage({
+          type: 'saptools.prototype.openCenterPanel',
+          url: `./variants/apis-webview.html?appId=${encodeURIComponent(appId)}`
+        }, '*');
+      }
     }
     return true;
   }

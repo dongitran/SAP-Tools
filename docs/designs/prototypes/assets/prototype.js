@@ -277,6 +277,85 @@ let microsoftGraphToolFormValues = {
     rootDir: '/',
   },
 };
+
+// ── APIs Explorer State ───────────────────────────────────────────────────────
+let apiSelectedAppId = '';
+let apiSelectedEntity = '';
+let apiAuthMethod = 'xsuaa-auto';
+let apiParams = {
+  $select: '',
+  $filter: '',
+  $expand: '',
+  $top: '5',
+  $skip: '0'
+};
+let apiResultState = 'idle';
+let apiResultTime = 0;
+let apiResultStatus = '';
+let apiResultPayload = null;
+let apiActiveView = 'json';
+
+const API_MOCK_CATALOG = {
+  'demo-app': {
+    serviceName: 'DemoService',
+    servicePath: '/odata/v4/demo',
+    entities: [
+      { name: 'Users', count: 12 },
+      { name: 'Products', count: 48 },
+      { name: 'Orders', count: 8 }
+    ]
+  },
+  'api1': {
+    serviceName: 'DataService',
+    servicePath: '/odata/v4/data',
+    entities: [
+      { name: 'Records', count: 1420 },
+      { name: 'Logs', count: 2110 },
+      { name: 'Settings', count: 850 }
+    ]
+  },
+  'api2': {
+    serviceName: 'AnalyticsService',
+    servicePath: '/odata/v4/analytics',
+    entities: [
+      { name: 'Metrics', count: 580 },
+      { name: 'Dimensions', count: 24 }
+    ]
+  }
+};
+
+const API_MOCK_RESPONSES = {
+  'demo-app': {
+    'Users': {
+      value: [
+        { id: 'U001', name: 'Alice', role: 'Admin' },
+        { id: 'U002', name: 'Bob', role: 'User' },
+        { id: 'U003', name: 'Charlie', role: 'User' }
+      ]
+    },
+    'Products': {
+      value: [
+        { id: 'P001', title: 'Laptop', price: 999.00 },
+        { id: 'P002', title: 'Mouse', price: 29.99 },
+        { id: 'P003', title: 'Keyboard', price: 59.50 }
+      ]
+    },
+    'Orders': {
+      value: [
+        { orderId: 'O1001', status: 'Shipped', total: 1028.99 },
+        { orderId: 'O1002', status: 'Pending', total: 59.50 }
+      ]
+    }
+  },
+  'api1': {
+    'Records': {
+      value: [
+        { recordID: 'REC001', companyName: 'Demo Company A', code: 'A123', status: 'ACTIVE' },
+        { recordID: 'REC002', companyName: 'Demo Company B', code: 'B456', status: 'INACTIVE' }
+      ]
+    }
+  }
+};
 // --- END 00-state.js ---
 
 // --- BEGIN 07g-render-tools.js ---
@@ -1483,6 +1562,88 @@ appElement.addEventListener('input', (event) => {
       return;
     }
     updateTopologyOrgSearchResults();
+  }
+});
+
+// ── APIs Explorer Events ──────────────────────────────────────────────────────
+appElement.addEventListener('click', (event) => {
+  const target = event.target;
+  const actionElement = target.closest('[data-action]');
+  if (!actionElement) return;
+
+  const action = actionElement.dataset.action;
+
+  if (action === 'api-select-entity') {
+    apiSelectedEntity = actionElement.dataset.entityName ?? '';
+    apiResultState = 'idle';
+    apiResultPayload = null;
+    renderPrototype();
+    return;
+  }
+
+  if (action === 'api-switch-view') {
+    apiActiveView = actionElement.dataset.viewId ?? 'json';
+    renderPrototype();
+    return;
+  }
+
+  if (action === 'api-execute-request') {
+    apiResultState = 'loading';
+    renderPrototype();
+
+    setTimeout(() => {
+      apiResultState = 'done';
+      apiResultTime = Math.floor(100 + Math.random() * 80);
+      apiResultStatus = '200 OK';
+
+      const appResponses = API_MOCK_RESPONSES[apiSelectedAppId] || {};
+      const response = appResponses[apiSelectedEntity] || {
+        value: [{ info: "No mock data configured for this entity", entity: apiSelectedEntity }]
+      };
+      apiResultPayload = response;
+
+      renderPrototype();
+    }, 850);
+  }
+});
+
+appElement.addEventListener('change', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) return;
+  const action = target.dataset.action;
+  if (action === 'api-select-auth') {
+    apiAuthMethod = target.value;
+    renderPrototype();
+  }
+});
+
+appElement.addEventListener('input', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+
+  if (target.dataset.action === 'api-search-entity') {
+    const term = target.value.trim().toLowerCase();
+    const items = appElement.querySelectorAll('.api-entity-item');
+    items.forEach((btn) => {
+      if (!(btn instanceof HTMLElement)) return;
+      const text = btn.textContent || '';
+      btn.style.display = text.toLowerCase().includes(term) ? 'flex' : 'none';
+    });
+    return;
+  }
+
+  if (target.dataset.role === 'api-param-input') {
+    const paramName = target.dataset.paramName ?? '';
+    if (paramName in apiParams) {
+      apiParams[paramName] = target.value;
+      const urlInput = appElement.querySelector('.api-url-input');
+      if (urlInput instanceof HTMLInputElement) {
+        const currentCatalog = API_MOCK_CATALOG[apiSelectedAppId] || { servicePath: '/unknown' };
+        const routeBase = `https://demo-env-${apiSelectedAppId}.cfapps.region.hana.ondemand.com`;
+        const fullUrl = `${routeBase}${currentCatalog.servicePath}/${apiSelectedEntity}${buildApiQueryString()}`;
+        urlInput.value = fullUrl;
+      }
+    }
   }
 });
 // --- END 01-events.js ---
@@ -2854,12 +3015,20 @@ function handleLogsSelectionAction(action, actionElement) {
 
 function handleLogsControlAction(action, actionElement) {
   if (action === 'open-app-apis') {
-    const appId = actionElement.dataset.appId ?? '';
+    const appId = actionElement.dataset.appId || 'demo-app';
     if (appId) {
       if (typeof window !== 'undefined' && window.sessionStorage) {
         sessionStorage.setItem('saptools.apis.selectedAppId', appId);
       }
-      activeTabId = 'apis';
+      
+      if (vscodeApi !== null) {
+        vscodeApi.postMessage({ type: 'saptools.openApisExplorer', appId });
+      } else if (typeof window !== 'undefined' && window.parent) {
+        window.parent.postMessage({
+          type: 'saptools.prototype.openCenterPanel',
+          url: `./variants/apis-webview.html?appId=${encodeURIComponent(appId)}`
+        }, '*');
+      }
     }
     return true;
   }
@@ -4944,20 +5113,7 @@ function renderWorkspaceTabContent() {
     return renderServiceExportTab();
   }
 
-  if (activeTabId === 'apis') {
-    return renderApisTab();
-  }
-
   return renderPlaceholderTab(activeTabId);
-}
-
-function renderApisTab() {
-  const appId = (typeof window !== 'undefined' && window.sessionStorage) ? sessionStorage.getItem('saptools.apis.selectedAppId') || 'demo-app' : 'demo-app';
-  return `
-    <div class="apis-workspace-container" style="width: 100%; height: 100%; overflow: hidden; display: flex;">
-      <iframe src="/variants/apis-webview.html?appId=${encodeURIComponent(appId)}" class="center-panel-frame" style="width: 100%; height: 100%; border: none; flex: 1;"></iframe>
-    </div>
-  `;
 }
 
 function renderLogsTab() {

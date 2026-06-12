@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.59 (stable)
+- Fix APIs Explorer webview panel E2E tests and layout gap issues.
+- Re-architected APIs Explorer to run as a full Webview Panel instead of a sidebar frame.
+
 ## 0.10.58 (stable)
 - Fix workspace UI alignment (tabs display properly as 3 columns)
 - Ensure APIs Explorer webview navigation is handled via workspace tab switching instead of popup frames.

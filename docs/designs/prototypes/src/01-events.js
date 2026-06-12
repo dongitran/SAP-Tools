@@ -829,3 +829,85 @@ appElement.addEventListener('input', (event) => {
     updateTopologyOrgSearchResults();
   }
 });
+
+// ── APIs Explorer Events ──────────────────────────────────────────────────────
+appElement.addEventListener('click', (event) => {
+  const target = event.target;
+  const actionElement = target.closest('[data-action]');
+  if (!actionElement) return;
+
+  const action = actionElement.dataset.action;
+
+  if (action === 'api-select-entity') {
+    apiSelectedEntity = actionElement.dataset.entityName ?? '';
+    apiResultState = 'idle';
+    apiResultPayload = null;
+    renderPrototype();
+    return;
+  }
+
+  if (action === 'api-switch-view') {
+    apiActiveView = actionElement.dataset.viewId ?? 'json';
+    renderPrototype();
+    return;
+  }
+
+  if (action === 'api-execute-request') {
+    apiResultState = 'loading';
+    renderPrototype();
+
+    setTimeout(() => {
+      apiResultState = 'done';
+      apiResultTime = Math.floor(100 + Math.random() * 80);
+      apiResultStatus = '200 OK';
+
+      const appResponses = API_MOCK_RESPONSES[apiSelectedAppId] || {};
+      const response = appResponses[apiSelectedEntity] || {
+        value: [{ info: "No mock data configured for this entity", entity: apiSelectedEntity }]
+      };
+      apiResultPayload = response;
+
+      renderPrototype();
+    }, 850);
+  }
+});
+
+appElement.addEventListener('change', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) return;
+  const action = target.dataset.action;
+  if (action === 'api-select-auth') {
+    apiAuthMethod = target.value;
+    renderPrototype();
+  }
+});
+
+appElement.addEventListener('input', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+
+  if (target.dataset.action === 'api-search-entity') {
+    const term = target.value.trim().toLowerCase();
+    const items = appElement.querySelectorAll('.api-entity-item');
+    items.forEach((btn) => {
+      if (!(btn instanceof HTMLElement)) return;
+      const text = btn.textContent || '';
+      btn.style.display = text.toLowerCase().includes(term) ? 'flex' : 'none';
+    });
+    return;
+  }
+
+  if (target.dataset.role === 'api-param-input') {
+    const paramName = target.dataset.paramName ?? '';
+    if (paramName in apiParams) {
+      apiParams[paramName] = target.value;
+      const urlInput = appElement.querySelector('.api-url-input');
+      if (urlInput instanceof HTMLInputElement) {
+        const currentCatalog = API_MOCK_CATALOG[apiSelectedAppId] || { servicePath: '/unknown' };
+        const routeBase = `https://demo-env-${apiSelectedAppId}.cfapps.region.hana.ondemand.com`;
+        const fullUrl = `${routeBase}${currentCatalog.servicePath}/${apiSelectedEntity}${buildApiQueryString()}`;
+        urlInput.value = fullUrl;
+      }
+    }
+  }
+});

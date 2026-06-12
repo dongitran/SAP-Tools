@@ -276,3 +276,82 @@ let microsoftGraphToolFormValues = {
     rootDir: '/',
   },
 };
+
+// ── APIs Explorer State ───────────────────────────────────────────────────────
+let apiSelectedAppId = '';
+let apiSelectedEntity = '';
+let apiAuthMethod = 'xsuaa-auto';
+let apiParams = {
+  $select: '',
+  $filter: '',
+  $expand: '',
+  $top: '5',
+  $skip: '0'
+};
+let apiResultState = 'idle';
+let apiResultTime = 0;
+let apiResultStatus = '';
+let apiResultPayload = null;
+let apiActiveView = 'json';
+
+const API_MOCK_CATALOG = {
+  'demo-app': {
+    serviceName: 'DemoService',
+    servicePath: '/odata/v4/demo',
+    entities: [
+      { name: 'Users', count: 12 },
+      { name: 'Products', count: 48 },
+      { name: 'Orders', count: 8 }
+    ]
+  },
+  'api1': {
+    serviceName: 'DataService',
+    servicePath: '/odata/v4/data',
+    entities: [
+      { name: 'Records', count: 1420 },
+      { name: 'Logs', count: 2110 },
+      { name: 'Settings', count: 850 }
+    ]
+  },
+  'api2': {
+    serviceName: 'AnalyticsService',
+    servicePath: '/odata/v4/analytics',
+    entities: [
+      { name: 'Metrics', count: 580 },
+      { name: 'Dimensions', count: 24 }
+    ]
+  }
+};
+
+const API_MOCK_RESPONSES = {
+  'demo-app': {
+    'Users': {
+      value: [
+        { id: 'U001', name: 'Alice', role: 'Admin' },
+        { id: 'U002', name: 'Bob', role: 'User' },
+        { id: 'U003', name: 'Charlie', role: 'User' }
+      ]
+    },
+    'Products': {
+      value: [
+        { id: 'P001', title: 'Laptop', price: 999.00 },
+        { id: 'P002', title: 'Mouse', price: 29.99 },
+        { id: 'P003', title: 'Keyboard', price: 59.50 }
+      ]
+    },
+    'Orders': {
+      value: [
+        { orderId: 'O1001', status: 'Shipped', total: 1028.99 },
+        { orderId: 'O1002', status: 'Pending', total: 59.50 }
+      ]
+    }
+  },
+  'api1': {
+    'Records': {
+      value: [
+        { recordID: 'REC001', companyName: 'Demo Company A', code: 'A123', status: 'ACTIVE' },
+        { recordID: 'REC002', companyName: 'Demo Company B', code: 'B456', status: 'INACTIVE' }
+      ]
+    }
+  }
+};

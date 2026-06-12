@@ -186,7 +186,7 @@ function renderWebview() {
     return;
   }
 
-  const currentCatalog = API_MOCK_CATALOG[apiSelectedAppId] || { servicePath: '/unknown', entities: [] };
+  const currentCatalog = API_MOCK_CATALOG[apiSelectedAppId] || API_MOCK_CATALOG['demo-app'];
   
   // Render Left Sidebar (Endpoints)
   const entityItems = currentCatalog.entities.map(ent => {
@@ -328,7 +328,7 @@ appElement.addEventListener('click', (event) => {
       apiResultTime = Math.floor(100 + Math.random() * 80);
       apiResultStatus = '200 OK';
 
-      const appResponses = API_MOCK_RESPONSES[apiSelectedAppId] || {};
+      const appResponses = API_MOCK_RESPONSES[apiSelectedAppId] || API_MOCK_RESPONSES['demo-app'];
       const response = appResponses[apiSelectedEntity] || {
         value: [{ info: "No mock data configured for this entity", entity: apiSelectedEntity }]
       };
@@ -372,7 +372,7 @@ appElement.addEventListener('input', (event) => {
       apiParams[paramName] = target.value;
       const urlInput = appElement.querySelector('.api-url-input');
       if (urlInput instanceof HTMLInputElement) {
-        const currentCatalog = API_MOCK_CATALOG[apiSelectedAppId] || { servicePath: '/unknown' };
+        const currentCatalog = API_MOCK_CATALOG[apiSelectedAppId] || API_MOCK_CATALOG['demo-app'];
         const routeBase = `https://demo-env-${apiSelectedAppId}.cfapps.region.hana.ondemand.com`;
         const fullUrl = `${routeBase}${currentCatalog.servicePath}/${apiSelectedEntity}${buildApiQueryString()}`;
         urlInput.value = fullUrl;
@@ -383,12 +383,12 @@ appElement.addEventListener('input', (event) => {
 
 function initWebview() {
   const params = new URLSearchParams(window.location.search);
-  const appId = params.get('appId') || sessionStorage.getItem('saptools.apis.selectedAppId');
+  const appId = params.get('appId') || sessionStorage.getItem('saptools.apis.selectedAppId') || window.vscodeApiSelectedAppId;
   if (appId) {
     apiSelectedAppId = appId;
     
     // Select the first entity automatically if available
-    const catalog = API_MOCK_CATALOG[apiSelectedAppId];
+    const catalog = API_MOCK_CATALOG[apiSelectedAppId] || API_MOCK_CATALOG['demo-app'];
     if (catalog && catalog.entities.length > 0) {
       apiSelectedEntity = catalog.entities[0].name;
     } else {
@@ -404,7 +404,7 @@ window.addEventListener('message', (event) => {
     apiSelectedAppId = event.data.payload.appId;
     
     // Select the first entity automatically if available
-    const catalog = API_MOCK_CATALOG[apiSelectedAppId];
+    const catalog = API_MOCK_CATALOG[apiSelectedAppId] || API_MOCK_CATALOG['demo-app'];
     if (catalog && catalog.entities.length > 0) {
       apiSelectedEntity = catalog.entities[0].name;
     } else {

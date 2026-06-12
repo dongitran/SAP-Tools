@@ -9,6 +9,8 @@ import { HanaSqlWorkbench } from './hanaSqlWorkbench';
 import { REGION_VIEW_ID, RegionSidebarProvider } from './sidebarProvider';
 import { readCurrentScope } from './scopeSync';
 
+import { ApisExplorerPanelManager } from './apisExplorerPanel';
+
 const OPEN_REGION_MENU_COMMAND = 'sapTools.selectSapBtpRegion';
 const OPEN_CF_LOGS_PANEL_COMMAND = 'sapTools.openCfLogsPanel';
 const START_LOCAL_REGISTRY_COMMAND = 'sapTools.startLocalRegistry';
@@ -25,6 +27,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const cfLogsPanel = new CfLogsPanelProvider(context);
   const hanaSqlWorkbench = new HanaSqlWorkbench(outputChannel, cacheStore);
+  const apisExplorerPanelManager = new ApisExplorerPanelManager(context.extensionUri, outputChannel);
 
   const regionSidebarProvider = new RegionSidebarProvider(
     context.extensionUri,
@@ -33,7 +36,8 @@ export function activate(context: vscode.ExtensionContext): void {
     cfLogsPanel,
     cacheSyncService,
     cacheStore,
-    hanaSqlWorkbench
+    hanaSqlWorkbench,
+    apisExplorerPanelManager
   );
 
   void getEffectiveCredentials(context)

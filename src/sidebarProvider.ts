@@ -29,6 +29,7 @@ import {
 } from './serviceArtifactExporter';
 import { readSharedAppFolderMappings, readSharedRemoteRoot } from './sharedDebugConfig';
 import { exportSqlToolsConfig } from './sqlToolsConfigExporter';
+import type { ApisExplorerPanelManager } from './apisExplorerPanel';
 import {
   resolveMockApps,
   resolveMockCfTopology,
@@ -96,6 +97,7 @@ const MSG_EXPORT_SERVICE_ARTIFACTS = 'sapTools.exportServiceArtifacts';
 const MSG_REPLACE_SERVICE_PACKAGE_PLACEHOLDER = 'sapTools.replaceServicePackagePlaceholder';
 const MSG_EXPORT_SQLTOOLS_CONFIG = 'sapTools.exportSqlToolsConfig';
 const MSG_OPEN_HANA_SQL_FILE = 'sapTools.openHanaSqlFile';
+const MSG_OPEN_APIS_EXPLORER = 'saptools.openApisExplorer';
 const MSG_RUN_HANA_TABLE_SELECT = 'sapTools.runHanaTableSelect';
 const MSG_OPEN_SQLTOOLS_EXTENSION = 'sapTools.openSqlToolsExtension';
 const MSG_BUILD_PUBLISH_ALL = 'sapTools.buildPublishAll';
@@ -327,7 +329,8 @@ export class RegionSidebarProvider
     private readonly cfLogsPanel: CfLogsPanelProvider,
     private readonly cacheSyncService: CacheSyncService,
     private readonly cacheStore: CacheStore,
-    private readonly hanaSqlWorkbench: HanaSqlWorkbench
+    private readonly hanaSqlWorkbench: HanaSqlWorkbench,
+    private readonly apisExplorerPanelManager: ApisExplorerPanelManager
   ) {
     this.hanaSqlWorkbench.registerActiveSessionProvider(() => this.currentLogSessionSeed);
 
@@ -479,6 +482,14 @@ export class RegionSidebarProvider
 
     if (type === MSG_OPEN_CF_LOGS_PANEL) {
       this.cfLogsPanel.focus();
+      return;
+    }
+
+    if (type === MSG_OPEN_APIS_EXPLORER) {
+      const appId = message['appId'] as string;
+      if (appId !== '') {
+        this.apisExplorerPanelManager.openApisExplorer(appId);
+      }
       return;
     }
 
