@@ -18,6 +18,57 @@ let apiActiveView = 'json';
 let apiCatalogState = 'loading';
 let apiCurrentCatalog = null;
 
+const endpointSessions = new Map();
+
+function saveEndpointSession() {
+  if (!apiSelectedEntity) return;
+  // Key format: appId::entityName
+  const key = `${window.apiSelectedAppId || 'demo-app'}::${apiSelectedEntity}`;
+  endpointSessions.set(key, {
+    apiAuthMethod,
+    apiHttpMethod,
+    apiHttpBody,
+    apiParams: { ...apiParams },
+    apiResultState,
+    apiResultTime,
+    apiResultStatus,
+    apiResultPayload,
+    apiActiveView
+  });
+}
+
+function loadEndpointSession(entityName) {
+  const key = `${window.apiSelectedAppId || 'demo-app'}::${entityName}`;
+  const session = endpointSessions.get(key);
+  if (session) {
+    apiAuthMethod = session.apiAuthMethod;
+    apiHttpMethod = session.apiHttpMethod;
+    apiHttpBody = session.apiHttpBody;
+    apiParams = { ...session.apiParams };
+    apiResultState = session.apiResultState;
+    apiResultTime = session.apiResultTime;
+    apiResultStatus = session.apiResultStatus;
+    apiResultPayload = session.apiResultPayload;
+    apiActiveView = session.apiActiveView;
+  } else {
+    // defaults
+    apiHttpMethod = 'GET';
+    apiHttpBody = '';
+    apiParams = {
+      $select: '',
+      $filter: '',
+      $expand: '',
+      $top: '5',
+      $skip: '0'
+    };
+    apiResultState = 'idle';
+    apiResultTime = 0;
+    apiResultStatus = '';
+    apiResultPayload = null;
+    apiActiveView = 'json';
+  }
+}
+
 // Global VS Code API reference
 const vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
 
@@ -472,9 +523,9 @@ appElement.addEventListener('click', (event) => {
   const action = actionElement.dataset.action;
 
   if (action === 'api-select-entity') {
+    saveEndpointSession();
     apiSelectedEntity = actionElement.dataset.entityName ?? '';
-    apiResultState = 'idle';
-    apiResultPayload = null;
+    loadEndpointSession(apiSelectedEntity);
     updateSidebarSection();
     updateWorkbenchSection();
     return;
@@ -684,8 +735,7 @@ window.addEventListener('message', (event) => {
         }
         
         if (!isBackgroundUpdate) {
-          apiResultState = 'idle';
-          apiResultPayload = null;
+          loadEndpointSession(apiSelectedEntity);
           renderWebview();
         } else {
           // Just update sidebar softly to remove spinner and show new entities
@@ -701,13 +751,14 @@ window.addEventListener('message', (event) => {
     apiResultTime = payload.time;
     apiResultStatus = payload.status;
     apiResultPayload = payload.data;
+    saveEndpointSession();
     updateResponseSection();
     
     // Also update Execute button back to normal
     const execBtn = document.querySelector('.api-execute-btn');
     if (execBtn) {
       execBtn.disabled = false;
-      execBtn.innerHTML = `Execute ${apiHttpMethod}`;
+      execBtn.innerHTML = `Execute`;
     }
   }
 

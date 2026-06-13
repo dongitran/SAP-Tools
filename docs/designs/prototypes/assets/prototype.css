@@ -3698,26 +3698,6 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   color: var(--vscode-textLink-foreground, #3794ff);
 }
 
-.api-sidebar-title {
-  font-weight: 600;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  opacity: 0.8;
-  padding: 0 12px;
-  margin-bottom: 8px;
-}
-
-@keyframes api-spin {
-  100% { transform: rotate(360deg); }
-}
-
-.api-search-container {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
 .api-entities-list-title {
   font-size: 11px;
   text-transform: uppercase;

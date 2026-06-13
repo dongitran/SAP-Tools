@@ -1,6 +1,8 @@
 # SAP Tools Extension Changelog
 
-## 0.10.76 (stable)
+## 0.10.77 (stable)
+- Feature: Added memory-caching of endpoint states. The UI now intelligently persists user inputs and responses (method, body, OData parameters, response payload) when switching back-and-forth between endpoints during a session, functioning like Postman tabs.
+
 - UX Fix: Removed the "OData Query Parameters" header text to save vertical space.
 - UX Fix: Moved the Authentication settings gear icon up to the URL bar for a more streamlined layout.
 
