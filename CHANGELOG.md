@@ -1,5 +1,8 @@
 # SAP Tools Extension Changelog
 
+## 0.10.66 (stable)
+- Fixed: Resolved an issue where running requests with XSUAA auto-auth would return 401 Unauthorized for users logged in via SSO without explicit email/password in their credentials.
+
 ## 0.10.65 (stable)
 - Feature: APIs Explorer now discovers actual endpoints directly from the CF app container (parsing remote `.cds` files via SSH) when the standard OData index page is disabled in production environments.
 

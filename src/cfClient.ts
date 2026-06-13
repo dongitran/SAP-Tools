@@ -268,14 +268,16 @@ async function runCfCliSessionPreparation(params: CfCliTargetParams): Promise<vo
     failureMessage: 'Failed to set CF API endpoint.',
   });
 
-  await runCfCommand(['auth'], {
-    ...cfHomeOptions,
-    envOverrides: {
-      CF_USERNAME: params.email,
-      CF_PASSWORD: params.password,
-    },
-    failureMessage: 'Failed to authenticate Cloud Foundry CLI.',
-  });
+  if (params.email !== '' && params.password !== '') {
+    await runCfCommand(['auth'], {
+      ...cfHomeOptions,
+      envOverrides: {
+        CF_USERNAME: params.email,
+        CF_PASSWORD: params.password,
+      },
+      failureMessage: 'Failed to authenticate Cloud Foundry CLI.',
+    });
+  }
 
   await runCfCommand(['target', '-o', params.orgName, '-s', params.spaceName], {
     ...cfHomeOptions,
