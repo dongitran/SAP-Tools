@@ -1,5 +1,8 @@
 # SAP Tools Extension Changelog
 
+## 0.10.67 (stable)
+- Fixed: Resolved JSON parsing failure when reading VCAP_SERVICES from container environment variables. This resolves the silent 401 Unauthorized errors when fetching endpoints.
+
 ## 0.10.66 (stable)
 - Fixed: Resolved an issue where running requests with XSUAA auto-auth would return 401 Unauthorized for users logged in via SSO without explicit email/password in their credentials.
 

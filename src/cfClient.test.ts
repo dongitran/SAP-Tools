@@ -542,18 +542,16 @@ describe('fetchDefaultEnvJsonFromTarget', () => {
 
     it('parses XSUAA credentials and fetches token', async () => {
       const mockEnv = `System-Provided:
-{
-  "VCAP_SERVICES": {
-    "xsuaa": [
-      {
-        "credentials": {
-          "clientid": "test-client",
-          "clientsecret": "test-secret",
-          "url": "https://test.authentication.com"
-        }
+VCAP_SERVICES: {
+  "xsuaa": [
+    {
+      "credentials": {
+        "clientid": "test-client",
+        "clientsecret": "test-secret",
+        "url": "https://test.authentication.com"
       }
-    ]
-  }
+    }
+  ]
 }
 
 `;

@@ -934,9 +934,19 @@ export async function fetchXsuaaTokenFromTarget(params: {
     const vcapMatch = /System-Provided:\n([\s\S]*?)\n\n/.exec(envStdout);
     if (vcapMatch?.[1] === undefined || vcapMatch[1] === '') return null;
     
-    const vcapData = JSON.parse(vcapMatch[1]) as Record<string, unknown>;
-    const vcapServices = vcapData['VCAP_SERVICES'] as Record<string, unknown[]> | undefined;
-    if (vcapServices === undefined) return null;
+    const vcapStr = vcapMatch[1];
+    const startIdx = vcapStr.indexOf('VCAP_SERVICES:');
+    if (startIdx === -1) return null;
+    
+    const objStart = vcapStr.indexOf('{', startIdx);
+    if (objStart === -1) return null;
+
+    const nextKeyMatch = /\n[A-Z_]+:\s*\{/.exec(vcapStr.substring(objStart));
+    const objEnd = nextKeyMatch !== null ? objStart + nextKeyMatch.index : vcapStr.length;
+    
+    const vcapServicesStr = vcapStr.substring(objStart, objEnd).trim();
+    const vcapServices = JSON.parse(vcapServicesStr) as Record<string, unknown[]>;
+
 
     const xsuaaList = vcapServices['xsuaa'];
     if (!Array.isArray(xsuaaList) || xsuaaList.length === 0) return null;
