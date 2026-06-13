@@ -3719,7 +3719,7 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   padding: 8px 10px;
   background: none;
   border: none;
-  color: var(--vscode-sideBar-foreground, #cccccc);
+  color: var(--vscode-foreground, var(--vscode-sideBar-foreground, #cccccc));
   font-family: inherit;
   font-size: 13px;
   text-align: left;
@@ -3775,7 +3775,7 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
 }
 
 .api-url-bar {

@@ -1,6 +1,9 @@
 # SAP Tools Extension Changelog
 
-## 0.10.88 (stable)
+## 0.10.89 (stable)
+- UX Fix: Reduced gap between URL bar and query parameters grid by 50%.
+- UX Fix: Fixed sidebar endpoint text color fallback logic for Light Theme to use proper VS Code foreground color.
+
 - UX Fix: Resolved duplicate border and excess margin on the JSON response header.
 
 - UX Fix: JSON payload background transparency override for all themes.
