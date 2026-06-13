@@ -227,6 +227,9 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
         // --- Deep Auto-Discovery (Drill-down into OData Services) ---
         if (entities.length > 0) {
           this.log(`Attempting deep discovery on ${String(entities.length)} root endpoints...`);
+          // Notify frontend that background sync has started
+          void panel.webview.postMessage({ type: 'sapTools.apis.syncStarted' });
+
           const expandedEntities: { name: string; methods: string[]; schema: unknown; path: string }[] = [];
           
           // Re-use the token we fetched earlier
@@ -236,12 +239,12 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
             headers['Authorization'] = token.startsWith('bearer') || token.startsWith('Bearer') ? token : `Bearer ${token}`;
           }
 
-          for (const ep of entities) {
+          // Use Promise.allSettled for highly parallel deep discovery
+          const fetchPromises = entities.map(async (ep) => {
+            if (ep.path === '' || ep.path === '/') {
+              return [ep];
+            }
             try {
-              if (ep.path === '' || ep.path === '/') {
-                expandedEntities.push(ep);
-                continue;
-              }
               const epUrl = `${baseUrl}${ep.path.startsWith('/') ? ep.path : '/' + ep.path}`;
               const res = await fetch(epUrl, { headers, signal: AbortSignal.timeout(5000) });
               if (res.ok) {
@@ -249,10 +252,11 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
                 if (typeof data === 'object' && data !== null && Array.isArray((data as Record<string, unknown>)['value'])) {
                   const subEntities = (data as Record<string, unknown>)['value'] as { name?: string; url?: string }[];
                   let foundSub = false;
+                  const newEps: typeof entities = [];
                   for (const sub of subEntities) {
                     if (typeof sub.name === 'string' && sub.name !== '') {
                       const subPath = typeof sub.url === 'string' && sub.url !== '' ? sub.url : sub.name;
-                      expandedEntities.push({
+                      newEps.push({
                         name: `${ep.name} / ${sub.name}`,
                         methods: ['GET', 'POST', 'PATCH', 'DELETE'],
                         schema: { type: 'object', properties: {} },
@@ -261,19 +265,24 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
                       foundSub = true;
                     }
                   }
-                  if (!foundSub) {
-                    expandedEntities.push(ep);
+                  if (foundSub) {
+                    return newEps;
                   }
-                } else {
-                  expandedEntities.push(ep);
                 }
-              } else {
-                expandedEntities.push(ep);
               }
             } catch {
-              expandedEntities.push(ep);
+              // Fallback to returning the root endpoint on error
+            }
+            return [ep];
+          });
+
+          const results = await Promise.allSettled(fetchPromises);
+          for (const res of results) {
+            if (res.status === 'fulfilled') {
+              expandedEntities.push(...res.value);
             }
           }
+
           if (expandedEntities.length > 0) {
             entities = expandedEntities;
             this.log(`Deep discovery complete. Found ${String(entities.length)} total endpoints.`);
@@ -295,7 +304,10 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
       this.log(`Sending catalog to Webview with ${String(entities.length)} entities`);
       void panel.webview.postMessage({
         type: 'sapTools.apis.catalogLoaded',
-        payload: catalog
+        payload: {
+          ...catalog,
+          isBackgroundUpdate: cachedCatalog !== null
+        }
       });
 
     } catch (e) {

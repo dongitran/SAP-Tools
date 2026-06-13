@@ -1,6 +1,9 @@
 # SAP Tools Extension Changelog
 
-## 0.10.73 (stable)
+## 0.10.74 (stable)
+- Performance: Refactored API Explorer Auto-Discovery logic to execute HTTP requests in parallel (`Promise.allSettled`), drastically reducing deep endpoint discovery times.
+- UX: Upgraded caching strategy to seamlessly broadcast `syncStarted` events, rendering a subtle spinner during Stale-While-Revalidate without blocking the active UI session.
+
 - UX Fix: Enhanced Execute button flex-alignment to stretch and perfectly match adjacent query input heights.
 - UX Fix: Refined `word-break: break-word` for endpoint names in the sidebar to prevent awkward mid-character splitting.
 - UX Fix: Forced `sidebar.style.flex` logic for Resizer to ensure exact pixel sizing over flex-shrink behaviors.

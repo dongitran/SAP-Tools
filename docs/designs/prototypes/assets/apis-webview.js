@@ -404,7 +404,7 @@ function updateSidebarSection() {
 
   sidebar.innerHTML = `
     <div style="padding: 12px 0 0 0;">
-      <div class="api-entities-list-title" style="margin-bottom: 8px; padding: 0 12px; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">Endpoints (${currentCatalog.entities.length})</div>
+      <div class="api-entities-list-title" style="margin-bottom: 8px; padding: 0 12px; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">Endpoints (${currentCatalog.entities.length}) ${apiCatalogState === 'syncing' ? '<span class="api-sync-spinner" style="display:inline-block; animation: api-spin 1s linear infinite; margin-left: 4px; font-size: 10px;">&#8635;</span>' : ''}</div>
       <div class="api-search-container" style="padding: 0 12px 12px 12px;">
         <div style="position: relative; display: flex; align-items: center; background: var(--vscode-input-background, #3c3c3c); border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px;">
           <span aria-hidden="true" style="position: absolute; left: 6px; font-size: 14px; color: var(--vscode-input-foreground, #cccccc);">&#128269;</span>
@@ -647,9 +647,18 @@ document.addEventListener('mouseleave', () => {
 window.addEventListener('message', (event) => {
   if (!event.data) return;
 
+  if (event.data.type === 'sapTools.apis.syncStarted') {
+    apiCatalogState = 'syncing';
+    if (apiSelectedAppId) {
+      updateSidebarSection();
+    }
+  }
+
   if (event.data.type === 'sapTools.apis.catalogLoaded') {
     const catalog = event.data.payload;
+    const isBackgroundUpdate = catalog.isBackgroundUpdate === true;
     if (catalog) {
+      const prevSelectedEntity = apiSelectedEntity;
       apiCurrentCatalog = {
         name: catalog.name,
         baseUrl: catalog.baseUrl,
@@ -661,12 +670,24 @@ window.addEventListener('message', (event) => {
       
       // If this is the currently selected app, refresh UI
       if (apiSelectedAppId === catalog.name) {
-        if (catalog.entities.length > 0 && !apiSelectedEntity) {
-          apiSelectedEntity = catalog.entities[0].name;
+        if (catalog.entities.length > 0) {
+          if (!prevSelectedEntity || !catalog.entities.some(e => e.name === prevSelectedEntity)) {
+             apiSelectedEntity = catalog.entities[0].name;
+          } else {
+             apiSelectedEntity = prevSelectedEntity;
+          }
+        } else {
+          apiSelectedEntity = '';
         }
-        apiResultState = 'idle';
-        apiResultPayload = null;
-        renderWebview();
+        
+        if (!isBackgroundUpdate) {
+          apiResultState = 'idle';
+          apiResultPayload = null;
+          renderWebview();
+        } else {
+          // Just update sidebar softly to remove spinner and show new entities
+          updateSidebarSection();
+        }
       }
     }
   }
