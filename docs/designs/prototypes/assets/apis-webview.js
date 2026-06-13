@@ -260,14 +260,14 @@ function updateResponseSection() {
 
   let viewContent = '';
   if (apiActiveView === 'json') {
-    viewContent = `<pre class="api-raw-json" style="background: transparent !important; margin: 0; padding: 0;"><code style="background: transparent !important; color: inherit; padding: 0;">${escapeHtml(payloadStr)}</code></pre>`;
+    viewContent = `<pre class="api-raw-json" style="background: transparent !important; margin: 0 !important; padding: 0 !important; margin-bottom: 0 !important; padding-bottom: 0 !important; display: block;"><code style="background: transparent !important; color: inherit; padding: 0 !important; margin: 0 !important; display: block;">${escapeHtml(payloadStr)}</code></pre>`;
   } else {
     viewContent = renderApiGridResult();
   }
 
   responseBody.innerHTML = `
-    <div class="api-results-wrapper" style="margin-top: 0; flex: 1; display: flex; flex-direction: column;">
-      <div class="api-view-content" style="flex: 1; overflow: auto; background-color: transparent; padding-top: 2px;">
+    <div class="api-results-wrapper" style="margin-top: 0; flex: 1; display: flex; flex-direction: column; padding-bottom: 0 !important; margin-bottom: 0 !important;">
+      <div class="api-view-content" style="flex: 1; overflow: auto; background-color: transparent; padding-top: 2px; padding-bottom: 0 !important; margin-bottom: 0 !important;">
         ${viewContent}
       </div>
     </div>
@@ -340,11 +340,11 @@ function updateWorkbenchSection() {
         </section>
 
         <!-- Response Section -->
-        <section class="api-response-section" aria-label="API Response" style="flex: 1; display: flex; flex-direction: column;">
+        <section class="api-response-section" aria-label="API Response" style="flex: 1; display: flex; flex-direction: column; padding-bottom: 0 !important;">
           <div class="api-response-header" style="display: flex; align-items: center; justify-content: space-between;">
             <h3>Response</h3>
           </div>
-          <div class="api-response-body" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;"></div>
+          <div class="api-response-body" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0 !important; margin-bottom: 0 !important;"></div>
         </section>
     `;
     requestSection = mainPanel.querySelector('.api-request-section');

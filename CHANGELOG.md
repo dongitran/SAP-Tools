@@ -1,6 +1,8 @@
 # SAP Tools Extension Changelog
 
-## 0.10.94 (stable)
+## 0.10.95 (stable)
+- UI/UX: Enforced absolute zero bottom-spacing on the API JSON response container via inline styles to ensure the text touches the exact boundary of the panel regardless of CSS cache states.
+
 - UI/UX: Fully eliminated the internal bottom padding inside the JSON & Grid response container (`.api-view-content`), allowing data to expand strictly to the exact bottom edge without any residual spacing.
 
 - UI/UX: Removed the bottom padding in the APIs Explorer response section so the result data displays fully to the bottom edge.
