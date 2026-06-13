@@ -85,13 +85,13 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
         if (msg['type'] === 'sapTools.apis.executeRequest') {
           const payload = msg['payload'] as { url: string; method: string; auth: string; body?: string };
           await this.handleExecuteRequest(appId, payload.url, payload.method, payload.auth, targetParams, panel, payload.body);
+        } else if (msg['type'] === 'sapTools.apis.webviewReady') {
+          if (targetParams !== undefined) {
+            void this.loadApiData(appId, targetParams, panel);
+          }
         }
       }
     }, null, panelDisposables);
-
-    if (targetParams !== undefined) {
-      void this.loadApiData(appId, targetParams, panel);
-    }
 
     return session;
   }

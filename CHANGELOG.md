@@ -1,6 +1,8 @@
 # SAP Tools Extension Changelog
 
-## 0.10.91 (stable)
+## 0.10.92 (stable)
+- Fix (Race Condition): Resolved an intermittent issue where opening the APIs Explorer with a warm cache would result in an endless loading screen. The backend now strictly waits for the Webview's `sapTools.apis.webviewReady` signal before transmitting the initial data payload, ensuring no data is lost during the UI boot sequence.
+
 - Fix (Memory Leak): Resolved a severe issue where `ApisExplorerPanelManager` and `HanaSqlResultPanelManager` leaked VS Code Webview event listeners into a global array, preventing garbage collection on panel close.
 - Fix: Addressed a race condition/bug where catalog load errors were incorrectly processed as API execution errors, causing the APIs Explorer to freeze indefinitely on the loading screen.
 

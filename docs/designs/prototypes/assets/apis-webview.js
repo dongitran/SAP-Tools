@@ -802,3 +802,7 @@ window.addEventListener('message', (event) => {
 
 // Initial render
 initWebview();
+
+if (vscodeApi) {
+  vscodeApi.postMessage({ type: 'sapTools.apis.webviewReady' });
+}
