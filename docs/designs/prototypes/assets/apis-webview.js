@@ -257,27 +257,21 @@ function updateWorkbenchSection() {
     mainPanel.innerHTML = `
         <!-- Request Section -->
         <section class="api-request-section" aria-label="API Request Builder">
-          <div class="api-url-bar">
-            <select class="api-method-select" data-action="api-select-method" style="background: var(--vscode-button-background, #007acc); color: var(--vscode-button-foreground, #ffffff); font-weight: bold; border: none; padding: 4px 8px; border-radius: 2px 0 0 2px; outline: none; cursor: pointer; -webkit-appearance: none; text-align: center; font-size: 11px;">
-              <option value="GET">GET</option>
-              <option value="POST">POST</option>
-              <option value="PATCH">PATCH</option>
-              <option value="PUT">PUT</option>
-              <option value="DELETE">DELETE</option>
-            </select>
-            <input type="text" class="api-url-input" value="" aria-label="API Target URL" />
-          </div>
-
-          <div class="api-body-section" style="display: none; margin-top: 12px;">
-            <div class="api-params-title">Request Body (JSON)</div>
-            <textarea class="api-body-input" data-action="api-input-body" style="width: 100%; height: 100px; background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #cccccc); border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; padding: 8px; font-family: monospace; resize: vertical; box-sizing: border-box;" placeholder='{ "key": "value" }'></textarea>
-          </div>
-
-          <div class="api-params-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; margin-bottom: 4px;">
-            <div class="api-params-title" style="margin: 0;">OData Query Parameters</div>
-            <div class="api-settings-container" style="position: relative;">
-              <button type="button" data-action="api-toggle-auth-settings" style="background: transparent; border: none; cursor: pointer; font-size: 14px; opacity: 0.7; padding: 0 4px;" title="Auth Settings">&#9881;&#65039;</button>
-              <div class="api-auth-popover" style="display: none; position: absolute; right: 0; top: 100%; background: var(--vscode-editor-background); border: 1px solid var(--vscode-input-border, #3c3c3c); padding: 8px; z-index: 10; border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); width: 200px;">
+          <div class="api-url-bar" style="display: flex; margin-bottom: 12px; gap: 4px;">
+            <div style="display: flex; flex: 1;">
+              <select class="api-method-select" data-action="api-select-method" style="background: var(--vscode-button-background, #007acc); color: var(--vscode-button-foreground, #ffffff); font-weight: bold; border: none; padding: 4px 8px; border-radius: 2px 0 0 2px; outline: none; cursor: pointer; -webkit-appearance: none; text-align: center; font-size: 11px;">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PATCH">PATCH</option>
+                <option value="PUT">PUT</option>
+                <option value="DELETE">DELETE</option>
+              </select>
+              <input type="text" class="api-url-input" value="" aria-label="API Target URL" style="flex: 1; border-radius: 0 2px 2px 0;" />
+            </div>
+            
+            <div class="api-settings-container" style="position: relative; display: flex; align-items: center; justify-content: center; background: var(--vscode-input-background, #3c3c3c); border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; padding: 0 8px;">
+              <button type="button" data-action="api-toggle-auth-settings" style="background: transparent; border: none; cursor: pointer; font-size: 14px; opacity: 0.7; padding: 0;" title="Auth Settings">&#9881;&#65039;</button>
+              <div class="api-auth-popover" style="display: none; position: absolute; right: 0; top: calc(100% + 4px); background: var(--vscode-editor-background); border: 1px solid var(--vscode-input-border, #3c3c3c); padding: 8px; z-index: 10; border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); width: 200px;">
                 <label style="font-size: 11px; margin-bottom: 4px; display: block; opacity: 0.8;">Authentication Method</label>
                 <select id="api-auth-select" class="api-auth-select" data-action="api-select-auth" style="width: 100%; border: 1px solid var(--vscode-input-border, #3c3c3c); background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #cccccc); padding: 4px; outline: none; cursor: pointer; font-family: inherit;">
                   <option value="xsuaa-auto">XSUAA Client (Auto)</option>
@@ -286,6 +280,11 @@ function updateWorkbenchSection() {
                 </select>
               </div>
             </div>
+          </div>
+
+          <div class="api-body-section" style="display: none; margin-top: 12px;">
+            <div class="api-params-title">Request Body (JSON)</div>
+            <textarea class="api-body-input" data-action="api-input-body" style="width: 100%; height: 100px; background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #cccccc); border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; padding: 8px; font-family: monospace; resize: vertical; box-sizing: border-box;" placeholder='{ "key": "value" }'></textarea>
           </div>
           <div class="api-params-grid"></div>
 

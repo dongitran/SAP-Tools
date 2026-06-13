@@ -1,6 +1,9 @@
 # SAP Tools Extension Changelog
 
-## 0.10.75 (stable)
+## 0.10.76 (stable)
+- UX Fix: Removed the "OData Query Parameters" header text to save vertical space.
+- UX Fix: Moved the Authentication settings gear icon up to the URL bar for a more streamlined layout.
+
 - UX Fix: Aligned JSON and Grid Data tabs precisely to the baseline of the "Response" header for perfect horizontal symmetry.
 - UX Fix: Removed the grayish background artifact from the raw JSON output block in Dark Mode themes.
 
