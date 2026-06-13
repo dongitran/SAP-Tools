@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.63 (stable)
+- Fix: APIs Explorer now correctly renders endpoints without zero-count badges when no entity count is returned.
+- Fix: APIs Explorer now correctly mounts execution requests by using the explicit root-resolved entity path instead of appending the entity name to a potentially undefined base path, resolving "Cannot GET /" execution errors.
+
 ## 0.10.62 (stable)
 - Fix: Local Workspace Discovery fallback for production CAP apps where root metadata index is disabled.
 - Fix: Implement XSUAA OAuth client credentials fetching to fix "XSUAA Client (Auto)" mode.

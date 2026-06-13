@@ -79,7 +79,7 @@ test.describe('APIs Explorer Workspace Flow', () => {
       // Verify URL bar updates
       const urlBar = frame.locator('input.api-url-input');
       await expect(urlBar).toBeVisible();
-      await expect(urlBar).toHaveValue(/Products/);
+      await expect(urlBar).toHaveValue(/products/i);
 
       // Execute GET request
       const executeBtn = frame.getByRole('button', { name: 'Execute GET' });

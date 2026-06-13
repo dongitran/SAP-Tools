@@ -214,7 +214,7 @@ function renderWebview() {
       <button type="button" class="api-entity-item${isSelected ? ' is-active' : ''}" data-action="api-select-entity" data-entity-name="${ent.name}">
         <span class="entity-icon" aria-hidden="true">&#128196;</span>
         <span class="entity-name">${ent.name}</span>
-        <span class="entity-count-badge">${ent.count || 0}</span>
+        ${ent.count !== undefined ? `<span class="entity-count-badge">${ent.count}</span>` : ''}
       </button>
     `;
   }).join('');
@@ -248,7 +248,9 @@ function renderWebview() {
     `;
   } else {
     const routeBase = currentCatalog.baseUrl || `https://demo-env-${apiSelectedAppId}.cfapps.region.hana.ondemand.com`;
-    const fullUrl = `${routeBase}${currentCatalog.servicePath}/${apiSelectedEntity}${buildApiQueryString()}`;
+    const selectedEnt = currentCatalog.entities.find(e => e.name === apiSelectedEntity);
+    const entPath = selectedEnt && selectedEnt.path ? selectedEnt.path : `${currentCatalog.servicePath || ''}/${apiSelectedEntity}`;
+    const fullUrl = `${routeBase}${entPath}${buildApiQueryString()}`;
 
     workbenchHtml = `
       <main class="api-workbench-panel" style="flex: 1; border-left: none;">
@@ -398,9 +400,11 @@ appElement.addEventListener('input', (event) => {
       apiParams[paramName] = target.value;
       const urlInput = appElement.querySelector('.api-url-input');
       if (urlInput instanceof HTMLInputElement) {
-        const currentCatalog = API_MOCK_CATALOG[apiSelectedAppId] || API_MOCK_CATALOG['demo-app'];
+        const currentCatalog = apiCurrentCatalog || API_MOCK_CATALOG[apiSelectedAppId] || API_MOCK_CATALOG['demo-app'];
         const routeBase = currentCatalog.baseUrl || `https://demo-env-${apiSelectedAppId}.cfapps.region.hana.ondemand.com`;
-        const fullUrl = `${routeBase}${currentCatalog.servicePath}/${apiSelectedEntity}${buildApiQueryString()}`;
+        const selectedEnt = currentCatalog.entities.find(e => e.name === apiSelectedEntity);
+        const entPath = selectedEnt && selectedEnt.path ? selectedEnt.path : `${currentCatalog.servicePath || ''}/${apiSelectedEntity}`;
+        const fullUrl = `${routeBase}${entPath}${buildApiQueryString()}`;
         urlInput.value = fullUrl;
       }
     }
