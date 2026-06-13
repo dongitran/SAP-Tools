@@ -1,6 +1,8 @@
 # SAP Tools Extension Changelog
 
-## 0.10.93 (stable)
+## 0.10.94 (stable)
+- UI/UX: Fully eliminated the internal bottom padding inside the JSON & Grid response container (`.api-view-content`), allowing data to expand strictly to the exact bottom edge without any residual spacing.
+
 - UI/UX: Removed the bottom padding in the APIs Explorer response section so the result data displays fully to the bottom edge.
 
 - Fix (Race Condition): Resolved an intermittent issue where opening the APIs Explorer with a warm cache would result in an endless loading screen. The backend now strictly waits for the Webview's `sapTools.apis.webviewReady` signal before transmitting the initial data payload, ensuring no data is lost during the UI boot sequence.

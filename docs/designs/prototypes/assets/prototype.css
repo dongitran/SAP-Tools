@@ -4044,7 +4044,7 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   overflow: auto;
   background-color: var(--vscode-textBlock-background, rgba(0,0,0,0.1));
   border-radius: 4px;
-  padding: 8px;
+  padding: 8px 8px 0 8px;
 }
 
 .api-raw-json {
