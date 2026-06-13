@@ -1,5 +1,12 @@
 # SAP Tools Extension Changelog
 
+## 0.10.71 (stable)
+- Feature: Added a draggable Resizer between the endpoints sidebar and main panel.
+- Feature: Reorganized OData Query Parameters layout for a more compact 50/50 split of `$filter` and `$expand`.
+- Feature: Cleaned up Auth Settings by moving it to a Popover toggled via a new Gear icon.
+- Feature: Endpoints in the sidebar now truncate to 2 lines and show full name on hover. URL input also shows full path on hover.
+- UX: Correctly aligned Response tabs (JSON/Grid Data) to the same height as the Response header.
+
 ## 0.10.70 (stable)
 - Feature: Refactored API Explorer Response layout to be more compact (merged tabs, status, and copy button into a single row).
 - Fixed: Ensure "Copy" button works reliably for both JSON view and Grid Data view.

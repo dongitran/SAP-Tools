@@ -166,9 +166,9 @@ function updateResponseSection() {
         <div style="display: flex; align-items: center; gap: 16px; flex: 1;">
           <h3 style="margin: 0;">Response</h3>
           
-          <div class="api-view-tabs" style="border-bottom: none; display: flex; align-items: center;">
-            <button type="button" class="api-view-tab-btn${apiActiveView === 'json' ? ' is-active' : ''}" data-action="api-switch-view" data-view-id="json">JSON</button>
-            <button type="button" class="api-view-tab-btn${apiActiveView === 'grid' ? ' is-active' : ''}" data-action="api-switch-view" data-view-id="grid">Grid Data</button>
+          <div class="api-view-tabs" style="border-bottom: none; display: flex; align-items: center; gap: 4px;">
+            <button type="button" class="api-view-tab-btn${apiActiveView === 'json' ? ' is-active' : ''}" data-action="api-switch-view" data-view-id="json" style="padding: 2px 8px; line-height: 20px; height: 24px;">JSON</button>
+            <button type="button" class="api-view-tab-btn${apiActiveView === 'grid' ? ' is-active' : ''}" data-action="api-switch-view" data-view-id="grid" style="padding: 2px 8px; line-height: 20px; height: 24px;">Grid Data</button>
           </div>
         </div>
 
@@ -264,30 +264,27 @@ function updateWorkbenchSection() {
             <input type="text" class="api-url-input" value="" aria-label="API Target URL" />
           </div>
 
-          <div class="api-config-row" style="margin-top: 12px;">
-            <label class="api-url-bar" style="width: 300px; cursor: pointer; display: flex; border: 1px solid var(--vscode-input-border, transparent); background: var(--vscode-input-background, #3c3c3c); border-radius: 2px;" for="api-auth-select">
-              <span class="api-method-badge" style="background-color: var(--vscode-button-background, #007acc); color: var(--vscode-button-foreground, #ffffff); font-weight: bold; padding: 4px 8px;">Auth</span>
-              <select id="api-auth-select" class="api-url-input api-auth-select" data-action="api-select-auth" style="flex: 1; border: none; background: transparent; color: var(--vscode-input-foreground, #cccccc); padding: 4px 8px; outline: none; cursor: pointer;">
-                <option value="xsuaa-auto">XSUAA Client (Auto)</option>
-                <option value="local">Local Debug (None)</option>
-                <option value="custom">Custom Token</option>
-              </select>
-            </label>
-          </div>
-
           <div class="api-body-section" style="display: none; margin-top: 12px;">
             <div class="api-params-title">Request Body (JSON)</div>
             <textarea class="api-body-input" data-action="api-input-body" style="width: 100%; height: 100px; background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #cccccc); border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; padding: 8px; font-family: monospace; resize: vertical; box-sizing: border-box;" placeholder='{ "key": "value" }'></textarea>
           </div>
 
-          <div class="api-params-title">OData Query Parameters</div>
+          <div class="api-params-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; margin-bottom: 4px;">
+            <div class="api-params-title" style="margin: 0;">OData Query Parameters</div>
+            <div class="api-settings-container" style="position: relative;">
+              <button type="button" data-action="api-toggle-auth-settings" style="background: transparent; border: none; cursor: pointer; font-size: 14px; opacity: 0.7; padding: 0 4px;" title="Auth Settings">&#9881;&#65039;</button>
+              <div class="api-auth-popover" style="display: none; position: absolute; right: 0; top: 100%; background: var(--vscode-editor-background); border: 1px solid var(--vscode-input-border, #3c3c3c); padding: 8px; z-index: 10; border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); width: 200px;">
+                <label style="font-size: 11px; margin-bottom: 4px; display: block; opacity: 0.8;">Authentication Method</label>
+                <select id="api-auth-select" class="api-auth-select" data-action="api-select-auth" style="width: 100%; border: 1px solid var(--vscode-input-border, #3c3c3c); background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #cccccc); padding: 4px; outline: none; cursor: pointer; font-family: inherit;">
+                  <option value="xsuaa-auto">XSUAA Client (Auto)</option>
+                  <option value="local">Local Debug (None)</option>
+                  <option value="custom">Custom Token</option>
+                </select>
+              </div>
+            </div>
+          </div>
           <div class="api-params-grid"></div>
 
-          <div class="api-execute-row">
-            <button type="button" class="primary-action api-execute-btn" data-action="api-execute-request">
-              Execute Request
-            </button>
-          </div>
         </section>
 
         <!-- Response Section -->
@@ -317,7 +314,10 @@ function updateWorkbenchSection() {
   }
 
   const urlInput = mainPanel.querySelector('.api-url-input');
-  if (urlInput) urlInput.value = fullUrl;
+  if (urlInput) {
+    urlInput.value = fullUrl;
+    urlInput.title = fullUrl;
+  }
 
   const methodSelect = mainPanel.querySelector('.api-method-select');
   if (methodSelect) methodSelect.value = apiHttpMethod;
@@ -339,11 +339,18 @@ function updateWorkbenchSection() {
     if (!activeEl || !activeEl.matches('.api-params-grid input')) {
       paramsGrid.innerHTML = `
         ${renderApiParamRow('$select', apiParams.$select, 'Fields to retrieve')}
-        ${renderApiParamRow('$filter', apiParams.$filter, 'Filter conditions')}
-        ${renderApiParamRow('$expand', apiParams.$expand, 'Expand associations')}
         <div class="api-params-row-flex">
+          ${renderApiParamRow('$filter', apiParams.$filter, 'Filter conditions')}
+          ${renderApiParamRow('$expand', apiParams.$expand, 'Expand associations')}
+        </div>
+        <div class="api-params-row-flex" style="align-items: flex-end;">
           ${renderApiParamRow('$top', apiParams.$top, 'Max items', 'number')}
           ${renderApiParamRow('$skip', apiParams.$skip, 'Skip offset', 'number')}
+          <div style="flex: 1; margin-left: 8px;">
+            <button type="button" class="primary-action api-execute-btn" data-action="api-execute-request" style="width: 100%; height: 26px; margin: 0; padding: 0 12px; font-size: 12px; line-height: 26px;">
+              Execute
+            </button>
+          </div>
         </div>
       `;
     }
@@ -356,7 +363,7 @@ function updateWorkbenchSection() {
       execBtn.innerHTML = '<span class="api-spinner"></span> Executing...';
     } else {
       execBtn.disabled = false;
-      execBtn.innerHTML = `Execute ${apiHttpMethod}`;
+      execBtn.innerHTML = `Execute`;
     }
   }
 
@@ -385,7 +392,7 @@ function updateSidebarSection() {
     return `
       <button type="button" class="api-entity-item${isSelected ? ' is-active' : ''}" data-action="api-select-entity" data-entity-name="${ent.name}">
         <span class="entity-icon" aria-hidden="true">&#128196;</span>
-        <span class="entity-name">${ent.name}</span>
+        <span class="entity-name" title="${escapeHtml(ent.name)}" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-all; white-space: normal; line-height: 1.2;">${escapeHtml(ent.name)}</span>
         ${ent.count !== undefined ? `<span class="entity-count-badge">${ent.count}</span>` : ''}
       </button>
     `;
@@ -401,7 +408,7 @@ function updateSidebarSection() {
       <div class="api-search-container" style="padding: 0 12px 12px 12px;">
         <div style="position: relative; display: flex; align-items: center; background: var(--vscode-input-background, #3c3c3c); border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px;">
           <span aria-hidden="true" style="position: absolute; left: 6px; font-size: 14px; color: var(--vscode-input-foreground, #cccccc);">&#128269;</span>
-          <input type="search" data-action="api-search-entity" value="${escapeHtml(searchTerm)}" placeholder="Search endpoints" style="width: 100%; padding: 4px 6px 4px 24px; background: transparent; border: none; color: var(--vscode-input-foreground, #cccccc); outline: none; font-family: inherit; font-size: 13px;" />
+          <input type="search" data-action="api-search-entity" value="${escapeHtml(searchTerm)}" placeholder="Search endpoints" style="width: 100%; padding: 4px 6px 4px 28px; background: transparent; border: none; color: var(--vscode-input-foreground, #cccccc); outline: none; font-family: inherit; font-size: 13px;" />
         </div>
       </div>
     </div>
@@ -437,7 +444,8 @@ function initLayout() {
   if (!document.querySelector('.api-split-layout')) {
     appElement.innerHTML = `
       <div class="api-split-layout" style="display: flex; flex-direction: row; height: 100vh; overflow: hidden; margin: 0; padding: 0;">
-        <aside class="api-webview-sidebar" style="width: 250px; min-width: 250px; border-right: 1px solid var(--vscode-panel-border, #3c3c3c); background-color: var(--vscode-sideBarSectionHeader-background, #1e1e1e); display: flex; flex-direction: column; overflow-y: auto;"></aside>
+        <aside class="api-webview-sidebar" style="width: 250px; min-width: 150px; border-right: 1px solid var(--vscode-panel-border, #3c3c3c); background-color: var(--vscode-sideBarSectionHeader-background, #1e1e1e); display: flex; flex-direction: column; overflow-y: auto;"></aside>
+        <div class="api-resizer" style="width: 4px; cursor: col-resize; background: transparent; transition: background 0.2s; z-index: 5;"></div>
         <main class="api-workbench-panel" style="flex: 1; display: flex; flex-direction: column; overflow-y: auto;"></main>
       </div>
     `;
@@ -466,6 +474,19 @@ appElement.addEventListener('click', (event) => {
     apiResultPayload = null;
     updateSidebarSection();
     updateWorkbenchSection();
+    return;
+  }
+
+  if (action === 'api-toggle-auth-settings') {
+    const popover = actionElement.nextElementSibling;
+    if (popover && popover.classList.contains('api-auth-popover')) {
+      popover.style.display = popover.style.display === 'none' ? 'block' : 'none';
+    }
+    return;
+  }
+
+  if (action === 'api-select-auth') {
+    apiAuthMethod = actionElement.value;
     return;
   }
 
@@ -578,6 +599,45 @@ function initWebview() {
 }
 
 // Listen to messages from extension
+// Hide popover if clicking outside
+document.addEventListener('click', (e) => {
+  const popover = document.querySelector('.api-auth-popover');
+  if (popover && popover.style.display === 'block') {
+    const gearBtn = document.querySelector('[data-action="api-toggle-auth-settings"]');
+    if (!popover.contains(e.target) && (!gearBtn || !gearBtn.contains(e.target))) {
+      popover.style.display = 'none';
+    }
+  }
+});
+
+// Sidebar Resizer Logic
+let isResizing = false;
+document.addEventListener('mousedown', (e) => {
+  if (e.target.classList && e.target.classList.contains('api-resizer')) {
+    isResizing = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none'; // Prevent text selection while dragging
+  }
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isResizing) return;
+  const sidebar = document.querySelector('.api-webview-sidebar');
+  if (sidebar) {
+    const newWidth = Math.max(150, Math.min(e.clientX, 800)); // Min 150px, Max 800px
+    sidebar.style.width = `${newWidth}px`;
+    sidebar.style.minWidth = `${newWidth}px`;
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (isResizing) {
+    isResizing = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+});
+
 window.addEventListener('message', (event) => {
   if (!event.data) return;
 
