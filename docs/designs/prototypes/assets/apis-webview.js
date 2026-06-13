@@ -1,6 +1,7 @@
-let apiSelectedAppId = '';
 let apiSelectedEntity = '';
 let apiAuthMethod = 'xsuaa-auto';
+let apiHttpMethod = 'GET';
+let apiHttpBody = '';
 let apiParams = {
   $select: '',
   $filter: '',
@@ -64,17 +65,24 @@ function buildApiQueryString() {
       parts.push(`${key}=${encodeURIComponent(val)}`);
     }
   }
-  return parts.length > 0 ? `?${parts.join('&')}` : '';
+  return parts.length > 0 ? parts.join('&') : '';
+}
+
+function extractArrayFromPayload(payload) {
+  if (!payload) return null;
+  if (Array.isArray(payload)) return payload;
+  if (payload.value && Array.isArray(payload.value)) return payload.value;
+  if (payload.d && payload.d.results && Array.isArray(payload.d.results)) return payload.d.results;
+  return null;
 }
 
 function copyGridData() {
-  if (!apiResultPayload || !Array.isArray(apiResultPayload.value)) return;
-  const rows = apiResultPayload.value;
-  if (rows.length === 0) return;
+  const rows = extractArrayFromPayload(apiResultPayload);
+  if (!rows || rows.length === 0) return;
 
   const columns = Object.keys(rows[0]);
   const header = columns.join('\t');
-  const body = rows.map(r => columns.map(c => String(r[c])).join('\t')).join('\n');
+  const body = rows.map(r => columns.map(c => String(r[c] ?? '')).join('\t')).join('\n');
   const tsv = `${header}\n${body}`;
 
   navigator.clipboard.writeText(tsv).then(() => {
@@ -108,14 +116,14 @@ function renderApiParamRow(paramName, value, placeholder, type = 'text') {
 }
 
 function renderApiGridResult() {
-  if (!apiResultPayload || !Array.isArray(apiResultPayload.value)) return '<p>No grid data available</p>';
-  const rows = apiResultPayload.value;
+  const rows = extractArrayFromPayload(apiResultPayload);
+  if (!rows) return '<p>No grid data available</p>';
   if (rows.length === 0) return '<p>Empty result set</p>';
   
   const columns = Object.keys(rows[0]);
   const headerHtml = columns.map(c => `<th>${escapeHtml(c)}</th>`).join('');
   const rowsHtml = rows.map(r => {
-    return '<tr>' + columns.map(c => `<td>${escapeHtml(String(r[c]))}</td>`).join('') + '</tr>';
+    return '<tr>' + columns.map(c => `<td>${escapeHtml(String(r[c] ?? ''))}</td>`).join('') + '</tr>';
   }).join('');
 
   return `
@@ -183,7 +191,7 @@ function updateResponseSection() {
           <button type="button" class="api-view-tab-btn${apiActiveView === 'json' ? ' is-active' : ''}" data-action="api-switch-view" data-view-id="json">JSON</button>
           <button type="button" class="api-view-tab-btn${apiActiveView === 'grid' ? ' is-active' : ''}" data-action="api-switch-view" data-view-id="grid">Grid Data</button>
         </div>
-        ${apiActiveView === 'grid' && apiResultPayload && Array.isArray(apiResultPayload.value) && apiResultPayload.value.length > 0 ? `
+        ${apiActiveView === 'grid' && extractArrayFromPayload(apiResultPayload) ? `
           <button type="button" class="api-copy-btn" data-action="api-copy-grid" style="margin-right: 12px; background: transparent; color: var(--vscode-textLink-foreground, #3794ff); border: none; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 4px;">
             <span aria-hidden="true">&#128203;</span> Copy
           </button>
@@ -229,7 +237,13 @@ function updateWorkbenchSection() {
         <!-- Request Section -->
         <section class="api-request-section" aria-label="API Request Builder">
           <div class="api-url-bar">
-            <span class="api-method-badge">GET</span>
+            <select class="api-method-select" data-action="api-select-method" style="background: var(--vscode-button-background, #007acc); color: var(--vscode-button-foreground, #ffffff); font-weight: bold; border: none; padding: 4px 8px; border-radius: 2px 0 0 2px; outline: none; cursor: pointer; -webkit-appearance: none; text-align: center; font-size: 11px;">
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PATCH">PATCH</option>
+              <option value="PUT">PUT</option>
+              <option value="DELETE">DELETE</option>
+            </select>
             <input type="text" class="api-url-input" value="" aria-label="API Target URL" />
           </div>
 
@@ -244,12 +258,17 @@ function updateWorkbenchSection() {
             </label>
           </div>
 
+          <div class="api-body-section" style="display: none; margin-top: 12px;">
+            <div class="api-params-title">Request Body (JSON)</div>
+            <textarea class="api-body-input" data-action="api-input-body" style="width: 100%; height: 100px; background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #cccccc); border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; padding: 8px; font-family: monospace; resize: vertical; box-sizing: border-box;" placeholder='{ "key": "value" }'></textarea>
+          </div>
+
           <div class="api-params-title">OData Query Parameters</div>
           <div class="api-params-grid"></div>
 
           <div class="api-execute-row">
             <button type="button" class="primary-action api-execute-btn" data-action="api-execute-request">
-              Execute GET
+              Execute Request
             </button>
           </div>
         </section>
@@ -271,13 +290,27 @@ function updateWorkbenchSection() {
   if (apiSelectedEntity) {
     const selectedEnt = currentCatalog.entities.find(e => e.name === apiSelectedEntity);
     const entPath = selectedEnt && selectedEnt.path ? selectedEnt.path : `${currentCatalog.servicePath || ''}/${apiSelectedEntity}`;
-    fullUrl = `${routeBase}${entPath}${buildApiQueryString()}`;
+    fullUrl = `${routeBase}${entPath}`;
   } else {
     fullUrl = `${routeBase}/`;
+  }
+  const qs = buildApiQueryString();
+  if (qs) {
+    fullUrl += fullUrl.includes('?') ? `&${qs}` : `?${qs}`;
   }
 
   const urlInput = mainPanel.querySelector('.api-url-input');
   if (urlInput) urlInput.value = fullUrl;
+
+  const methodSelect = mainPanel.querySelector('.api-method-select');
+  if (methodSelect) methodSelect.value = apiHttpMethod;
+
+  const bodySection = mainPanel.querySelector('.api-body-section');
+  if (bodySection) {
+    bodySection.style.display = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(apiHttpMethod) ? 'block' : 'none';
+  }
+  const bodyInput = mainPanel.querySelector('.api-body-input');
+  if (bodyInput) bodyInput.value = apiHttpBody;
 
   const authSelect = mainPanel.querySelector('.api-auth-select');
   if (authSelect) authSelect.value = apiAuthMethod;
@@ -306,7 +339,7 @@ function updateWorkbenchSection() {
       execBtn.innerHTML = '<span class="api-spinner"></span> Executing...';
     } else {
       execBtn.disabled = false;
-      execBtn.innerHTML = 'Execute GET';
+      execBtn.innerHTML = `Execute ${apiHttpMethod}`;
     }
   }
 
@@ -434,15 +467,13 @@ appElement.addEventListener('click', (event) => {
     apiResultState = 'loading';
     updateWorkbenchSection();
 
-    const methodBadge = document.querySelector('.api-method-badge');
-    const method = methodBadge ? methodBadge.textContent.trim() : 'GET';
     const urlInput = document.querySelector('.api-url-input');
     const url = urlInput ? urlInput.value : '';
 
     if (vscodeApi) {
       vscodeApi.postMessage({
         type: 'sapTools.apis.executeRequest',
-        payload: { url, method, auth: apiAuthMethod }
+        payload: { url, method: apiHttpMethod, auth: apiAuthMethod, body: apiHttpBody }
       });
     } else {
       // Fallback for prototype testing without VS Code extension host
@@ -465,11 +496,20 @@ appElement.addEventListener('change', (event) => {
   if (action === 'api-select-auth') {
     apiAuthMethod = target.value;
   }
+  if (action === 'api-select-method') {
+    apiHttpMethod = target.value;
+    updateWorkbenchSection();
+  }
 });
 
 // Inputs
 appElement.addEventListener('input', (event) => {
   const target = event.target;
+  if (target.dataset.action === 'api-input-body') {
+    apiHttpBody = target.value;
+    return;
+  }
+
   if (!(target instanceof HTMLInputElement)) return;
 
   if (target.dataset.action === 'api-search-entity') {
@@ -492,7 +532,12 @@ appElement.addEventListener('input', (event) => {
         const routeBase = currentCatalog.baseUrl || `https://demo-env-${apiSelectedAppId}.cfapps.region.hana.ondemand.com`;
         const selectedEnt = currentCatalog.entities.find(e => e.name === apiSelectedEntity);
         const entPath = selectedEnt && selectedEnt.path ? selectedEnt.path : `${currentCatalog.servicePath || ''}/${apiSelectedEntity}`;
-        urlInput.value = `${routeBase}${entPath}${buildApiQueryString()}`;
+        let fullUrl = `${routeBase}${entPath}`;
+        const qs = buildApiQueryString();
+        if (qs) {
+          fullUrl += fullUrl.includes('?') ? `&${qs}` : `?${qs}`;
+        }
+        urlInput.value = fullUrl;
       }
     }
   }
@@ -555,7 +600,7 @@ window.addEventListener('message', (event) => {
     const execBtn = document.querySelector('.api-execute-btn');
     if (execBtn) {
       execBtn.disabled = false;
-      execBtn.innerHTML = 'Execute GET';
+      execBtn.innerHTML = `Execute ${apiHttpMethod}`;
     }
   }
 
@@ -570,7 +615,7 @@ window.addEventListener('message', (event) => {
     const execBtn = document.querySelector('.api-execute-btn');
     if (execBtn) {
       execBtn.disabled = false;
-      execBtn.innerHTML = 'Execute GET';
+      execBtn.innerHTML = `Execute ${apiHttpMethod}`;
     }
   }
 
@@ -581,6 +626,8 @@ window.addEventListener('message', (event) => {
     apiCurrentCatalog = null;
     
     apiSelectedEntity = '';
+    apiHttpMethod = 'GET';
+    apiHttpBody = '';
     apiResultState = 'idle';
     apiResultPayload = null;
     apiParams = {

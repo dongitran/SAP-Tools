@@ -1,5 +1,11 @@
 # SAP Tools Extension Changelog
 
+## 0.10.69 (stable)
+- Feature: Added support for modifying HTTP methods (POST, PATCH, PUT, DELETE) and submitting a JSON Request Body in the APIs Explorer.
+- Feature: Implement Stale-while-revalidate for API catalog caching. This allows instant UI loading while still silently discovering new endpoints in the background.
+- Fixed: Resolved an issue where query parameters were incorrectly prefixed with `?` even if the endpoint already contained query strings.
+- Fixed: Improved Grid Data "Copy" functionality to support OData v2 (`d.results`) and standard JSON arrays natively.
+
 ## 0.10.68 (stable)
 - Feature: Implemented local caching for `ApiCatalog` to speed up API discovery.
 - Feature: Auto-drills down into root endpoints to find sub-entities.

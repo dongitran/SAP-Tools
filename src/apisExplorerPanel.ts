@@ -73,8 +73,8 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
       if (typeof message === 'object' && message !== null) {
         const msg = message as Record<string, unknown>;
         if (msg['type'] === 'sapTools.apis.executeRequest') {
-          const payload = msg['payload'] as { url: string; method: string; auth: string };
-          await this.handleExecuteRequest(appId, payload.url, payload.method, payload.auth, targetParams, panel);
+          const payload = msg['payload'] as { url: string; method: string; auth: string; body?: string };
+          await this.handleExecuteRequest(appId, payload.url, payload.method, payload.auth, targetParams, panel, payload.body);
         }
       }
     }, null, this.disposables);
@@ -117,15 +117,15 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
         return;
       }
 
-      // Check Cache
+      // Check Cache (Stale-While-Revalidate)
       const cachedCatalog = await this.cacheStore.getApiCatalog(appId);
       if (cachedCatalog !== null) {
-        this.log(`Cache hit for ${appId} API catalog.`);
+        this.log(`Cache hit for ${appId} API catalog. Sending to Webview, but continuing deep discovery in background.`);
         void panel.webview.postMessage({
           type: 'sapTools.apis.catalogLoaded',
           payload: cachedCatalog
         });
-        return; // we have it cached, so we don't need to re-fetch
+        // We do NOT return here; we continue to fetch fresh data.
       }
 
       const baseUrl = `https://${routeUrl}`;
@@ -313,7 +313,8 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
     method: string, 
     auth: string, 
     targetParams: ApisExplorerTargetParams | undefined,
-    panel: vscode.WebviewPanel
+    panel: vscode.WebviewPanel,
+    body?: string
   ): Promise<void> {
     try {
       this.log(`Executing ${method} ${url} with auth ${auth}`);
@@ -349,12 +350,20 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
         }
       }
 
+      if (body !== undefined && body.trim().length > 0) {
+        headers['Content-Type'] = 'application/json';
+      }
+
       const startTime = Date.now();
-      const res = await fetch(url, {
+      const fetchOptions: RequestInit = {
         method,
         headers,
         signal: AbortSignal.timeout(10000)
-      });
+      };
+      if (body !== undefined && body.trim().length > 0) {
+        fetchOptions.body = body;
+      }
+      const res = await fetch(url, fetchOptions);
       const elapsedTime = Date.now() - startTime;
 
       
