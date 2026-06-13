@@ -262,7 +262,7 @@ function updateResponseSection() {
 
   let viewContent = '';
   if (apiActiveView === 'json') {
-    viewContent = `<pre class="api-raw-json" style="background: transparent; margin: 0; padding: 0;"><code>${escapeHtml(payloadStr)}</code></pre>`;
+    viewContent = `<pre class="api-raw-json" style="background: transparent; margin: 0; padding: 0;"><code style="background: transparent; color: inherit; padding: 0;">${escapeHtml(payloadStr)}</code></pre>`;
   } else {
     viewContent = renderApiGridResult();
   }

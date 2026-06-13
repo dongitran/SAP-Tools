@@ -1,6 +1,8 @@
 # SAP Tools Extension Changelog
 
-## 0.10.79 (stable)
+## 0.10.80 (stable)
+- UX Fix: Fixed an issue where the JSON code blocks retained VS Code's default grey background across all themes. It is now truly transparent and blends seamlessly with the active theme's background.
+
 - UX Fix: Made the JSON view background transparent so it perfectly matches the underlying VS Code theme editor background.
 - UX Fix: Separated the Auth Settings gear icon from the URL input group to visually present it as an independent action button.
 
