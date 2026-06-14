@@ -3678,7 +3678,7 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 
 .api-service-info-card {
   padding: 8px;
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: var(--vscode-editor-inactiveSelectionBackground, #3a3d41);
   border-radius: 4px;
   font-size: 12px;
   border-left: 3px solid var(--vscode-button-background, #0e639c);
@@ -3719,7 +3719,7 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   padding: 8px 10px;
   background: none;
   border: none;
-  color: var(--vscode-foreground, var(--vscode-sideBar-foreground, #cccccc));
+  color: var(--vscode-sideBar-foreground, inherit);
   font-family: inherit;
   font-size: 13px;
   text-align: left;
@@ -3730,8 +3730,8 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 }
 
 .api-entity-item:hover {
-  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
-  color: var(--vscode-list-hoverForeground, #ffffff);
+  background-color: var(--vscode-list-hoverBackground, #2a2d2e);
+  color: var(--vscode-list-hoverForeground, inherit);
 }
 
 .api-entity-item.is-active {
@@ -3741,7 +3741,7 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 
 .api-entity-item .entity-icon {
   font-size: 14px;
-  opacity: 0.8;
+  opacity: 0.9;
 }
 
 .api-entity-item .entity-name {
@@ -3754,9 +3754,9 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 .api-entity-item .entity-count-badge {
   font-size: 10px;
   padding: 2px 6px;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
   border-radius: 10px;
-  color: inherit;
   font-weight: 600;
 }
 
@@ -3788,14 +3788,13 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 }
 
 .api-method-badge {
-  background-color: #2ea043; /* Green for GET */
-  color: #ffffff;
+  background-color: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
   font-weight: 700;
   font-size: 12px;
   display: flex;
   align-items: center;
   padding: 0 12px;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
 }
 
 .api-url-input {
@@ -3863,6 +3862,11 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   overflow: hidden;
 }
 
+.api-param-field:focus-within {
+  outline: 1px solid var(--vscode-focusBorder, #007acc);
+  background-color: var(--vscode-input-background, transparent);
+}
+
 .api-param-name {
   width: 75px;
   padding: 6px 10px;
@@ -3870,7 +3874,7 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   color: var(--vscode-symbolIcon-propertyForeground, #d19a66);
   font-family: var(--vscode-editor-font-family, monospace);
   border-right: 1px solid var(--vscode-panel-border, #3c3c3c);
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: var(--vscode-editor-inactiveSelectionBackground, #3a3d41);
   user-select: none;
 }
 
@@ -3896,13 +3900,12 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 }
 
 /* Spinner */
-.api-spinner {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+.api-loading-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--vscode-progressBar-background, #0e639c);
+  border-top-color: transparent;
   border-radius: 50%;
-  border-top-color: #ffffff;
   animation: spin 0.8s linear infinite;
 }
 
@@ -3946,13 +3949,13 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 }
 
 .api-status-badge.is-success {
-  background-color: rgba(46, 160, 67, 0.15);
+  background-color: var(--vscode-debugIcon-breakpointStackframeLineHighlight, rgba(46, 160, 67, 0.15));
   color: #56d364;
   border: 1px solid rgba(46, 160, 67, 0.4);
 }
 
 .api-status-badge.is-error {
-  background-color: rgba(248, 81, 73, 0.15);
+  background-color: var(--vscode-debugIcon-breakpointDisabledLineHighlight, rgba(248, 81, 73, 0.15));
   color: #ff7b72;
   border: 1px solid rgba(248, 81, 73, 0.4);
 }
@@ -3960,7 +3963,8 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 .api-time-badge {
   font-size: 11px;
   color: var(--vscode-descriptionForeground, #a0a0a0);
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -3991,11 +3995,11 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 }
 
 .api-loading-spinner-large {
-  width: 28px;
-  height: 28px;
-  border: 3px solid rgba(255, 255, 255, 0.1);
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--vscode-progressBar-background, #0e639c);
+  border-top-color: transparent;
   border-radius: 50%;
-  border-top-color: var(--vscode-button-background, #007acc);
   animation: spin 0.9s cubic-bezier(0.5, 0, 0.5, 1) infinite;
   margin-bottom: 8px;
 }
@@ -4029,8 +4033,8 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 }
 
 .api-view-tab-btn:hover {
-  color: var(--vscode-tab-activeForeground, #ffffff);
-  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--vscode-tab-activeForeground, inherit);
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.1));
 }
 
 .api-view-tab-btn.is-active {
@@ -4075,13 +4079,13 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 }
 
 .api-grid-table th {
-  background-color: var(--vscode-list-hoverBackground, rgba(255,255,255,0.03));
-  color: var(--vscode-foreground, #cccccc);
+  background-color: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+  color: var(--vscode-foreground, inherit);
   font-weight: 600;
 }
 
 .api-grid-table tr:hover {
-  background-color: rgba(255,255,255,0.02);
+  background-color: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.05));
 }
 
 .api-grid-empty {

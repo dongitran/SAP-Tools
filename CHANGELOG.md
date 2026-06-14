@@ -1,6 +1,8 @@
 # SAP Tools Extension Changelog
 
-## 0.10.95 (stable)
+## 0.10.96 (stable)
+- UI/UX: Fixed an issue where the Endpoints sidebar text, count badges, and hover states appeared overly pale or unreadable in Light Themes. All hardcoded white-based alpha fallbacks have been replaced with proper adaptive VS Code theme variables.
+
 - UI/UX: Enforced absolute zero bottom-spacing on the API JSON response container via inline styles to ensure the text touches the exact boundary of the panel regardless of CSS cache states.
 
 - UI/UX: Fully eliminated the internal bottom padding inside the JSON & Grid response container (`.api-view-content`), allowing data to expand strictly to the exact bottom edge without any residual spacing.
