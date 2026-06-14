@@ -3735,8 +3735,8 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 }
 
 .api-entity-item.is-active {
-  background-color: var(--vscode-list-activeSelectionBackground, #007acc);
-  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+  background-color: var(--vscode-list-activeSelectionBackground, rgba(128, 128, 128, 0.15));
+  color: var(--vscode-list-activeSelectionForeground, inherit);
 }
 
 .api-entity-item .entity-icon {

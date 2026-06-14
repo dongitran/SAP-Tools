@@ -1,5 +1,8 @@
 # SAP Tools Extension Changelog
 
+## 0.10.98 (stable)
+- UI/UX: Fixed the text color of the ACTIVE endpoint item in light themes. The active selection foreground now correctly inherits the default text color instead of falling back to hardcoded white, preventing invisible text on light selection backgrounds.
+
 ## 0.10.97 (stable)
 - UI/UX: Fully fixed the sidebar text color fallback mechanism to strictly inherit `--vscode-foreground` if `--vscode-sideBar-foreground` is undefined, preventing invisible/pale text in extreme light themes. Removed the fixed opacity on the 'Endpoints' title for better readability.
 
