@@ -1,5 +1,8 @@
 # SAP Tools Extension Changelog
 
+## 0.10.104 (stable)
+- UI: The S/4HANA SQL Workbench app list now shows only started apps with at least one running instance, matching the Logs and APIs catalogs. Stopped and scaled-to-zero apps (which cannot serve a HANA SQL session) are hidden.
+
 ## 0.10.103 (stable)
 - UI: The HANA tunnel indicator moved from the tables panel to the app list — a **🔗 Tunnel** badge now appears on each app row whose connection is currently tunneled, so it is easy to see at a glance which apps are tunneled. The "S/4HANA SQL Workbench" header also shows a right-aligned count of how many apps are currently tunneled.
 

@@ -121,7 +121,11 @@ function pruneSelectedHanaServiceId() {
 }
 
 function syncSqlAppTargetsFromCurrentApps() {
-  const apps = resolveCurrentSpaceApps();
+  // Mirror the Logs / APIs catalogs (filterLoggableCatalogApps): only show apps
+  // that are started with at least one running instance. Stopped / scaled-to-zero
+  // apps cannot serve a HANA SQL session, so they are hidden from the workbench
+  // list just like they are from Logs and APIs.
+  const apps = filterLoggableCatalogApps(resolveCurrentSpaceApps());
   hanaServiceOptions = apps.map((app) => ({
     id: app.id,
     name: app.name,
