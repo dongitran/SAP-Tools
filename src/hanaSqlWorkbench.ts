@@ -24,6 +24,9 @@ interface TunnelConnectOverrides {
 // Bound the connect-retry budget for tunneled attempts so a stalled tunnel
 // connect fails fast (~2 attempts) instead of compounding the default 5×.
 const TUNNEL_CONNECT_OVERRIDES: TunnelConnectOverrides = { connectMaxAttempts: 2 };
+// Cap how many other apps we try as SSH jump-hosts when the in-use app itself
+// cannot tunnel, so a large space never triggers a per-app `cf ssh` storm.
+const MAX_SSH_FALLBACK_APPS = 4;
 import { splitHanaSqlStatements } from './hanaSqlStatementSplitter';
 import { HANA_SQL_DEFAULT_SELECT_LIMIT, applyDefaultHanaSelectLimit } from './hanaSqlLimitGuard';
 import { resolveHanaConnectionFromApp, type HanaSqlScopeSession } from './hanaSqlConnectionResolver';
@@ -268,6 +271,13 @@ export class HanaSqlWorkbench
     for (const context of this.appContextsByAppId.values()) {
       this.resetAppContextCache(context);
     }
+    // Scope changed (region/org/space selection, scope confirm — including when
+    // driven externally by the CDS Debug extension, or logout): close every
+    // tunnel. They belong to the previous scope's apps and must not linger.
+    if (this.tunnelManager !== null) {
+      this.tunnelManager.dispose();
+      this.tunnelManager = null;
+    }
   }
 
   private resetAppContextCache(context: HanaSqlAppContext): void {
@@ -279,6 +289,7 @@ export class HanaSqlWorkbench
     context.tableNames = [];
     context.tableEntries = [];
     context.tableNamesPromise = null;
+    context.tunnelActive = false;
   }
 
   async openSqlDocumentForApp(options: OpenHanaSqlFileRequest): Promise<void> {
@@ -756,11 +767,18 @@ export class HanaSqlWorkbench
     originalError: unknown
   ): Promise<T> {
     const manager = this.getTunnelManager();
-    const appCandidates = await this.listSshAppCandidates(session);
-    if (appCandidates.length === 0) {
-      throw originalError;
+    // The clicked/in-use app is the natural SSH jump-host for its OWN HANA
+    // binding (its container egress reaches that instance), so try it ALONE
+    // first. This avoids walking — and spawning a `cf ssh` for — every app in a
+    // space that may hold ~100 apps. Only if it lacks SSH do we try a small,
+    // bounded set of other running apps as fallback.
+    let tunnel = await manager.ensureTunnel(session, direct.host, [context.appName]);
+    if (tunnel === null) {
+      const fallbacks = await this.listSshFallbackApps(session, context.appName);
+      if (fallbacks.length > 0) {
+        tunnel = await manager.ensureTunnel(session, direct.host, fallbacks);
+      }
     }
-    const tunnel = await manager.ensureTunnel(session, direct.host, appCandidates);
     if (tunnel === null) {
       throw originalError;
     }
@@ -785,7 +803,7 @@ export class HanaSqlWorkbench
           session,
           direct.host,
           redirectHost,
-          appCandidates
+          [context.appName]
         );
         if (!forwarded) {
           throw tunnelError;
@@ -825,7 +843,10 @@ export class HanaSqlWorkbench
       .get<boolean>('hanaSqlAutoTunnel', true);
   }
 
-  private async listSshAppCandidates(session: HanaSqlScopeSession): Promise<string[]> {
+  private async listSshFallbackApps(
+    session: HanaSqlScopeSession,
+    excludeApp: string
+  ): Promise<string[]> {
     try {
       const apps = await fetchStartedAppsViaCfCli({
         apiEndpoint: session.apiEndpoint,
@@ -835,10 +856,19 @@ export class HanaSqlWorkbench
         spaceName: session.spaceName,
         cfHomeDir: session.cfHomeDir,
       });
-      return apps.map((app) => app.name);
+      const names: string[] = [];
+      for (const app of apps) {
+        if (app.name !== excludeApp) {
+          names.push(app.name);
+          if (names.length >= MAX_SSH_FALLBACK_APPS) {
+            break;
+          }
+        }
+      }
+      return names;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logSql(`tunnel app discovery failed: ${sanitizeSqlLogValue(message)}`);
+      this.logSql(`tunnel fallback app discovery failed: ${sanitizeSqlLogValue(message)}`);
       return [];
     }
   }

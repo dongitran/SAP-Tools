@@ -6,6 +6,7 @@ import { CacheSyncService } from './cacheSyncService';
 import { configureCfCommandLogger } from './cfClient';
 import { getEffectiveCredentials } from './credentialStore';
 import { HanaSqlWorkbench } from './hanaSqlWorkbench';
+import { reapOrphanedTunnels } from './hanaTunnelRegistry';
 import { REGION_VIEW_ID, RegionSidebarProvider } from './sidebarProvider';
 import { readCurrentScope } from './scopeSync';
 
@@ -20,6 +21,12 @@ const OUTPUT_CHANNEL_NAME = 'SAP Tools';
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
   configureCfCommandLogger((message) => {
+    outputChannel.appendLine(message);
+  });
+
+  // Close any HANA tunnels left behind by a previous session that crashed before
+  // it could tear them down (normal shutdown / scope changes close them cleanly).
+  void reapOrphanedTunnels((message) => {
     outputChannel.appendLine(message);
   });
   const cacheStore = new CacheStore(context);

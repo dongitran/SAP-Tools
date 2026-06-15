@@ -2,6 +2,11 @@ import { connect as netConnect, createServer, type Socket } from 'node:net';
 
 import { prepareCfCliSession, spawnCfSshPortForward, type CfPortForwardHandle } from './cfClient';
 import type { HanaConnection } from './hanaSqlService';
+import {
+  recordTunnelForward,
+  removeTunnelForwardByPid,
+  removeTunnelForwardsByOwner,
+} from './hanaTunnelRegistry';
 
 /**
  * Auto-tunnel for HANA Cloud SQL access.
@@ -272,6 +277,7 @@ export class HanaTunnelManager {
     }
     for (const handle of tunnel.handles) {
       handle.stop();
+      this.forgetForward(handle);
     }
     this.log(`[tunnel] closed HANA tunnel for ${mainHost}`);
     this.onClosed(mainHost);
@@ -290,6 +296,35 @@ export class HanaTunnelManager {
       for (const handle of tunnel.handles) {
         handle.stop();
       }
+    }
+    void removeTunnelForwardsByOwner(process.pid);
+  }
+
+  private persistForward(
+    session: HanaTunnelCfSession,
+    mainHost: string,
+    remoteHost: string,
+    handle: CfPortForwardHandle
+  ): void {
+    const pid = handle.process.pid;
+    if (pid === undefined) {
+      return;
+    }
+    void recordTunnelForward({
+      ownerPid: process.pid,
+      pid,
+      mainHost,
+      remoteHost,
+      localPort: handle.localPort,
+      scope: `${session.orgName}/${session.spaceName}`,
+      startedAt: new Date().toISOString(),
+    });
+  }
+
+  private forgetForward(handle: CfPortForwardHandle): void {
+    const pid = handle.process.pid;
+    if (pid !== undefined) {
+      void removeTunnelForwardByPid(pid);
     }
   }
 
@@ -317,6 +352,7 @@ export class HanaTunnelManager {
         handles: [handle],
       };
       this.tunnels.set(mainHost, tunnel);
+      this.persistForward(session, mainHost, mainHost, handle);
       // When the keep-alive ends or the SSH session drops, drop the tunnel so
       // the next operation re-establishes it through the normal fallback.
       handle.process.once('exit', () => {
@@ -365,6 +401,7 @@ export class HanaTunnelManager {
       rerouteMap.set(redirectHost, handle.localPort);
       tunnel.redirectHost = redirectHost;
       tunnel.handles.push(handle);
+      this.persistForward(session, tunnel.mainHost, redirectHost, handle);
       this.redirectCache.set(tunnel.mainHost, redirectHost);
       this.log(
         `[tunnel] opened HANA redirect forward ${redirectHost} via app ${app} on 127.0.0.1:${String(handle.localPort)}`
