@@ -230,6 +230,10 @@ let hanaTablesByServiceId = new Map();
 let hanaTablesLoadingByServiceId = new Map();
 let hanaTablesErrorByServiceId = new Map();
 let hanaTunnelByServiceId = new Map();
+// Scope (region/org/space) the per-service SQL maps above belong to. Used to drop
+// them when the active scope changes, since serviceId (= app name) can collide
+// across spaces and would otherwise show another scope's tables/tunnel badge.
+let lastSqlScopeKey = null;
 let sqlTableSearchKeyword = '';
 let hanaTableSelectLoadingKeys = new Set();
 const hanaTableDisplayNameCache = new Map();

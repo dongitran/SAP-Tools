@@ -27,6 +27,9 @@ const TUNNEL_CONNECT_OVERRIDES: TunnelConnectOverrides = { connectMaxAttempts: 2
 // Cap how many other apps we try as SSH jump-hosts when the in-use app itself
 // cannot tunnel, so a large space never triggers a per-app `cf ssh` storm.
 const MAX_SSH_FALLBACK_APPS = 4;
+// Trivial query used to establish/verify a tunnel in the background without a
+// user query (DUMMY is HANA's always-present single-row system table).
+const TUNNEL_PROBE_SQL = 'SELECT 1 FROM DUMMY';
 import { splitHanaSqlStatements } from './hanaSqlStatementSplitter';
 import { HANA_SQL_DEFAULT_SELECT_LIMIT, applyDefaultHanaSelectLimit } from './hanaSqlLimitGuard';
 import { resolveHanaConnectionFromApp, type HanaSqlScopeSession } from './hanaSqlConnectionResolver';
@@ -756,7 +759,11 @@ export class HanaSqlWorkbench
     }
 
     try {
-      return await run(direct);
+      const result = await run(direct);
+      // Direct connection works → this app does not (any longer) need a tunnel;
+      // clear the badge and the persisted flag follows on the next cache write.
+      this.clearTunnelState(context);
+      return result;
     } catch (error) {
       const session = context.session;
       if (!this.isAutoTunnelEnabled() || session === null || !isHanaConnectivityError(error)) {
@@ -821,6 +828,49 @@ export class HanaSqlWorkbench
       }
     } finally {
       manager.endRedirectCapture();
+    }
+  }
+
+  /**
+   * Re-establish a tunnel in the background for an app whose tables were served
+   * from cache (so no connection was made) but which is known to have used a
+   * tunnel before. Goes straight to the tunnel path — the host is known to be
+   * unreachable directly — so the tunnel is live before the user runs a query.
+   * Best-effort: any failure just leaves the lazy fallback to handle the first
+   * real query.
+   */
+  private async proactivelyEstablishTunnel(context: HanaSqlAppContext): Promise<void> {
+    if (this.isTestMode || !this.isAutoTunnelEnabled()) {
+      return;
+    }
+    try {
+      await this.ensureConnection(context);
+    } catch {
+      return;
+    }
+    const direct = context.connection;
+    const session = context.session;
+    if (direct === null || session === null) {
+      return;
+    }
+    if (this.tunnelManager?.isActive(direct.host) === true) {
+      this.markTunnelActive(context);
+      return;
+    }
+    try {
+      await this.runViaTunnel(
+        context,
+        direct,
+        session,
+        (connection, overrides) =>
+          executeHanaQuery(connection, TUNNEL_PROBE_SQL, { timeoutMs: 15_000, ...overrides }),
+        new Error('proactive tunnel establishment')
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logSql(
+        `proactive tunnel setup failed for app ${sanitizeSqlLogValue(context.appName)}: ${sanitizeSqlLogValue(message)}`
+      );
     }
   }
 
@@ -1012,11 +1062,25 @@ export class HanaSqlWorkbench
         this.logSql(
           `loaded ${String(cachedEntry.tableNames.length)} tables from cache for app ${sanitizeSqlLogValue(context.appName)} (updated ${sanitizeSqlLogValue(cachedEntry.updatedAt)})`
         );
+        if (cachedEntry.tunnelActive === true) {
+          // Tables came from cache (no connection was made), but this app needed
+          // a tunnel last time. Show the badge immediately and re-establish the
+          // tunnel in the background so it is live before the user runs a query.
+          context.tunnelActive = true;
+          void this.proactivelyEstablishTunnel(context);
+        }
         return;
       }
     }
 
     await this.ensureConnection(context, cacheVersion);
+    if (forceRefresh && context.connection !== null) {
+      // A manual refresh re-probes the direct connection: drop any tunnel for
+      // this host and reset the flag so discovery learns the current state
+      // afresh (and clears the badge if the host is reachable directly again).
+      this.tunnelManager?.invalidate(context.connection.host);
+      this.clearTunnelState(context);
+    }
     if (!this.isAppContextCurrent(context, cacheVersion) || context.connection === null) {
       return;
     }
@@ -1131,6 +1195,7 @@ export class HanaSqlWorkbench
           displayName: entry.displayName,
         })),
         updatedAt: new Date().toISOString(),
+        tunnelActive: context.tunnelActive,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

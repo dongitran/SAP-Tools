@@ -67,6 +67,13 @@ export interface HanaTableListCacheEntry {
   readonly tableNames: readonly string[];
   readonly displayEntries: readonly HanaTableDisplayCacheEntry[];
   readonly updatedAt: string;
+  /**
+   * Whether this app's HANA connection used a cf-ssh tunnel when the table list
+   * was last discovered. Persisted so the tunnel badge can be restored — and the
+   * tunnel re-established — when the scope is revisited or VS Code is reopened,
+   * even though the table list itself is then served from cache.
+   */
+  readonly tunnelActive?: boolean;
 }
 
 export interface CachedLocalPackage {

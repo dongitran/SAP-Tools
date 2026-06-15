@@ -88,6 +88,19 @@ window.addEventListener('message', (event) => {
       return;
     }
 
+    // When the active scope changes, drop per-service SQL state. serviceId is the
+    // app name, which can collide across spaces, so stale table lists / tunnel
+    // badges from the previous scope must not bleed into the new one.
+    const scopeKey = typeof msg.scopeKey === 'string' ? msg.scopeKey : null;
+    if (scopeKey !== lastSqlScopeKey) {
+      lastSqlScopeKey = scopeKey;
+      selectedHanaServiceId = '';
+      hanaTablesByServiceId = new Map();
+      hanaTablesLoadingByServiceId = new Map();
+      hanaTablesErrorByServiceId = new Map();
+      hanaTunnelByServiceId = new Map();
+    }
+
     liveAppOptions = rawApps
       .filter((app) => isRecord(app) && typeof app.name === 'string')
       .map((app) => ({

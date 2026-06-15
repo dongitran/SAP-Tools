@@ -862,7 +862,7 @@ export class RegionSidebarProvider
     this.lastLoadedScope = null;
     this.cfLogsPanel.updateApps([], null);
     this.hanaSqlWorkbench.invalidateAllAppContexts();
-    this.postMessage({ type: MSG_APPS_LOADED, apps: [] });
+    this.postMessage({ type: MSG_APPS_LOADED, apps: [], scopeKey: '' });
     this.postMessage({
       type: MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
       mappings: this.serviceFolderMappings,
@@ -3158,7 +3158,11 @@ export class RegionSidebarProvider
       name,
       runningInstances: 1,
     }));
-    this.postMessage({ type: MSG_APPS_LOADED, apps });
+    this.postMessage({
+      type: MSG_APPS_LOADED,
+      apps,
+      scopeKey: `${this.selectedRegionCode}::${payload.orgName}::${payload.spaceName}`,
+    });
     this.cfLogsPanel.updateScope(
       buildScopeLabel(this.selectedRegionCode, payload.orgName, payload.spaceName)
     );
@@ -3272,7 +3276,11 @@ export class RegionSidebarProvider
     cfHomeDir: string,
     regionCode: string
   ): Promise<void> {
-    this.postMessage({ type: MSG_APPS_LOADED, apps });
+    this.postMessage({
+      type: MSG_APPS_LOADED,
+      apps,
+      scopeKey: `${getCfApiEndpoint(regionCode)}::${payload.orgName}::${payload.spaceName}`,
+    });
     this.cfLogsPanel.updateScope(
       buildScopeLabel(regionCode, payload.orgName, payload.spaceName)
     );

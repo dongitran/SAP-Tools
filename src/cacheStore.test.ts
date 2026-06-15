@@ -354,6 +354,17 @@ describe('CacheStore HANA table list cache', () => {
     expect(cached?.updatedAt).toBe('2026-05-21T10:00:00.000Z');
   });
 
+  it('persists the tunnelActive flag so the tunnel badge survives a reload', async () => {
+    const store = new CacheStore(createMockContext());
+    const scopeKey = 'dev@example.com::https://api.example.com::org-1::uat::finance-uat-api';
+
+    await store.setHanaTableList(scopeKey, createSampleHanaTableListEntry({ tunnelActive: true }));
+    expect((await store.getHanaTableList(scopeKey))?.tunnelActive).toBe(true);
+
+    await store.setHanaTableList(scopeKey, createSampleHanaTableListEntry({ tunnelActive: false }));
+    expect((await store.getHanaTableList(scopeKey))?.tunnelActive).toBeUndefined();
+  });
+
   it('rejects an empty scope key when setting a table list entry', async () => {
     const store = new CacheStore(createMockContext());
     await expect(

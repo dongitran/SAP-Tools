@@ -231,6 +231,10 @@ let hanaTablesByServiceId = new Map();
 let hanaTablesLoadingByServiceId = new Map();
 let hanaTablesErrorByServiceId = new Map();
 let hanaTunnelByServiceId = new Map();
+// Scope (region/org/space) the per-service SQL maps above belong to. Used to drop
+// them when the active scope changes, since serviceId (= app name) can collide
+// across spaces and would otherwise show another scope's tables/tunnel badge.
+let lastSqlScopeKey = null;
 let sqlTableSearchKeyword = '';
 let hanaTableSelectLoadingKeys = new Set();
 const hanaTableDisplayNameCache = new Map();
@@ -823,6 +827,19 @@ window.addEventListener('message', (event) => {
     const rawApps = msg.apps;
     if (!Array.isArray(rawApps)) {
       return;
+    }
+
+    // When the active scope changes, drop per-service SQL state. serviceId is the
+    // app name, which can collide across spaces, so stale table lists / tunnel
+    // badges from the previous scope must not bleed into the new one.
+    const scopeKey = typeof msg.scopeKey === 'string' ? msg.scopeKey : null;
+    if (scopeKey !== lastSqlScopeKey) {
+      lastSqlScopeKey = scopeKey;
+      selectedHanaServiceId = '';
+      hanaTablesByServiceId = new Map();
+      hanaTablesLoadingByServiceId = new Map();
+      hanaTablesErrorByServiceId = new Map();
+      hanaTunnelByServiceId = new Map();
     }
 
     liveAppOptions = rawApps

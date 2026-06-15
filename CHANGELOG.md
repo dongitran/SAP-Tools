@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.106 (stable)
+- Fix: Switching region/org/space no longer carries a previous scope's table list or tunnel badge onto a same-named app in the new scope. The SQL workbench per-app state (tables, loading/error, tunnel badge) is now dropped whenever the active scope changes, since app names can collide across spaces.
+- Feature: The tunnel badge now persists per scope+app and is restored when you revisit a scope — including after switching region/org/space and back, or restarting VS Code. Re-selecting an app whose tables load from cache now shows the **🔗 Tunnel** badge again and re-establishes the tunnel in the background, so it is live before you run a query. A manual table refresh re-probes the direct connection and clears the badge if the host is reachable directly again.
+
 ## 0.10.105 (stable)
 - Fix: Switching to a different space now closes the HANA tunnels opened for the previous space (previously only region/org changes and scope confirm did). Re-selecting the same space leaves an in-use tunnel untouched.
 - Fix: Tunnel recovery is faster and steadier. When an in-use tunnel goes stale (SSH idle-drop / keep-alive elapsed), the next query rebuilds the tunnel immediately instead of first attempting a slow direct connect that is bound to fail — removing a multi-second stall on the first query after a drop.

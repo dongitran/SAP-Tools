@@ -492,6 +492,7 @@ function normalizeHanaTableListEntry(
     tableNames,
     displayEntries,
     updatedAt,
+    ...(rawEntry['tunnelActive'] === true ? { tunnelActive: true } : {}),
   };
 }
 
