@@ -1,5 +1,8 @@
 # SAP Tools Extension Changelog
 
+## 0.10.107 (stable)
+- Performance: Opening a HANA tunnel no longer authenticates against Cloud Foundry twice. Establishing the tunnel and then its tenant-redirect forward (which HANA Cloud requires) previously each ran a full `cf api` + `cf auth` + `cf target`, so a single tunneled service click logged two UAA logins. CF CLI session preparation now remembers a recently-established api+auth per CF_HOME and only re-asserts the org/space (`cf target`) for follow-up operations on the same landscape, falling back to a full re-authentication if the cached session has gone stale. This also speeds up loading several services' tables in a row.
+
 ## 0.10.106 (stable)
 - Fix: Switching region/org/space no longer carries a previous scope's table list or tunnel badge onto a same-named app in the new scope. The SQL workbench per-app state (tables, loading/error, tunnel badge) is now dropped whenever the active scope changes, since app names can collide across spaces.
 - Feature: The tunnel badge now persists per scope+app and is restored when you revisit a scope — including after switching region/org/space and back, or restarting VS Code. Re-selecting an app whose tables load from cache now shows the **🔗 Tunnel** badge again and re-establishes the tunnel in the background, so it is live before you run a query. A manual table refresh re-probes the direct connection and clears the badge if the host is reachable directly again.

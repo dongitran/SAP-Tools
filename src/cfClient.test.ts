@@ -39,6 +39,7 @@ import {
   isCfSessionExpired,
   parseCfAppsOutput,
   prepareCfCliSession,
+  resetCfCliSessionReuse,
   spawnAppLogStreamFromTarget,
 } from './cfClient';
 
@@ -59,6 +60,7 @@ beforeEach(() => {
   spawnedProcessMock.killed = false;
   spawnMock.mockReturnValue(spawnedProcessMock);
   configureCfCommandLogger(null);
+  resetCfCliSessionReuse();
 });
 
 describe('getCfApiEndpoint', () => {
@@ -190,7 +192,7 @@ describe('prepareCfCliSession', () => {
     execFileAsyncMock.mockReset();
   });
 
-  it('serializes concurrent preparations so api/auth/target never interleave', async () => {
+  it('serializes concurrent preparations and reuses auth for the second', async () => {
     const order: string[] = [];
     execFileAsyncMock.mockImplementation((_cmd: string, args: string[]) => {
       order.push(args[0] ?? '');
@@ -210,8 +212,87 @@ describe('prepareCfCliSession', () => {
 
     await Promise.all([prepareCfCliSession(params), prepareCfCliSession(params)]);
 
-    // Without serialization the two triplets would interleave
-    // (api, api, auth, auth, target, target).
+    // Serialized (without it the triplets would interleave as
+    // api, api, auth, auth, target, target) AND the second preparation reuses
+    // the freshly-established api/auth, re-running only `cf target`.
+    expect(order).toEqual(['api', 'auth', 'target', 'target']);
+  });
+
+  it('reuses an established session and only re-targets within the reuse window', async () => {
+    const order: string[] = [];
+    execFileAsyncMock.mockImplementation((_cmd: string, args: string[]) => {
+      order.push(args[0] ?? '');
+      return Promise.resolve({ stdout: '' });
+    });
+    const base = {
+      apiEndpoint: 'https://api.cf.us10.hana.ondemand.com',
+      email: 'test@example.com',
+      password: 'super-secret-password',
+      cfHomeDir: '/tmp/sap-tools-cf-home-reuse',
+    };
+
+    await prepareCfCliSession({ ...base, orgName: 'org-a', spaceName: 'dev' });
+    await prepareCfCliSession({ ...base, orgName: 'org-b', spaceName: 'prod' });
+
+    // Second prep skips api/auth and only re-asserts the new org/space.
+    expect(order).toEqual(['api', 'auth', 'target', 'target']);
+
+    // A different API endpoint is treated as a new session → full re-auth.
+    order.length = 0;
+    await prepareCfCliSession({
+      ...base,
+      apiEndpoint: 'https://api.cf.eu10.hana.ondemand.com',
+      orgName: 'org-a',
+      spaceName: 'dev',
+    });
+    expect(order).toEqual(['api', 'auth', 'target']);
+  });
+
+  it('re-authenticates fully when a reused target reveals a stale session', async () => {
+    const order: string[] = [];
+    execFileAsyncMock.mockImplementation((_cmd: string, args: string[]) => {
+      order.push(args[0] ?? '');
+      // 4th call is the reduced re-target on the second prep; simulate the
+      // stored token having expired so it must fall back to a full re-auth.
+      if (order.length === 4) {
+        return Promise.reject({ stderr: 'No org and space targeted', message: 'Command failed' });
+      }
+      return Promise.resolve({ stdout: '' });
+    });
+    const params = {
+      apiEndpoint: 'https://api.cf.us10.hana.ondemand.com',
+      email: 'test@example.com',
+      password: 'super-secret-password',
+      orgName: 'finance-services-prod',
+      spaceName: 'uat',
+      cfHomeDir: '/tmp/sap-tools-cf-home-stale',
+    };
+
+    await prepareCfCliSession(params);
+    await prepareCfCliSession(params);
+
+    expect(order).toEqual(['api', 'auth', 'target', 'target', 'api', 'auth', 'target']);
+  });
+
+  it('does a full preparation again after the session cache is reset', async () => {
+    const order: string[] = [];
+    execFileAsyncMock.mockImplementation((_cmd: string, args: string[]) => {
+      order.push(args[0] ?? '');
+      return Promise.resolve({ stdout: '' });
+    });
+    const params = {
+      apiEndpoint: 'https://api.cf.us10.hana.ondemand.com',
+      email: 'test@example.com',
+      password: 'super-secret-password',
+      orgName: 'finance-services-prod',
+      spaceName: 'uat',
+      cfHomeDir: '/tmp/sap-tools-cf-home-reset',
+    };
+
+    await prepareCfCliSession(params);
+    resetCfCliSessionReuse();
+    await prepareCfCliSession(params);
+
     expect(order).toEqual(['api', 'auth', 'target', 'api', 'auth', 'target']);
   });
 });

@@ -228,6 +228,31 @@ export async function fetchStartedAppsViaCfCli(params: {
  */
 const cfCliSessionQueues = new Map<string, Promise<void>>();
 
+interface PreparedCfSession {
+  readonly apiEndpoint: string;
+  readonly email: string;
+  readonly preparedAt: number;
+}
+
+/**
+ * Remembers, per CF_HOME, the most recent successful `cf api` + `cf auth` so a
+ * repeat preparation within a short window can skip that UAA round-trip and
+ * only re-assert the org/space. Entries are dropped automatically when a reduced
+ * preparation turns out to be stale (see `runCfCliSessionPreparation`).
+ */
+const preparedCfSessions = new Map<string, PreparedCfSession>();
+
+// How long an established api+auth on a CF_HOME is trusted before we force a
+// fresh `cf auth`. The CF CLI refreshes the access token itself via the stored
+// refresh token, so this only bounds how long we go without re-validating the
+// credentials outright — kept well under typical refresh-token lifetimes.
+const CF_SESSION_REUSE_WINDOW_MS = 10 * 60 * 1000;
+
+/** Forget all remembered CF CLI sessions (e.g. after credentials change). */
+export function resetCfCliSessionReuse(): void {
+  preparedCfSessions.clear();
+}
+
 /**
  * Prepare CF CLI context for a specific API + org + space.
  * This is an expensive step and should be reused when possible.
@@ -238,6 +263,12 @@ const cfCliSessionQueues = new Map<string, Promise<void>>();
  * fail with "Not logged in" / "No org targeted" until a later attempt happens
  * to find a fully-prepared config. Chaining preparations per CF_HOME keeps the
  * api → auth → target triplet atomic and removes that race.
+ *
+ * Successful preparations are also remembered briefly (see `preparedCfSessions`)
+ * so a follow-up preparation for the same landscape only re-runs `cf target`
+ * instead of the full api/auth/target triplet — e.g. opening a HANA tunnel and
+ * then its tenant-redirect forward, or loading several services' tables in a
+ * row, no longer authenticates against UAA each time.
  */
 export async function prepareCfCliSession(params: CfCliTargetParams): Promise<void> {
   const queueKey = params.cfHomeDir ?? '';
@@ -262,6 +293,33 @@ export async function prepareCfCliSession(params: CfCliTargetParams): Promise<vo
 
 async function runCfCliSessionPreparation(params: CfCliTargetParams): Promise<void> {
   const cfHomeOptions = buildCfHomeOptions(params.cfHomeDir);
+  const sessionKey = params.cfHomeDir ?? '';
+
+  const targetOrgAndSpace = (): Promise<string> =>
+    runCfCommand(['target', '-o', params.orgName, '-s', params.spaceName], {
+      ...cfHomeOptions,
+      failureMessage: 'Failed to target CF org/space.',
+    });
+
+  const cached = preparedCfSessions.get(sessionKey);
+  const canReuseSession =
+    cached?.apiEndpoint === params.apiEndpoint &&
+    cached.email === params.email &&
+    Date.now() - cached.preparedAt < CF_SESSION_REUSE_WINDOW_MS;
+  if (canReuseSession) {
+    // The API endpoint and auth token are already established on this CF_HOME,
+    // and the CF CLI refreshes the access token itself, so only the org/space
+    // needs (re)asserting. This drops the redundant `cf api` + `cf auth` when
+    // operations hit the same landscape back-to-back.
+    try {
+      await targetOrgAndSpace();
+      return;
+    } catch {
+      // Token/refresh expired or the config was reset out from under us — fall
+      // through to a full re-authentication.
+      preparedCfSessions.delete(sessionKey);
+    }
+  }
 
   await runCfCommand(['api', params.apiEndpoint], {
     ...cfHomeOptions,
@@ -279,9 +337,12 @@ async function runCfCliSessionPreparation(params: CfCliTargetParams): Promise<vo
     });
   }
 
-  await runCfCommand(['target', '-o', params.orgName, '-s', params.spaceName], {
-    ...cfHomeOptions,
-    failureMessage: 'Failed to target CF org/space.',
+  await targetOrgAndSpace();
+
+  preparedCfSessions.set(sessionKey, {
+    apiEndpoint: params.apiEndpoint,
+    email: params.email,
+    preparedAt: Date.now(),
   });
 }
 
