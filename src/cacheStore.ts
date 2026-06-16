@@ -159,6 +159,42 @@ export class CacheStore {
     return cachedEntry ?? null;
   }
 
+  /** The app that last opened a working HANA tunnel for `host`, if remembered. */
+  async getHanaTunnelJumpApp(host: string): Promise<string | undefined> {
+    if (host.length === 0) {
+      return undefined;
+    }
+    const state = await this.readState();
+    return state.hanaTunnelJumpApps?.[host];
+  }
+
+  /** Remember the SSH-capable jump-host app that opened a tunnel for `host`. */
+  async setHanaTunnelJumpApp(host: string, app: string): Promise<void> {
+    if (host.length === 0 || app.length === 0) {
+      return;
+    }
+    await this.updateState((state) => ({
+      ...state,
+      hanaTunnelJumpApps: {
+        ...(state.hanaTunnelJumpApps ?? {}),
+        [host]: app,
+      },
+    }));
+  }
+
+  /** Forget all remembered HANA tunnel jump-hosts (e.g. on logout). */
+  async clearHanaTunnelJumpApps(): Promise<void> {
+    await this.updateState((state) => {
+      if (
+        state.hanaTunnelJumpApps === undefined ||
+        Object.keys(state.hanaTunnelJumpApps).length === 0
+      ) {
+        return state;
+      }
+      return { ...state, hanaTunnelJumpApps: {} };
+    });
+  }
+
   async setHanaTableList(
     scopeKey: string,
     entry: HanaTableListCacheEntry
@@ -431,6 +467,7 @@ function normalizeCacheState(rawState: unknown): CacheState {
   const rawHanaTableLists = normalizeHanaTableLists(rawState['hanaTableLists']);
   const rawLocalPackages = normalizeLocalPackagesCacheEntry(rawState['localPackages']);
   const rawApiCatalogs = normalizeApiCatalogs(rawState['apiCatalogs']);
+  const rawHanaTunnelJumpApps = normalizeHanaTunnelJumpApps(rawState['hanaTunnelJumpApps']);
 
   const state: CacheState = {
     version: 1,
@@ -446,7 +483,24 @@ function normalizeCacheState(rawState: unknown): CacheState {
     Object.assign(state, { localPackages: rawLocalPackages });
   }
 
+  if (Object.keys(rawHanaTunnelJumpApps).length > 0) {
+    Object.assign(state, { hanaTunnelJumpApps: rawHanaTunnelJumpApps });
+  }
+
   return state;
+}
+
+function normalizeHanaTunnelJumpApps(raw: unknown): Record<string, string> {
+  if (!isRecord(raw)) {
+    return {};
+  }
+  const result: Record<string, string> = {};
+  for (const [host, app] of Object.entries(raw)) {
+    if (host.length > 0 && typeof app === 'string' && app.length > 0) {
+      result[host] = app;
+    }
+  }
+  return result;
 }
 
 function normalizeHanaTableLists(

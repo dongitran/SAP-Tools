@@ -47,6 +47,26 @@ describe('prototype Microsoft Graph tools UI', () => {
   });
 });
 
+describe('prototype S/4HANA SQL Workbench table refresh', () => {
+  it('treats refresh-hana-tables as an in-place SQL-only action so the service list is not re-rendered', async () => {
+    const topology = await readFile(
+      new URL('../docs/designs/prototypes/src/02-topology.js', import.meta.url),
+      'utf8'
+    );
+    // Must be in the SQL-only set, otherwise the click falls through to a full
+    // renderPrototype() that rebuilds the service list and resets its scroll.
+    expect(topology).toMatch(/isSqlOnlyAction[\s\S]*?'refresh-hana-tables'/);
+
+    const events = await readEventsSource();
+    // Pin refresh-hana-tables INTO the in-place branch (alongside
+    // select-hana-service → refreshMountedSqlWorkbench), not merely present
+    // somewhere — otherwise routing it to the else branch would still pass.
+    expect(events).toMatch(
+      /action === 'select-hana-service' \|\| action === 'refresh-hana-tables'\)[\s\S]*?refreshMountedSqlWorkbench\(\)/
+    );
+  });
+});
+
 describe('prototype S/4HANA SQL Workbench tunnel indicator', () => {
   it('shows a single tunnel badge beside the workbench title, not a per-row badge or count', async () => {
     const source = await readSqlRenderSource();

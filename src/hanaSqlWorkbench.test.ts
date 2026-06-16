@@ -349,6 +349,8 @@ describe('HanaSqlWorkbench table list persistent cache', () => {
       getHanaTableList: vi.fn(async () => initialEntry),
       setHanaTableList: vi.fn(async (_key: string, entry: unknown) => entry),
       deleteHanaTableList: vi.fn(async () => undefined),
+      getHanaTunnelJumpApp: vi.fn(async () => undefined),
+      setHanaTunnelJumpApp: vi.fn(async () => undefined),
     };
   }
 

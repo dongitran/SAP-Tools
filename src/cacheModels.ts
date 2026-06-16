@@ -112,6 +112,13 @@ export interface CacheState {
   readonly hanaTableLists: Record<string, HanaTableListCacheEntry>;
   readonly localPackages?: LocalPackagesCacheEntry;
   readonly apiCatalogs: Record<string, ApiCatalogCacheEntry>;
+  /**
+   * The app that last opened a working `cf ssh` HANA tunnel for a given HANA
+   * host (keyed by host). SSH access is per-app, so this lets a later session
+   * reuse the known SSH-capable jump-host for an instance instead of failing on
+   * apps that share the instance but lack SSH. Persisted so it survives reloads.
+   */
+  readonly hanaTunnelJumpApps?: Record<string, string>;
 }
 
 export function isSyncIntervalHours(

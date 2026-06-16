@@ -190,6 +190,7 @@ function shouldRefreshWorkspaceAppsOnly(action, modeBeforeAction, tabBeforeActio
 function shouldRefreshWorkspaceSqlOnly(action, modeBeforeAction, tabBeforeAction) {
   const isSqlOnlyAction =
     action === 'select-hana-service' ||
+    action === 'refresh-hana-tables' ||
     action === 'run-hana-table-select' ||
     action === 'toggle-sql-result-export-menu' ||
     action === 'copy-sql-result-csv' ||

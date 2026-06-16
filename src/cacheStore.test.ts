@@ -372,6 +372,62 @@ describe('CacheStore HANA table list cache', () => {
     ).rejects.toThrow(/empty scope key/);
   });
 
+  it('remembers the HANA tunnel jump-host per host and overwrites on change', async () => {
+    const store = new CacheStore(createMockContext());
+    expect(await store.getHanaTunnelJumpApp('hana-host-1')).toBeUndefined();
+
+    await store.setHanaTunnelJumpApp('hana-host-1', 'ssh-app');
+    expect(await store.getHanaTunnelJumpApp('hana-host-1')).toBe('ssh-app');
+    expect(await store.getHanaTunnelJumpApp('hana-host-2')).toBeUndefined();
+
+    await store.setHanaTunnelJumpApp('hana-host-1', 'other-app');
+    expect(await store.getHanaTunnelJumpApp('hana-host-1')).toBe('other-app');
+  });
+
+  it('persists the tunnel jump-host so it survives a reload', async () => {
+    const context = createMockContext();
+    await new CacheStore(context).setHanaTunnelJumpApp('hana-host', 'ssh-app');
+
+    const reloaded = new CacheStore(context);
+    expect(await reloaded.getHanaTunnelJumpApp('hana-host')).toBe('ssh-app');
+  });
+
+  it('ignores an empty host or app for the tunnel jump-host', async () => {
+    const store = new CacheStore(createMockContext());
+    await store.setHanaTunnelJumpApp('', 'ssh-app');
+    await store.setHanaTunnelJumpApp('hana-host', '');
+    expect(await store.getHanaTunnelJumpApp('')).toBeUndefined();
+    expect(await store.getHanaTunnelJumpApp('hana-host')).toBeUndefined();
+  });
+
+  it('drops malformed persisted tunnel jump-host entries when normalizing', async () => {
+    const store = new CacheStore(
+      createMockContext({
+        version: 1,
+        settings: { syncIntervalHours: 24 },
+        users: {},
+        exportRootFolders: {},
+        hanaTableLists: {},
+        hanaTunnelJumpApps: { good: 'ssh-app', emptyApp: '', badApp: 7 },
+      })
+    );
+
+    expect(await store.getHanaTunnelJumpApp('good')).toBe('ssh-app');
+    expect(await store.getHanaTunnelJumpApp('emptyApp')).toBeUndefined();
+    expect(await store.getHanaTunnelJumpApp('badApp')).toBeUndefined();
+  });
+
+  it('clears all remembered tunnel jump-hosts (e.g. on logout)', async () => {
+    const store = new CacheStore(createMockContext());
+    await store.setHanaTunnelJumpApp('host-1', 'ssh-app');
+    await store.setHanaTunnelJumpApp('host-2', 'other-app');
+
+    await store.clearHanaTunnelJumpApps();
+
+    expect(await store.getHanaTunnelJumpApp('host-1')).toBeUndefined();
+    expect(await store.getHanaTunnelJumpApp('host-2')).toBeUndefined();
+  });
+
   it('rejects an entry with an empty updatedAt as malformed', async () => {
     const store = new CacheStore(createMockContext());
     await expect(

@@ -408,3 +408,19 @@ export function buildQuickTableSelectSql(schema: string, tableName: string): str
   const schemaId = quoteHanaIdentifier(trimmedSchema);
   return `SELECT * FROM ${schemaId}.${tableId} LIMIT ${String(QUICK_SELECT_ROW_LIMIT)}`;
 }
+
+/**
+ * Order the apps to try as the `cf ssh` jump-host when (re)opening a HANA tunnel.
+ * SSH access is per-app and apps sharing one HANA instance can differ, so the
+ * remembered/persisted SSH-capable app (when known and distinct from the in-use
+ * app) is tried FIRST; the in-use app is the natural fallback. Bounded discovery
+ * of other apps happens only if these fail.
+ */
+export function resolveJumpHostCandidates(
+  rememberedApp: string | undefined,
+  inUseApp: string
+): string[] {
+  return rememberedApp !== undefined && rememberedApp !== inUseApp
+    ? [rememberedApp, inUseApp]
+    : [inUseApp];
+}

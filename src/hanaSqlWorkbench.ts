@@ -41,6 +41,9 @@ export interface HanaTableListCacheGateway {
     entry: HanaTableListCacheEntry
   ): Promise<HanaTableListCacheEntry>;
   deleteHanaTableList(scopeKey: string): Promise<void>;
+  /** Persisted SSH-capable jump-host per HANA host (survives reload). */
+  getHanaTunnelJumpApp(host: string): Promise<string | undefined>;
+  setHanaTunnelJumpApp(host: string, app: string): Promise<void>;
 }
 import {
   buildHanaSqlDocumentFileUri,
@@ -60,6 +63,7 @@ import {
   filterKeywordCandidates,
   formatHanaTableDisplayEntries,
   resolveHanaDisplayTableReferences,
+  resolveJumpHostCandidates,
   sanitizeUntitledFileName,
   type HanaResolvedTableReference,
   type HanaTableDisplayEntry,
@@ -788,11 +792,12 @@ export class HanaSqlWorkbench
     // natural jump-host for its OWN binding), then a small bounded set of other
     // running apps. This avoids spawning a `cf ssh` for every app in a large
     // space while still finding the one app that can reach the instance.
-    const preferredApp = manager.preferredJumpApp(direct.host);
-    const primaryCandidates =
-      preferredApp !== undefined && preferredApp !== context.appName
-        ? [preferredApp, context.appName]
-        : [context.appName];
+    // In-memory hint (this session) falls back to the persisted one (survives
+    // reload), so the SSH-capable app for this instance is reused even on the
+    // first refresh after a restart.
+    const rememberedApp =
+      manager.preferredJumpApp(direct.host) ?? (await this.loadPersistedJumpApp(direct.host));
+    const primaryCandidates = resolveJumpHostCandidates(rememberedApp, context.appName);
     let tunnel = await manager.ensureTunnel(session, direct.host, primaryCandidates);
     if (tunnel === null) {
       const fallbacks = await this.listSshFallbackApps(session, context.appName);
@@ -809,7 +814,31 @@ export class HanaSqlWorkbench
     // through this single forward — no second forward / redirect discovery.
     const result = await run(manager.buildTunneledConnection(direct), TUNNEL_CONNECT_OVERRIDES);
     this.markTunnelActive(context);
+    // Persist the jump-host that worked when it is newly discovered/changed, so
+    // a future session reuses it instead of failing on a non-SSH sibling app.
+    const workingApp = manager.preferredJumpApp(direct.host);
+    if (workingApp !== undefined && workingApp !== rememberedApp) {
+      void this.persistJumpApp(direct.host, workingApp);
+    }
     return result;
+  }
+
+  private async loadPersistedJumpApp(host: string): Promise<string | undefined> {
+    try {
+      return (await this.cacheStore?.getHanaTunnelJumpApp(host)) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async persistJumpApp(host: string, app: string): Promise<void> {
+    try {
+      // Best-effort: the gateway method is always present, but the backing
+      // globalState write can still throw (disk/JSON), so guard it.
+      await this.cacheStore?.setHanaTunnelJumpApp(host, app);
+    } catch {
+      /* best-effort persistence */
+    }
   }
 
   /**

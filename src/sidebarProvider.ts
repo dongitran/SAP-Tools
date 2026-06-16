@@ -2763,6 +2763,9 @@ export class RegionSidebarProvider
               `[sql-ui] cleared ${String(removed)} cached HANA table list(s) for ${sanitizeSqlUiLogValue(previousEmail)}`
             );
           }
+          // Drop remembered HANA tunnel jump-hosts too (HANA hostnames + app
+          // names) so a logged-out account leaves no residual SQL state.
+          await this.cacheStore.clearHanaTunnelJumpApps();
         } catch {
           /* best effort cleanup, ignore failures */
         }

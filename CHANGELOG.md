@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.110 (stable)
+- Fix: Clicking the table-list reload button no longer reloads the app list above it and scrolls back to the top. The refresh now updates the tables panel in place instead of re-rendering the whole S/4HANA SQL Workbench.
+- Improvement: The SSH-capable "jump-host" app for a HANA instance is now remembered across reloads (persisted), not just for the current session. So refreshing an app that shares a HANA instance with — but lacks the `cf ssh` access of — another app reuses the known working tunnel even on the first refresh after restarting VS Code. Remembered jump-hosts are cleared on logout.
+
 ## 0.10.109 (stable)
 - Fix: Refreshing one app's tables no longer fails when another app on the **same** HANA instance lacks `cf ssh` access. SSH access is per-app, but a tunnel is shared per HANA host. Previously a manual refresh tore down the shared tunnel and tried to reopen it only through the refreshed app (plus a few others) — so an app without SSH failed with "Could not connect to any host" even though a sibling app already had a working tunnel. Now the workbench (1) remembers which app opened a working forward for each HANA host and reuses it as the jump-host for every app on that instance, and (2) on a manual refresh re-probes the direct connection **without** tearing down a tunnel other apps depend on, dropping it only if the instance is reachable directly again.
 - Hardening: a tunneled connection no longer carries a `databaseName` (which would re-trigger the HANA MDC redirect a tunnel cannot follow); the tunnel manager guards against leaving an orphaned `cf ssh` forward if it is disposed mid-open; added unit tests for the tunnel manager and refreshed stale comments.

@@ -719,7 +719,10 @@ appElement.addEventListener('click', (event) => {
   }
 
   if (shouldRefreshWorkspaceSqlOnly(action, modeBeforeAction, tabBeforeAction)) {
-    if (action === 'select-hana-service') {
+    if (action === 'select-hana-service' || action === 'refresh-hana-tables') {
+      // Update the tables panel + selection in place. This must NOT re-render the
+      // whole workbench (renderPrototype), which would rebuild the service list
+      // above and reset its scroll position.
       refreshMountedSqlWorkbench();
     } else {
       updateHanaQueryStatusElement();

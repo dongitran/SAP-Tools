@@ -10,6 +10,7 @@ import {
   buildHanaSqlResultHtml,
   buildInitialHanaSqlTemplate,
   buildQuickTableSelectSql,
+  resolveJumpHostCandidates,
   buildSqlBatchSectionUpdate,
   summarizeSqlBatch,
   buildTestModeBatchOutcomes,
@@ -1522,5 +1523,19 @@ describe('buildTableDiscoveryQueries', () => {
     expect(queries[1]).toBe(
       'SELECT TABLE_NAME FROM SYS.M_TABLES WHERE SCHEMA_NAME = CURRENT_SCHEMA ORDER BY TABLE_NAME'
     );
+  });
+});
+
+describe('resolveJumpHostCandidates', () => {
+  test('tries the remembered SSH-capable app first, then the in-use app', () => {
+    expect(resolveJumpHostCandidates('ssh-app', 'in-use-app')).toEqual(['ssh-app', 'in-use-app']);
+  });
+
+  test('falls back to just the in-use app when nothing is remembered', () => {
+    expect(resolveJumpHostCandidates(undefined, 'in-use-app')).toEqual(['in-use-app']);
+  });
+
+  test('does not duplicate when the remembered app equals the in-use app', () => {
+    expect(resolveJumpHostCandidates('in-use-app', 'in-use-app')).toEqual(['in-use-app']);
   });
 });
