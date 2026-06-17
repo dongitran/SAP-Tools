@@ -51,6 +51,20 @@ async function readEventStylesSource(): Promise<string> {
   );
 }
 
+async function readLogsStylesSource(): Promise<string> {
+  return readFile(
+    new URL('../docs/designs/prototypes/src/styles/03-logs-panel.css', import.meta.url),
+    'utf8'
+  );
+}
+
+async function readEventWebviewSource(): Promise<string> {
+  return readFile(
+    new URL('../docs/designs/prototypes/assets/events-webview.js', import.meta.url),
+    'utf8'
+  );
+}
+
 async function readEventVariantSource(): Promise<string> {
   return readFile(
     new URL('../docs/designs/prototypes/variants/events-webview.html', import.meta.url),
@@ -104,6 +118,22 @@ describe('prototype Log-API-Event workspace', () => {
 
     expect(source).toContain('saptools.openEventMesh');
     expect(source).toContain('./variants/events-webview.html');
+  });
+
+  it('keeps app rows fixed while making APIs and Event hover targets taller', async () => {
+    const source = await readLogsStylesSource();
+
+    expect(source).toMatch(/\.app-log-item\s*\{[\s\S]*?padding:\s*8px 10px;/);
+    expect(source).toMatch(/\.app-log-apis-btn\s*\{[\s\S]*?min-height:\s*20px;/);
+    expect(source).toMatch(/\.app-log-apis-btn\s*\{[\s\S]*?line-height:\s*1\.2;/);
+    expect(source).toMatch(/\.app-log-apis-btn\s*\{[\s\S]*?box-sizing:\s*border-box;/);
+  });
+
+  it('explains that Event debugging selects one messaging binding per session', async () => {
+    const source = await readEventWebviewSource();
+
+    expect(source).toContain('One messaging binding is used per debug session');
+    expect(source).toContain('bindingIndex: selectedBindingIndex');
   });
 
   it('has a standalone Event viewer variant for Playwright prototype checks', async () => {

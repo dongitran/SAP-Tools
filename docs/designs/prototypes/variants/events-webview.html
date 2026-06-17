@@ -45,44 +45,55 @@
           return;
         }
 
-        const namespace = 'demo/service/app';
+        const prototypeBindings = [
+          {
+            index: 0,
+            name: 'demo-service',
+            namespace: 'demo/service/app',
+            instanceName: 'demo-service',
+          },
+          {
+            index: 1,
+            name: 'audit-service',
+            namespace: 'demo/audit/app',
+            instanceName: 'audit-service',
+          },
+        ];
+
+        function findPrototypeBinding(index) {
+          return prototypeBindings.find((binding) => binding.index === index) || prototypeBindings[0];
+        }
+
+        function postPrototypeTopics(binding) {
+          postToViewer({
+            type: 'sapTools.events.topics',
+            bindingIndex: binding.index,
+            topics: [`${binding.namespace}/items/created`, `${binding.namespace}/items/updated`],
+            wildcardTopic: `${binding.namespace}/*`,
+          });
+        }
+
         if (message.type === 'sapTools.events.webviewReady') {
           postToViewer({
             type: 'sapTools.events.ready',
             appName: window.eventMeshAppId,
-            bindings: [
-              {
-                index: 0,
-                name: 'demo-service',
-                namespace,
-                instanceName: 'demo-service',
-              },
-            ],
+            bindings: prototypeBindings,
           });
-          postToViewer({
-            type: 'sapTools.events.topics',
-            bindingIndex: 0,
-            topics: [`${namespace}/items/created`, `${namespace}/items/updated`],
-            wildcardTopic: `${namespace}/*`,
-          });
+          postPrototypeTopics(prototypeBindings[0]);
           return;
         }
 
         if (message.type === 'sapTools.events.selectBinding') {
-          postToViewer({
-            type: 'sapTools.events.topics',
-            bindingIndex: 0,
-            topics: [`${namespace}/items/created`, `${namespace}/items/updated`],
-            wildcardTopic: `${namespace}/*`,
-          });
+          postPrototypeTopics(findPrototypeBinding(Number(message.bindingIndex)));
           return;
         }
 
         if (message.type === 'sapTools.events.startListening') {
+          const binding = findPrototypeBinding(Number(message.bindingIndex));
           postToViewer({
             type: 'sapTools.events.listening',
-            queueName: `${namespace}/saptools-debug/prototype`,
-            topics: Array.isArray(message.topics) ? message.topics : [`${namespace}/*`],
+            queueName: `${binding.namespace}/saptools-debug/prototype`,
+            topics: Array.isArray(message.topics) ? message.topics : [`${binding.namespace}/*`],
           });
           postToViewer({
             type: 'sapTools.events.messages',
@@ -90,7 +101,7 @@
               {
                 seq: 1,
                 time: new Date().toISOString(),
-                topic: `${namespace}/items/created`,
+                topic: `${binding.namespace}/items/created`,
                 contentType: 'application/json',
                 messageId: 'prototype-1',
                 payload: JSON.stringify({ itemId: 'A-1001', status: 'created' }, null, 2),

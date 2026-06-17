@@ -131,11 +131,16 @@ function renderConfig() {
            </select>
          </label>`
       : `<div class="event-field"><span class="event-label">Messaging binding</span><div class="event-static">${escapeHtml(binding ? `${binding.name} — ${binding.namespace}` : '')}</div></div>`;
+  const bindingGuidance =
+    bindings.length > 1
+      ? '<p class="event-hint event-binding-hint">One messaging binding is used per debug session. Choose the service namespace to inspect; topic discovery and the temporary queue follow that binding.</p>'
+      : '';
 
   return `
     ${renderHeader()}
     <div class="event-config">
       ${bindingSelector}
+      ${bindingGuidance}
       <div class="event-field">
         <span class="event-label">Topics to listen</span>
         ${renderTopicChooser()}

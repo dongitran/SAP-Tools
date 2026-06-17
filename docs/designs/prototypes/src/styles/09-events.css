@@ -200,6 +200,10 @@
   color: var(--vscode-editorWarning-foreground, var(--vscode-descriptionForeground));
 }
 
+.event-binding-hint {
+  margin-top: -10px;
+}
+
 .event-inline-error {
   color: var(--vscode-errorForeground);
   font-size: 12px;
