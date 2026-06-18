@@ -129,11 +129,36 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source).toMatch(/\.app-log-apis-btn\s*\{[\s\S]*?box-sizing:\s*border-box;/);
   });
 
-  it('explains that Event debugging selects one messaging binding per session', async () => {
+  it('uses multi-binding state for the Event viewer (Add Binding workflow)', async () => {
     const source = await readEventWebviewSource();
 
-    expect(source).toContain('One messaging binding is used per debug session');
-    expect(source).toContain('bindingIndex: selectedBindingIndex');
+    expect(source).toContain('selectedBindingIndexes');
+    expect(source).toContain('topicsByBinding');
+    expect(source).toContain('em-add-binding');
+    expect(source).toContain("'sapTools.events.addTopics'");
+  });
+
+  it('sends multi-binding start requests with per-binding topics', async () => {
+    const source = await readEventWebviewSource();
+
+    expect(source).toContain("'sapTools.events.startListening'");
+    expect(source).toContain('bindings: requests');
+  });
+
+  it('renders results inline below setup instead of replacing the screen', async () => {
+    const source = await readEventWebviewSource();
+
+    expect(source).toContain('event-setup');
+    expect(source).toContain('event-results');
+    expect(source).toContain('renderReady');
+  });
+
+  it('prototype fixture handles multiple bindings for search-based Add Binding workflow', async () => {
+    const source = await readEventVariantSource();
+
+    expect(source).toContain('length: 100');
+    expect(source).toContain("'sapTools.events.startListening'");
+    expect(source).toContain("'sapTools.events.addTopics'");
   });
 
   it('has a standalone Event viewer variant for Playwright prototype checks', async () => {

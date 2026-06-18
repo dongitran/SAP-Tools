@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.117 (stable)
+- Feature: Event Mesh viewer now supports multiple messaging bindings per debug session. An "Add Binding" search picker replaces the single-binding selector — real apps can have up to 100 bindings, so only the bindings you want to inspect are added. Each selected binding has its own temporary debug queue, topic chooser, and AMQP listener. All listeners and queues are created atomically with rollback if any step fails. While listening, you can expand a live binding to add more topics (add-only; no live removal). Results render inline below setup, each message row carries a binding badge, and a filter bar lets you view events from all bindings or one.
+- Refactor: Multi-binding orchestration is extracted into a standalone `EventMeshListeningSession` module (unit-tested independently) so `eventMeshPanel.ts` stays under the 700-line limit and the logic remains testable without VS Code or real AMQP connections.
+
 ## 0.10.116 (stable)
 - UI/UX: Increased the `APIs` and `Event` hover-button hit targets in the `Log-API-Event` app list by 20% while keeping each app row's height stable, making the actions easier to click without making the list less dense.
 - UI/UX: Clarified the Event viewer setup when an app has multiple Event Mesh bindings. The viewer still uses one messaging binding per debug session because topic discovery, temporary queue creation, AMQP listening, and cleanup are scoped to a single binding namespace.

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Event Mesh Webview</title>
-    <link rel="stylesheet" href="../assets/prototype.css?v=20260616" />
+    <link rel="stylesheet" href="../assets/prototype.css?v=20260617" />
     <style>
       body {
         margin: 0;
@@ -28,6 +28,24 @@
     <script>
       const params = new URLSearchParams(window.location.search);
       window.eventMeshAppId = params.get('appId') || 'demo-app';
+
+      const prototypeBindings = Array.from({ length: 100 }, (_, index) => {
+        const namespace =
+          index === 0
+            ? 'demo/service/app'
+            : index === 1
+              ? 'demo/audit/app'
+              : `demo/service-${String(index + 1).padStart(2, '0')}/app`;
+        return {
+          index,
+          name: index === 0 ? 'demo-service' : index === 1 ? 'audit-service' : `service-${index + 1}`,
+          namespace,
+          instanceName: index === 0 ? 'demo-service' : index === 1 ? 'audit-service' : `service-${index + 1}`,
+        };
+      });
+      const liveTopicsByBinding = new Map();
+      let prototypeSeq = 1;
+
       window.acquireVsCodeApi = function acquireVsCodeApi() {
         return {
           postMessage(message) {
@@ -40,37 +58,55 @@
         window.dispatchEvent(new MessageEvent('message', { data: payload }));
       }
 
+      function findPrototypeBinding(index) {
+        return prototypeBindings.find((binding) => binding.index === index) || prototypeBindings[0];
+      }
+
+      function postPrototypeTopics(binding) {
+        postToViewer({
+          type: 'sapTools.events.topics',
+          bindingIndex: binding.index,
+          topics: [`${binding.namespace}/items/created`, `${binding.namespace}/items/updated`],
+          wildcardTopic: `${binding.namespace}/*`,
+        });
+      }
+
+      function listeningSummary(binding, topics) {
+        return {
+          bindingIndex: binding.index,
+          bindingName: binding.name,
+          bindingNamespace: binding.namespace,
+          queueName: `${binding.namespace}/saptools-debug/prototype-${binding.index}`,
+          topics,
+        };
+      }
+
+      function postPrototypeMessage(binding, topic) {
+        postToViewer({
+          type: 'sapTools.events.messages',
+          events: [
+            {
+              seq: prototypeSeq++,
+              time: new Date().toISOString(),
+              bindingIndex: binding.index,
+              bindingName: binding.name,
+              bindingNamespace: binding.namespace,
+              topic,
+              contentType: 'application/json',
+              messageId: `prototype-${prototypeSeq}`,
+              payload: JSON.stringify({ binding: binding.name, status: 'created' }, null, 2),
+              encoding: 'json',
+              truncated: false,
+              size: 56,
+              headers: {},
+            },
+          ],
+        });
+      }
+
       function handlePrototypeEventMessage(message) {
         if (!message || typeof message.type !== 'string') {
           return;
-        }
-
-        const prototypeBindings = [
-          {
-            index: 0,
-            name: 'demo-service',
-            namespace: 'demo/service/app',
-            instanceName: 'demo-service',
-          },
-          {
-            index: 1,
-            name: 'audit-service',
-            namespace: 'demo/audit/app',
-            instanceName: 'audit-service',
-          },
-        ];
-
-        function findPrototypeBinding(index) {
-          return prototypeBindings.find((binding) => binding.index === index) || prototypeBindings[0];
-        }
-
-        function postPrototypeTopics(binding) {
-          postToViewer({
-            type: 'sapTools.events.topics',
-            bindingIndex: binding.index,
-            topics: [`${binding.namespace}/items/created`, `${binding.namespace}/items/updated`],
-            wildcardTopic: `${binding.namespace}/*`,
-          });
         }
 
         if (message.type === 'sapTools.events.webviewReady') {
@@ -79,7 +115,6 @@
             appName: window.eventMeshAppId,
             bindings: prototypeBindings,
           });
-          postPrototypeTopics(prototypeBindings[0]);
           return;
         }
 
@@ -89,37 +124,48 @@
         }
 
         if (message.type === 'sapTools.events.startListening') {
+          const requests = Array.isArray(message.bindings) ? message.bindings : [];
+          const summaries = requests.map((request) => {
+            const binding = findPrototypeBinding(Number(request.bindingIndex));
+            const topics = Array.isArray(request.topics) ? request.topics : [`${binding.namespace}/*`];
+            liveTopicsByBinding.set(binding.index, topics);
+            return listeningSummary(binding, topics);
+          });
+          postToViewer({ type: 'sapTools.events.listening', bindings: summaries });
+          for (const summary of summaries) {
+            const binding = findPrototypeBinding(summary.bindingIndex);
+            postPrototypeMessage(binding, summary.topics[0] || `${binding.namespace}/*`);
+          }
+          return;
+        }
+
+        if (message.type === 'sapTools.events.startBinding') {
           const binding = findPrototypeBinding(Number(message.bindingIndex));
-          postToViewer({
-            type: 'sapTools.events.listening',
-            queueName: `${binding.namespace}/saptools-debug/prototype`,
-            topics: Array.isArray(message.topics) ? message.topics : [`${binding.namespace}/*`],
-          });
-          postToViewer({
-            type: 'sapTools.events.messages',
-            events: [
-              {
-                seq: 1,
-                time: new Date().toISOString(),
-                topic: `${binding.namespace}/items/created`,
-                contentType: 'application/json',
-                messageId: 'prototype-1',
-                payload: JSON.stringify({ itemId: 'A-1001', status: 'created' }, null, 2),
-                encoding: 'json',
-                truncated: false,
-                size: 42,
-                headers: {},
-              },
-            ],
-          });
+          const topics = Array.isArray(message.topics) ? message.topics : [`${binding.namespace}/*`];
+          liveTopicsByBinding.set(binding.index, topics);
+          postToViewer({ type: 'sapTools.events.bindingListening', ...listeningSummary(binding, topics) });
+          postPrototypeMessage(binding, topics[0] || `${binding.namespace}/*`);
+          return;
+        }
+
+        if (message.type === 'sapTools.events.addTopics') {
+          const binding = findPrototypeBinding(Number(message.bindingIndex));
+          const topics = Array.isArray(message.topics) ? message.topics : [];
+          const current = liveTopicsByBinding.get(binding.index) || [];
+          liveTopicsByBinding.set(binding.index, [...current, ...topics]);
+          postToViewer({ type: 'sapTools.events.topicsAdded', bindingIndex: binding.index, topics });
+          if (topics.length > 0) {
+            postPrototypeMessage(binding, topics[0]);
+          }
           return;
         }
 
         if (message.type === 'sapTools.events.stopListening') {
+          liveTopicsByBinding.clear();
           postToViewer({ type: 'sapTools.events.stopped', reason: 'user' });
         }
       }
     </script>
-    <script src="../assets/events-webview.js?v=20260616"></script>
+    <script src="../assets/events-webview.js?v=20260617"></script>
   </body>
 </html>
