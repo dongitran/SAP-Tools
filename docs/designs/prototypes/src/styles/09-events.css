@@ -231,8 +231,20 @@
 }
 
 .event-picker-head {
-  align-items: flex-end;
+  align-items: center;
   margin-bottom: 8px;
+}
+
+.event-picker-label {
+  font-weight: 600;
+  font-size: 12px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.event-picker-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .event-binding-results,
@@ -240,6 +252,16 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.event-binding-results {
+  max-height: 114px;
+  overflow-y: auto;
+}
+
+.event-binding-list {
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .event-binding-option {

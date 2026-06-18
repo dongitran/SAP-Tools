@@ -1,5 +1,11 @@
 # SAP Tools Extension Changelog
 
+## 0.10.119 (stable)
+- Fix: The "Add Messaging Binding" search field no longer loses focus after every keystroke. Previously, each input event triggered a full DOM rebuild via `render()` which destroyed and recreated the input element. The fix replaces `render()` with a targeted `updateBindingPickerResults()` that updates only the results list and overflow hint in place, leaving the input element intact.
+- UI: Restructured the "Add Messaging Binding" picker header so the title, search input, and Close button all sit on the same horizontal row. Removed the `<label class="event-field">` column wrapper around the search input.
+- UI: The binding search results list now has a fixed max-height (~3 rows) with vertical scroll so it doesn't push content below the fold.
+- UI: The Selected Bindings list now has a fixed max-height (~4 cards) with vertical scroll so many selected bindings don't overflow the setup section.
+
 ## 0.10.118 (stable)
 - Feature: Event Mesh viewer gains a **Publish** tab alongside the existing Subscribe tab. A tab switcher in the top-right of the viewer header lets you switch between the two modes. The Publish tab provides a dedicated form to send a single event directly to any topic via the SAP Event Mesh REST Messaging API: choose a messaging binding, enter the topic name, set a content-type (JSON or plain text), compose a payload with an optional "Format JSON" prettifier, and click "Publish Event". The result (HTTP status or error message) is shown inline below the form. No temporary queues are created and no AMQP connection is needed for publishing — only the REST messaging endpoint and its OAuth credentials are used. The Subscribe tab is unchanged.
 
