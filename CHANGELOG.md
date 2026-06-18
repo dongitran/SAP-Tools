@@ -1,5 +1,10 @@
 # SAP Tools Extension Changelog
 
+## 0.10.129 (stable)
+- UI: Event Mesh `Publish` form controls now fill the available panel width instead of stopping at a fixed 640px form width.
+- UI: The `Publish` tab now offers discovered topic candidates for the selected messaging binding while keeping the topic field free-form for custom topics.
+- Feature: `Publish` now supports direct queue publishing through the REST Messaging queue endpoint, with discovered queue candidates per binding and manual queue entry.
+
 ## 0.10.128 (stable)
 - Fix: Event Mesh listener results now keep only the newest 1000 received messages by default, with both webview and extension-host pending buffers capped to reduce memory and UI pressure during high-volume streams.
 - UI: Added an Event Mesh settings gear beside the `Publish` tab for configuring the retained message buffer size.

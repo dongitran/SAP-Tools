@@ -23,6 +23,8 @@ import {
   trimOutgoingEventBuffer,
   type EventMeshTargetParams,
 } from './eventMeshPanel';
+import type { EventMeshBinding } from './eventMeshBindings';
+import { parsePublishEventRequest } from './eventMeshPublishRequest';
 
 interface MockPanel {
   readonly webview: {
@@ -74,6 +76,23 @@ function makeTargetParams(spaceName: string): EventMeshTargetParams {
     orgName: 'demo-org',
     spaceName,
     cfHomeDir: '/tmp/cf-home',
+  };
+}
+
+function makeBinding(index: number): EventMeshBinding {
+  const oa2 = {
+    clientid: 'cid',
+    clientsecret: 'sec',
+    tokenendpoint: 'https://uaa.example.com/oauth/token',
+  };
+  return {
+    index,
+    name: `binding-${index}`,
+    instanceName: `binding-${index}`,
+    namespace: `demo/service/app/${index}`,
+    management: { uri: 'https://mgmt.example.com', oa2 },
+    messaging: { uri: 'https://rest.example.com', oa2 },
+    amqp: { uri: 'wss://amqp.example.com', oa2 },
   };
 }
 
@@ -169,5 +188,64 @@ describe('EventMeshPanelManager outgoing message buffer safety', () => {
     const buffer = [{ seq: 1 }, { seq: 2 }, { seq: 3 }];
 
     expect(trimOutgoingEventBuffer(buffer, 1000)).toEqual(buffer);
+  });
+});
+
+describe('EventMeshPanelManager publish request parsing', () => {
+  it('parses queue publish requests with an explicit queue destination', () => {
+    const binding = makeBinding(7);
+
+    expect(
+      parsePublishEventRequest([binding], {
+        bindingIndex: 7,
+        destinationKind: 'queue',
+        destination: 'demo/service/app/q-main',
+        payload: 'plain',
+        contentType: 'text/plain',
+      })
+    ).toEqual({
+      binding,
+      destinationKind: 'queue',
+      destination: 'demo/service/app/q-main',
+      payload: 'plain',
+      contentType: 'text/plain',
+    });
+  });
+
+  it('keeps legacy topic publish messages working', () => {
+    const binding = makeBinding(8);
+
+    expect(
+      parsePublishEventRequest([binding], {
+        bindingIndex: 8,
+        topic: 'demo/service/app/items/created',
+        payload: '{"ok":true}',
+      })
+    ).toEqual({
+      binding,
+      destinationKind: 'topic',
+      destination: 'demo/service/app/items/created',
+      payload: '{"ok":true}',
+      contentType: 'application/json',
+    });
+  });
+
+  it('rejects missing bindings and blank destinations', () => {
+    const binding = makeBinding(9);
+
+    expect(
+      parsePublishEventRequest([binding], {
+        bindingIndex: 404,
+        destinationKind: 'queue',
+        destination: 'demo/service/app/q-main',
+      })
+    ).toBeNull();
+    expect(
+      parsePublishEventRequest([binding], {
+        bindingIndex: 9,
+        destinationKind: 'queue',
+        destination: '   ',
+      })
+    ).toBeNull();
   });
 });

@@ -23,6 +23,7 @@ let activeTab = 'subscribe-simple'; // 'subscribe-simple' | 'subscribe-advance' 
 let bindings = [];
 const selectedBindingIndexes = new Set();
 const topicsByBinding = new Map();
+const queuesByBinding = new Map();
 let activeBindingIndex = null;
 let expandedBindingIndex = null;
 const simpleExpandedGroupKeys = new Set();
@@ -39,10 +40,12 @@ let messageBufferLimit = DEFAULT_MESSAGE_BUFFER_LIMIT;
 let messageBufferLimitTimer = null;
 
 let publishBindingIndex = null;
+let publishDestinationKind = 'topic';
 let publishTopic = '';
+let publishQueue = '';
 let publishContentType = 'application/json';
 let publishPayload = '';
-let publishResult = null; // { ok, status, topic, message }
+let publishResult = null; // { ok, status, destinationKind, destination, message }
 let publishSending = false;
 let stoppingAll = false;
 
@@ -96,6 +99,23 @@ function topicStateFor(index) {
   if (state === undefined) {
     state = createTopicState();
     topicsByBinding.set(index, state);
+  }
+  return state;
+}
+
+function createQueueState() {
+  return {
+    loading: true,
+    queues: [],
+    discoveryError: '',
+  };
+}
+
+function queueStateFor(index) {
+  let state = queuesByBinding.get(index);
+  if (state === undefined) {
+    state = createQueueState();
+    queuesByBinding.set(index, state);
   }
   return state;
 }
@@ -165,6 +185,19 @@ function requestTopics(index) {
   if (state.loading && vscodeApi) {
     vscodeApi.postMessage({ type: 'sapTools.events.selectBinding', bindingIndex: index });
   }
+}
+
+function selectedPublishBindingIndex() {
+  if (publishBindingIndex !== null) return publishBindingIndex;
+  return bindings[0] !== undefined ? bindings[0].index : null;
+}
+
+function requestPublishMetadata(index = selectedPublishBindingIndex()) {
+  if (index === null || !vscodeApi) return;
+  const topicState = topicStateFor(index);
+  const queueState = queueStateFor(index);
+  if (!topicState.loading && !queueState.loading) return;
+  vscodeApi.postMessage({ type: 'sapTools.events.selectPublishBinding', bindingIndex: index });
 }
 
 function addSelectedBinding(index) {
@@ -511,24 +544,21 @@ function renderPublishView() {
 
 function renderPublishForm() {
   const hasBindings = bindings.length > 0;
-  const selectedIdx = publishBindingIndex !== null ? publishBindingIndex : (bindings[0] !== undefined ? bindings[0].index : 0);
+  const selectedIdx = selectedPublishBindingIndex() ?? 0;
   const selectedBinding = findBinding(selectedIdx);
-  const hint = selectedBinding ? `e.g. ${escapeHtml(selectedBinding.namespace)}/items/created` : 'e.g. namespace/entity/event';
   return `
     <div class="event-section-head">
       <h2>Publish Event</h2>
     </div>
     <div class="event-publish-form">
+      ${renderPublishDestinationSelector()}
       <label class="event-field">
         <span class="event-label">Messaging Binding</span>
         <select class="event-input event-select" data-role="ep-binding-select">
           ${hasBindings ? bindings.map((b) => `<option value="${b.index}"${b.index === selectedIdx ? ' selected' : ''}>${escapeHtml(b.name)} — ${escapeHtml(b.namespace)}</option>`).join('') : '<option value="">No bindings available</option>'}
         </select>
       </label>
-      <label class="event-field">
-        <span class="event-label">Topic</span>
-        <input type="text" class="event-input" data-role="ep-topic-input" value="${escapeHtml(publishTopic)}" placeholder="${hint}" autocomplete="off" />
-      </label>
+      ${renderPublishDestinationField(selectedBinding)}
       <label class="event-field">
         <span class="event-label">Content-Type</span>
         <select class="event-input event-select" data-role="ep-content-type-select">
@@ -545,16 +575,113 @@ function renderPublishForm() {
       </div>
       ${renderPublishResult()}
       <div class="event-config-actions">
-        <button type="button" class="event-btn event-btn-primary" data-action="ep-send" ${publishSending || !hasBindings || publishTopic.trim().length === 0 ? 'disabled' : ''}>${publishSending ? `${btnSpinner()} Sending…` : 'Publish Event'}</button>
-        <span class="event-hint">Event is published directly to the topic via the REST Messaging API.</span>
+        <button type="button" class="event-btn event-btn-primary" data-action="ep-send" ${publishCanSend() && hasBindings ? '' : 'disabled'}>${publishSending ? `${btnSpinner()} Sending…` : 'Publish Event'}</button>
+        <span class="event-hint">${escapeHtml(publishDestinationHint())}</span>
       </div>
     </div>`;
 }
 
+function renderPublishDestinationSelector() {
+  return `
+    <div class="event-publish-destination" role="radiogroup" aria-label="Publish destination">
+      <label class="event-segment-option${publishDestinationKind === 'topic' ? ' is-active' : ''}">
+        <input type="radio" name="ep-destination-kind" data-role="ep-destination-kind" value="topic" aria-label="Publish to Topic" ${publishDestinationKind === 'topic' ? 'checked' : ''} />
+        <span>Topic</span>
+      </label>
+      <label class="event-segment-option${publishDestinationKind === 'queue' ? ' is-active' : ''}">
+        <input type="radio" name="ep-destination-kind" data-role="ep-destination-kind" value="queue" aria-label="Publish to Queue" ${publishDestinationKind === 'queue' ? 'checked' : ''} />
+        <span>Queue</span>
+      </label>
+    </div>`;
+}
+
+function renderPublishDestinationField(binding) {
+  if (publishDestinationKind === 'queue') {
+    return renderPublishQueueField(binding);
+  }
+  return renderPublishTopicField(binding);
+}
+
+function renderPublishTopicField(binding) {
+  const index = binding ? binding.index : 0;
+  const state = topicStateFor(index);
+  const listId = `ep-topic-options-${index}`;
+  const hint = binding ? `e.g. ${escapeHtml(binding.namespace)}/items/created` : 'e.g. namespace/entity/event';
+  return `
+    <label class="event-field">
+      <span class="event-label">Topic</span>
+      <input type="text" class="event-input" data-role="ep-topic-input" value="${escapeHtml(publishTopic)}" placeholder="${hint}" autocomplete="off" list="${listId}" />
+      ${renderPublishTopicOptions(listId, state)}
+    </label>
+    ${renderPublishMetadataHint(state, 'topic')}`;
+}
+
+function renderPublishQueueField(binding) {
+  const index = binding ? binding.index : 0;
+  const state = queueStateFor(index);
+  const listId = `ep-queue-options-${index}`;
+  const hint = binding ? `e.g. ${escapeHtml(binding.namespace)}/queue` : 'e.g. namespace/queue';
+  return `
+    <label class="event-field">
+      <span class="event-label">Queue</span>
+      <input type="text" class="event-input" data-role="ep-queue-input" value="${escapeHtml(publishQueue)}" placeholder="${hint}" autocomplete="off" list="${listId}" />
+      ${renderPublishQueueOptions(listId, state)}
+    </label>
+    ${renderPublishMetadataHint(state, 'queue')}`;
+}
+
+function renderPublishTopicOptions(listId, state) {
+  const topics = publishTopicCandidates(state);
+  return `<datalist id="${listId}">${topics.map((topic) => `<option value="${escapeHtml(topic)}"></option>`).join('')}</datalist>`;
+}
+
+function renderPublishQueueOptions(listId, state) {
+  return `<datalist id="${listId}">${state.queues.map((queue) => `<option value="${escapeHtml(queue)}"></option>`).join('')}</datalist>`;
+}
+
+function publishTopicCandidates(state) {
+  const topics = [];
+  if (state.wildcardTopic) topics.push(state.wildcardTopic);
+  for (const topic of state.discoveredTopics) {
+    if (!topics.includes(topic)) topics.push(topic);
+  }
+  return topics;
+}
+
+function renderPublishMetadataHint(state, label) {
+  if (state.loading) {
+    return `<p class="event-hint event-publish-hint">Discovering ${label} candidates for this binding…</p>`;
+  }
+  if (state.discoveryError) {
+    return `<p class="event-hint event-hint-warn event-publish-hint">Could not discover ${label}s (${escapeHtml(state.discoveryError)}). You can still type one manually.</p>`;
+  }
+  const count = label === 'queue' ? state.queues.length : publishTopicCandidates(state).length;
+  if (count === 0) {
+    return `<p class="event-hint event-publish-hint">No ${label} candidates found. You can still type one manually.</p>`;
+  }
+  return `<p class="event-hint event-publish-hint">${escapeHtml(plural(count, label, `${label}s`))} available. Choose one or type a custom value.</p>`;
+}
+
+function publishDestinationValue() {
+  return publishDestinationKind === 'queue' ? publishQueue.trim() : publishTopic.trim();
+}
+
+function publishCanSend() {
+  return !publishSending && publishDestinationValue().length > 0;
+}
+
+function publishDestinationHint() {
+  return publishDestinationKind === 'queue'
+    ? 'Event is published directly to the selected queue via the REST Messaging API.'
+    : 'Event is published directly to the topic via the REST Messaging API.';
+}
+
 function renderPublishResult() {
   if (publishResult === null) return '';
+  const kind = publishResult.destinationKind === 'queue' ? 'queue' : 'topic';
+  const destination = publishResult.destination || publishResult.topic || '';
   if (publishResult.ok) {
-    return `<div class="event-publish-result is-ok">✓ Published to <code>${escapeHtml(publishResult.topic)}</code> — HTTP ${publishResult.status ?? ''}</div>`;
+    return `<div class="event-publish-result is-ok">✓ Published to ${kind} <code>${escapeHtml(destination)}</code> — HTTP ${publishResult.status ?? ''}</div>`;
   }
   return `<div class="event-publish-result is-error">✗ Failed: ${escapeHtml(publishResult.message || 'Unknown error')}</div>`;
 }
@@ -608,7 +735,7 @@ function updatePublishSendButton() {
   const sendBtn = document.querySelector('[data-action="ep-send"]');
   if (!sendBtn) return;
   const hasBindings = bindings.length > 0;
-  sendBtn.disabled = publishSending || !hasBindings || publishTopic.trim().length === 0;
+  sendBtn.disabled = !hasBindings || !publishCanSend();
   sendBtn.innerHTML = publishSending ? `${btnSpinner()} Sending…` : 'Publish Event';
 }
 
@@ -957,6 +1084,8 @@ window.addEventListener('message', (event) => {
     handleReady(data);
   } else if (data.type === 'sapTools.events.topics') {
     handleTopics(data);
+  } else if (data.type === 'sapTools.events.queues') {
+    handleQueues(data);
   } else if (data.type === 'sapTools.events.listening') {
     handleListening(data);
   } else if (data.type === 'sapTools.events.bindingListening') {
@@ -980,6 +1109,7 @@ function handleReady(data) {
   bindings = Array.isArray(data.bindings) ? data.bindings : [];
   selectedBindingIndexes.clear();
   topicsByBinding.clear();
+  queuesByBinding.clear();
   activeBindingIndex = null;
   expandedBindingIndex = null;
   simpleExpandedGroupKeys.clear();
@@ -990,6 +1120,9 @@ function handleReady(data) {
   eventSettingsOpen = false;
   startError = '';
   publishBindingIndex = null;
+  publishDestinationKind = 'topic';
+  publishTopic = '';
+  publishQueue = '';
   publishResult = null;
   publishSending = false;
   stoppingAll = false;
@@ -1004,6 +1137,8 @@ function handlePublishResult(data) {
   publishResult = {
     ok: data.ok === true,
     status: typeof data.status === 'number' ? data.status : undefined,
+    destinationKind: data.destinationKind === 'queue' ? 'queue' : 'topic',
+    destination: typeof data.destination === 'string' ? data.destination : '',
     topic: typeof data.topic === 'string' ? data.topic : '',
     message: typeof data.message === 'string' ? data.message : '',
   };
@@ -1020,6 +1155,15 @@ function handleTopics(data) {
   if (state.selectedTopics.size === 0 && state.liveTopics.size === 0 && state.wildcardTopic) {
     state.selectedTopics.add(state.wildcardTopic);
   }
+  if (phase === 'ready') render();
+}
+
+function handleQueues(data) {
+  const index = bindingId(data.bindingIndex);
+  const state = queueStateFor(index);
+  state.queues = Array.isArray(data.queues) ? data.queues : [];
+  state.discoveryError = data.discoveryError || '';
+  state.loading = false;
   if (phase === 'ready') render();
 }
 
@@ -1239,13 +1383,23 @@ function addCustomTopic(index) {
 }
 
 function postPublishEvent() {
-  const idx = publishBindingIndex !== null ? publishBindingIndex : (bindings[0] !== undefined ? bindings[0].index : -1);
-  const topic = publishTopic.trim();
-  if (!vscodeApi || !topic || publishSending) return;
+  const idx = selectedPublishBindingIndex() ?? -1;
+  const destination = publishDestinationValue();
+  if (!vscodeApi || !destination || publishSending) return;
   publishSending = true;
   publishResult = null;
   render();
-  vscodeApi.postMessage({ type: 'sapTools.events.publishEvent', bindingIndex: idx, topic, payload: publishPayload, contentType: publishContentType });
+  const message = {
+    type: 'sapTools.events.publishEvent',
+    bindingIndex: idx,
+    destinationKind: publishDestinationKind,
+    destination,
+    payload: publishPayload,
+    contentType: publishContentType,
+  };
+  if (publishDestinationKind === 'topic') message.topic = destination;
+  else message.queueName = destination;
+  vscodeApi.postMessage(message);
 }
 
 function formatPublishPayload() {
@@ -1280,6 +1434,7 @@ document.addEventListener('click', (event) => {
 
   if (action === 'em-switch-tab') {
     activeTab = actionEl.dataset.tab || 'subscribe-simple';
+    if (activeTab === 'publish') requestPublishMetadata();
     render();
   } else if (action === 'em-toggle-settings') {
     eventSettingsOpen = !eventSettingsOpen;
@@ -1360,6 +1515,9 @@ document.addEventListener('input', (event) => {
   } else if (el.matches('[data-role="ep-topic-input"]')) {
     publishTopic = el.value || '';
     updatePublishSendButton();
+  } else if (el.matches('[data-role="ep-queue-input"]')) {
+    publishQueue = el.value || '';
+    updatePublishSendButton();
   } else if (el.matches('[data-role="ep-payload-input"]')) {
     publishPayload = el.value || '';
   }
@@ -1370,6 +1528,14 @@ document.addEventListener('change', (event) => {
   if (!el || !el.matches) return;
   if (el.matches('[data-role="ep-binding-select"]')) {
     publishBindingIndex = bindingId(el.value);
+    publishResult = null;
+    requestPublishMetadata(publishBindingIndex);
+    render();
+  } else if (el.matches('[data-role="ep-destination-kind"]')) {
+    publishDestinationKind = el.value === 'queue' ? 'queue' : 'topic';
+    publishResult = null;
+    requestPublishMetadata();
+    render();
   } else if (el.matches('[data-role="ep-content-type-select"]')) {
     publishContentType = el.value || 'application/json';
   } else if (el.matches('[data-role="em-binding-filter-select"]')) {

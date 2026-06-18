@@ -14,7 +14,14 @@ import {
   type EventMeshListenCallbacks,
   type EventMeshListenRequest,
 } from './eventMeshListeningSession';
-import { publishEventToMesh } from './eventMeshPublishClient';
+import {
+  formatEventMeshPayload,
+  toSerializableEventMeshHeaders,
+  type EventMeshPayloadEncoding,
+} from './eventMeshMessageFormat';
+import { publishEventToMesh, publishEventToMeshQueue } from './eventMeshPublishClient';
+import { parsePublishEventRequest } from './eventMeshPublishRequest';
+import { buildEventMeshWebviewHtml } from './eventMeshWebviewHtml';
 
 const EVENT_MESH_VIEW_TYPE = 'sapTools.eventMeshViewer';
 
@@ -55,7 +62,7 @@ interface OutgoingEventMessage {
   readonly contentType: string;
   readonly messageId: string | null;
   readonly payload: string;
-  readonly encoding: 'json' | 'text' | 'base64';
+  readonly encoding: EventMeshPayloadEncoding;
   readonly truncated: boolean;
   readonly size: number;
   readonly headers: unknown;
@@ -68,6 +75,7 @@ interface PanelSession {
   bindings: EventMeshBinding[];
   readonly clientsByBinding: Map<number, EventMeshManagementClient>;
   readonly discoveredByBinding: Map<number, string[]>;
+  readonly queuesByBinding: Map<number, string[]>;
   listenSession: EventMeshListeningSession | null;
   starting: boolean;
   sequence: number;
@@ -84,49 +92,6 @@ function describeError(error: unknown): string {
     return error.message;
   }
   return typeof error === 'string' ? error : String(error);
-}
-
-function isProbablyUtf8(buffer: Buffer): boolean {
-  if (buffer.length === 0) {
-    return true;
-  }
-  return !buffer.toString('utf8').includes('�');
-}
-
-function formatPayload(
-  buffer: Buffer,
-  contentType: string,
-  limit: number
-): { value: string; encoding: 'json' | 'text' | 'base64'; truncated: boolean; size: number } {
-  const size = buffer.length;
-  const limited = limit > 0 && buffer.length > limit ? buffer.subarray(0, limit) : buffer;
-  const truncated = limited.length !== buffer.length;
-  const lower = contentType.toLowerCase();
-
-  if (lower.includes('json')) {
-    const text = limited.toString('utf8');
-    try {
-      return { value: JSON.stringify(JSON.parse(text), null, 2), encoding: 'json', truncated, size };
-    } catch {
-      return { value: text, encoding: 'text', truncated, size };
-    }
-  }
-  if (lower.startsWith('text/') || isProbablyUtf8(limited)) {
-    return { value: limited.toString('utf8'), encoding: 'text', truncated, size };
-  }
-  return { value: limited.toString('base64'), encoding: 'base64', truncated, size };
-}
-
-function toSerializableHeaders(headers: Record<string, unknown>): unknown {
-  try {
-    const json = JSON.stringify(headers);
-    if (json.length > 8000) {
-      return { note: 'headers omitted (too large)' };
-    }
-    return JSON.parse(json);
-  } catch {
-    return {};
-  }
 }
 
 function parseTopics(raw: unknown): string[] {
@@ -262,6 +227,7 @@ export class EventMeshPanelManager implements vscode.Disposable {
       bindings: [],
       clientsByBinding: new Map(),
       discoveredByBinding: new Map(),
+      queuesByBinding: new Map(),
       listenSession: null,
       starting: false,
       sequence: 0,
@@ -271,7 +237,7 @@ export class EventMeshPanelManager implements vscode.Disposable {
     session.listenSession = this.createListenSession(session);
     this.sessions.set(appId, session);
 
-    panel.webview.html = this.buildWebviewHtml(panel.webview, appId);
+    panel.webview.html = buildEventMeshWebviewHtml(this.extensionUri, panel.webview, appId);
 
     panel.onDidDispose(() => {
       if (this.sessions.get(appId) === session) {
@@ -299,6 +265,11 @@ export class EventMeshPanelManager implements vscode.Disposable {
     if (type === 'sapTools.events.selectBinding') {
       const bindingIndex = typeof message['bindingIndex'] === 'number' ? message['bindingIndex'] : 0;
       await this.discoverAndPostTopics(session, bindingIndex);
+      return;
+    }
+    if (type === 'sapTools.events.selectPublishBinding') {
+      const bindingIndex = typeof message['bindingIndex'] === 'number' ? message['bindingIndex'] : 0;
+      await this.discoverAndPostPublishMetadata(session, bindingIndex);
       return;
     }
     if (type === 'sapTools.events.startListening') {
@@ -442,6 +413,43 @@ export class EventMeshPanelManager implements vscode.Disposable {
     }
   }
 
+  private async discoverAndPostPublishMetadata(
+    session: PanelSession,
+    bindingIndex: number
+  ): Promise<void> {
+    if (isTestMode()) {
+      this.postMockPublishMetadata(session, bindingIndex);
+      return;
+    }
+    await this.discoverAndPostTopics(session, bindingIndex);
+    await this.discoverAndPostQueues(session, bindingIndex);
+  }
+
+  private async discoverAndPostQueues(session: PanelSession, bindingIndex: number): Promise<void> {
+    const binding = session.bindings.find((entry) => entry.index === bindingIndex);
+    if (binding === undefined) {
+      return;
+    }
+
+    const cached = session.queuesByBinding.get(bindingIndex);
+    if (cached !== undefined) {
+      this.post(session, 'sapTools.events.queues', { bindingIndex, queues: cached });
+      return;
+    }
+
+    try {
+      const queues = await this.getClient(session, binding).listQueueNames();
+      session.queuesByBinding.set(bindingIndex, queues);
+      this.post(session, 'sapTools.events.queues', { bindingIndex, queues });
+    } catch (error) {
+      this.post(session, 'sapTools.events.queues', {
+        bindingIndex,
+        queues: [],
+        discoveryError: describeError(error),
+      });
+    }
+  }
+
   private parseBindingRequests(session: PanelSession, message: Record<string, unknown>): EventMeshListenRequest[] {
     const raw = Array.isArray(message['bindings']) ? (message['bindings'] as unknown[]) : [];
     return raw.flatMap((b): EventMeshListenRequest[] => {
@@ -506,16 +514,43 @@ export class EventMeshPanelManager implements vscode.Disposable {
   }
 
   private async handlePublishEvent(session: PanelSession, message: Record<string, unknown>): Promise<void> {
-    const idx = typeof message['bindingIndex'] === 'number' ? message['bindingIndex'] : -1;
-    const topic = typeof message['topic'] === 'string' ? message['topic'].trim() : '';
-    const payload = typeof message['payload'] === 'string' ? message['payload'] : '';
-    const ct = typeof message['contentType'] === 'string' ? message['contentType'] : 'application/json';
-    if (topic.length === 0) return;
-    if (isTestMode()) { setTimeout(() => { this.post(session, 'sapTools.events.publishResult', { bindingIndex: idx, topic, ok: true, status: 204 }); }, 400); return; }
-    const binding = session.bindings.find((b) => b.index === idx);
-    if (binding === undefined) return;
-    try { const status = await publishEventToMesh(binding, topic, payload, ct); this.post(session, 'sapTools.events.publishResult', { bindingIndex: idx, topic, ok: true, status }); }
-    catch (error) { this.post(session, 'sapTools.events.publishResult', { bindingIndex: idx, topic, ok: false, message: describeError(error) }); }
+    const request = parsePublishEventRequest(session.bindings, message);
+    if (request === null) return;
+    if (isTestMode()) {
+      setTimeout(() => {
+        this.post(session, 'sapTools.events.publishResult', {
+          bindingIndex: request.binding.index,
+          destinationKind: request.destinationKind,
+          destination: request.destination,
+          ...(request.destinationKind === 'topic' ? { topic: request.destination } : {}),
+          ok: true,
+          status: 204,
+        });
+      }, 400);
+      return;
+    }
+
+    try {
+      const status = request.destinationKind === 'queue'
+        ? await publishEventToMeshQueue(request.binding, request.destination, request.payload, request.contentType)
+        : await publishEventToMesh(request.binding, request.destination, request.payload, request.contentType);
+      this.post(session, 'sapTools.events.publishResult', {
+        bindingIndex: request.binding.index,
+        destinationKind: request.destinationKind,
+        destination: request.destination,
+        ...(request.destinationKind === 'topic' ? { topic: request.destination } : {}),
+        ok: true,
+        status,
+      });
+    } catch (error) {
+      this.post(session, 'sapTools.events.publishResult', {
+        bindingIndex: request.binding.index,
+        destinationKind: request.destinationKind,
+        destination: request.destination,
+        ok: false,
+        message: describeError(error),
+      });
+    }
   }
   private enqueueMessage(
     session: PanelSession,
@@ -524,7 +559,7 @@ export class EventMeshPanelManager implements vscode.Disposable {
     normalized: NormalizedEventMessage
   ): void {
     session.sequence += 1;
-    const payload = formatPayload(normalized.body, normalized.contentType, MAX_PAYLOAD_BYTES);
+    const payload = formatEventMeshPayload(normalized.body, normalized.contentType, MAX_PAYLOAD_BYTES);
     session.buffer.push({
       seq: session.sequence,
       time: new Date().toISOString(),
@@ -539,7 +574,7 @@ export class EventMeshPanelManager implements vscode.Disposable {
       encoding: payload.encoding,
       truncated: payload.truncated,
       size: payload.size,
-      headers: toSerializableHeaders(normalized.headers),
+      headers: toSerializableEventMeshHeaders(normalized.headers),
     });
     session.buffer = trimOutgoingEventBuffer(session.buffer);
 
@@ -611,6 +646,20 @@ export class EventMeshPanelManager implements vscode.Disposable {
     this.post(session, 'sapTools.events.topics', { bindingIndex: 0, topics: [`${namespace}/items/created`, `${namespace}/items/updated`], wildcardTopic: wildcardTopicFor(namespace) });
   }
 
+  private postMockPublishMetadata(session: PanelSession, bindingIndex: number): void {
+    const binding = session.bindings.find((entry) => entry.index === bindingIndex);
+    if (binding === undefined) return;
+    this.post(session, 'sapTools.events.topics', {
+      bindingIndex,
+      topics: [`${binding.namespace}/items/created`, `${binding.namespace}/items/updated`],
+      wildcardTopic: wildcardTopicFor(binding.namespace),
+    });
+    this.post(session, 'sapTools.events.queues', {
+      bindingIndex,
+      queues: [`${binding.namespace}/q-main`, `${binding.namespace}/q-audit`],
+    });
+  }
+
   private postMockListening(session: PanelSession, requests: EventMeshListenRequest[]): void {
     if (requests.length === 0) return;
     const summaries: EventMeshBindingSummary[] = requests.map((r) => ({
@@ -645,68 +694,4 @@ export class EventMeshPanelManager implements vscode.Disposable {
     });
   }
 
-  private buildWebviewHtml(webview: vscode.Webview, appId: string): string {
-    const prototypesUri = vscode.Uri.joinPath(this.extensionUri, 'docs', 'designs', 'prototypes');
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(prototypesUri, 'assets', 'events-webview.js')
-    );
-    const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(prototypesUri, 'assets', 'prototype.css'));
-    // cspell:ignore wght
-    const fontUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(prototypesUri, 'assets', 'Outfit-VariableFont_wght.ttf')
-    );
-    const cacheBust = Date.now().toString();
-    const scriptUriStr = scriptUri.with({ query: `t=${cacheBust}` }).toString();
-    const cssUriStr = cssUri.with({ query: `t=${cacheBust}` }).toString();
-    const fontUriStr = fontUri.toString();
-    const nonce = randomBytes(16).toString('base64url');
-    const csp = [
-      "default-src 'none'",
-      `img-src ${webview.cspSource} data:`,
-      `style-src ${webview.cspSource} 'nonce-${nonce}'`,
-      `font-src ${webview.cspSource}`,
-      `script-src 'nonce-${nonce}' ${webview.cspSource}`,
-    ].join('; ');
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="${csp}" />
-  <title>Event Mesh</title>
-  <style nonce="${nonce}">
-    @font-face {
-      font-family: 'Outfit';
-      src: url('${fontUriStr}') format('truetype');
-      font-weight: 100 900;
-      font-style: normal;
-      font-display: swap;
-    }
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--vscode-editor-background);
-      color: var(--vscode-editor-foreground);
-      height: 100vh;
-      overflow: hidden;
-    }
-    #event-mesh-app {
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-    }
-  </style>
-  <link rel="stylesheet" href="${cssUriStr}" />
-</head>
-<body class="vscode-dark">
-  <div id="event-mesh-app"></div>
-  <script nonce="${nonce}">
-    window.eventMeshAppId = ${JSON.stringify(appId)};
-  </script>
-  <script nonce="${nonce}" src="${scriptUriStr}"></script>
-</body>
-</html>`;
-  }
 }

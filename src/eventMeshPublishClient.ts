@@ -1,6 +1,7 @@
 import type { EventMeshBinding, EventMeshOAuth } from './eventMeshBindings';
 
 type FetchFn = typeof fetch;
+type PublishDestinationKind = 'topic' | 'queue';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -44,9 +45,15 @@ class EventMeshPublishClient {
     private readonly now: () => number = Date.now
   ) {}
 
-  async publishEvent(topic: string, payload: string, contentType: string): Promise<number> {
+  async publishEvent(
+    destinationKind: PublishDestinationKind,
+    destination: string,
+    payload: string,
+    contentType: string
+  ): Promise<number> {
     const token = await this.getToken();
-    const url = `${this.binding.messaging.uri}/messagingrest/v1/topics/${encodeURIComponent(topic)}/messages`;
+    const collection = destinationKind === 'queue' ? 'queues' : 'topics';
+    const url = `${this.binding.messaging.uri}/messagingrest/v1/${collection}/${encodeURIComponent(destination)}/messages`;
     const res = await this.fetchImpl(url, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': contentType, 'x-qos': '0' },
@@ -84,10 +91,29 @@ export async function publishEventToMesh(
   payload: string,
   contentType: string
 ): Promise<number> {
+  return publishEventToMeshDestination(binding, 'topic', topic, payload, contentType);
+}
+
+export async function publishEventToMeshQueue(
+  binding: EventMeshBinding,
+  queueName: string,
+  payload: string,
+  contentType: string
+): Promise<number> {
+  return publishEventToMeshDestination(binding, 'queue', queueName, payload, contentType);
+}
+
+async function publishEventToMeshDestination(
+  binding: EventMeshBinding,
+  destinationKind: PublishDestinationKind,
+  destination: string,
+  payload: string,
+  contentType: string
+): Promise<number> {
   let client = publishClientCache.get(binding);
   if (client === undefined) {
     client = new EventMeshPublishClient(binding);
     publishClientCache.set(binding, client);
   }
-  return client.publishEvent(topic, payload, contentType);
+  return client.publishEvent(destinationKind, destination, payload, contentType);
 }

@@ -83,6 +83,14 @@
         });
       }
 
+      function postPrototypeQueues(binding) {
+        postToViewer({
+          type: 'sapTools.events.queues',
+          bindingIndex: binding.index,
+          queues: [`${binding.namespace}/q-main`, `${binding.namespace}/q-audit`],
+        });
+      }
+
       function listeningSummary(binding, topics) {
         return {
           bindingIndex: binding.index,
@@ -135,6 +143,13 @@
           return;
         }
 
+        if (message.type === 'sapTools.events.selectPublishBinding') {
+          const binding = findPrototypeBinding(Number(message.bindingIndex));
+          postPrototypeTopics(binding);
+          postPrototypeQueues(binding);
+          return;
+        }
+
         if (message.type === 'sapTools.events.startListening') {
           const requests = Array.isArray(message.bindings) ? message.bindings : [];
           const summaries = requests.map((request) => {
@@ -177,6 +192,8 @@
             postToViewer({
               type: 'sapTools.events.publishResult',
               bindingIndex: message.bindingIndex,
+              destinationKind: message.destinationKind || 'topic',
+              destination: message.destination || message.topic || message.queueName,
               topic: message.topic,
               ok: true,
               status: 204,

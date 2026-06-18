@@ -439,7 +439,62 @@ describe('prototype Log-API-Event workspace', () => {
 
     expect(source).toContain("'sapTools.events.publishEvent'");
     expect(source).toContain("'sapTools.events.publishResult'");
+    expect(source).toContain('destinationKind: message.destinationKind');
+    expect(source).toContain('destination: message.destination');
     expect(source).toContain('status: 204');
+  });
+
+  it('makes the Publish form controls fill the available panel width', async () => {
+    const styles = await readEventStylesSource();
+    const inputMatch = /\.event-input\s*\{([\s\S]*?)\n\}/.exec(styles);
+    const formMatch = /\.event-publish-form\s*\{([\s\S]*?)\n\}/.exec(styles);
+
+    expect(inputMatch).not.toBeNull();
+    expect(inputMatch?.[1] ?? '').toContain('box-sizing: border-box');
+    expect(inputMatch?.[1] ?? '').toContain('width: 100%');
+
+    expect(formMatch).not.toBeNull();
+    expect(formMatch?.[1] ?? '').toContain('width: 100%');
+    expect(formMatch?.[1] ?? '').toContain('max-width: none');
+    expect(formMatch?.[1] ?? '').not.toContain('max-width: 640px');
+  });
+
+  it('lets Publish choose discovered topics while preserving free-form topic entry', async () => {
+    const source = await readEventWebviewSource();
+
+    expect(source).toContain('renderPublishTopicField');
+    expect(source).toContain('renderPublishTopicOptions');
+    expect(source).toContain('publishTopicCandidates');
+    expect(source).toContain('data-role="ep-topic-input"');
+    expect(source).toContain('<datalist id="${listId}">');
+    expect(source).toContain('requestPublishMetadata');
+    expect(source).toContain("'sapTools.events.selectPublishBinding'");
+    expect(source).not.toContain('publishTopic = state.discoveredTopics');
+  });
+
+  it('adds Queue as a Publish destination with discovered queue candidates and manual entry', async () => {
+    const source = await readEventWebviewSource();
+    const styles = await readEventStylesSource();
+    const fixture = await readEventVariantSource();
+
+    expect(source).toContain("let publishDestinationKind = 'topic';");
+    expect(source).toContain('let publishQueue =');
+    expect(source).toContain('const queuesByBinding = new Map();');
+    expect(source).toContain('function queueStateFor(index)');
+    expect(source).toContain('function handleQueues(data)');
+    expect(source).toContain("'sapTools.events.queues'");
+    expect(source).toContain('data-role="ep-destination-kind" value="queue"');
+    expect(source).toContain('data-role="ep-queue-input"');
+    expect(source).toContain('renderPublishQueueOptions');
+    expect(source).toContain("message.queueName = destination");
+    expect(source).toContain("destinationKind: publishDestinationKind");
+    expect(source).toContain('destination,');
+    expect(styles).toContain('.event-publish-destination');
+    expect(styles).toMatch(/\.event-segment-option input\s*\{[\s\S]*?inset:\s*0;/);
+    expect(styles).toMatch(/\.event-segment-option input\s*\{[\s\S]*?width:\s*100%;/);
+    expect(fixture).toContain("'sapTools.events.selectPublishBinding'");
+    expect(fixture).toContain("'sapTools.events.queues'");
+    expect(fixture).toContain('postPrototypeQueues');
   });
 });
 
