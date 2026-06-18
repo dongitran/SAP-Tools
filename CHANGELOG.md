@@ -1,5 +1,8 @@
 # SAP Tools Extension Changelog
 
+## 0.10.123 (stable)
+- Fix: Topic panel no longer overflows the bottom of the panel when a binding card is expanded. Root cause: `.event-binding-list` had `max-height: 160px; overflow-y: auto;` which clipped the expanded card (header + topic table ≈ 316px) to 160px, making the topic table appear to fall off the bottom. Removed the max-height cap; the `.event-setup` section (`flex: 0 1 auto; overflow-y: auto`) handles section-level scrolling when the viewport is too small.
+
 ## 0.10.122 (stable)
 - Fix: The expanded topic panel no longer overflows below the bottom of the panel. Changed `.event-setup` from `flex: 0 0 auto` (never shrinks) to `flex: 0 1 auto` with `min-height: 0` and `overflow-y: auto`, so the section scrolls internally when viewport height is insufficient rather than extending past the panel boundary. No hard-coded max-height percentage is used.
 - UI: Removed the "Topics For [binding name]" title row from the expanded topic panel.

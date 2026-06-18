@@ -258,11 +258,6 @@
   overflow-y: auto;
 }
 
-.event-binding-list {
-  max-height: 160px;
-  overflow-y: auto;
-}
-
 .event-binding-option {
   display: grid;
   grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1.4fr);
