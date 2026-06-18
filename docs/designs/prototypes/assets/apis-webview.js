@@ -1,3 +1,5 @@
+const API_DEFAULT_TOP = '100';
+
 let apiSelectedEntity = '';
 let apiAuthMethod = 'xsuaa-auto';
 let apiHttpMethod = 'GET';
@@ -6,7 +8,7 @@ let apiParams = {
   $select: '',
   $filter: '',
   $expand: '',
-  $top: '5',
+  $top: API_DEFAULT_TOP,
   $skip: '0'
 };
 let apiResultState = 'idle';
@@ -20,7 +22,7 @@ let apiCatalogState = 'loading';
 let apiCurrentCatalog = null;
 
 let apiTraceState = 'idle';
-let apiTraceStatusMessage = 'Ready to listen for runtime HTTP traffic.';
+let apiTraceStatusMessage = '';
 let apiTraceRuntimeHookInstalled = false;
 let apiTraceRuntimeHookMayRemain = false;
 let apiTraceEvents = [];
@@ -77,7 +79,7 @@ function loadEndpointSession(entityName) {
       $select: '',
       $filter: '',
       $expand: '',
-      $top: '5',
+      $top: API_DEFAULT_TOP,
       $skip: '0'
     };
     apiResultState = 'idle';
@@ -412,6 +414,22 @@ function statusBucket(status) {
   return 'unknown';
 }
 
+function formatTraceStateLabel(state) {
+  const labels = {
+    idle: 'Idle',
+    preparingCli: 'Preparing',
+    openingTunnel: 'Opening tunnel',
+    connectingInspector: 'Connecting',
+    installingHook: 'Installing hook',
+    streaming: 'Streaming',
+    stopping: 'Stopping',
+    stopped: 'Stopped',
+    needsInspector: 'Needs Inspector',
+    error: 'Error'
+  };
+  return labels[state] || 'Idle';
+}
+
 function normalizeTraceUrl(rawUrl) {
   if (typeof rawUrl !== 'string' || rawUrl.length === 0) return '/';
   try {
@@ -652,11 +670,15 @@ function renderLiveTracePanel() {
   const isActive = isTraceActiveState(apiTraceState);
   const canStop = isTraceStoppableState(apiTraceState);
   const statusClass = apiTraceState === 'error' ? 'is-error' : isActive ? 'is-streaming' : 'is-idle';
+  const shouldShowStatusLine = apiTraceState !== 'idle' && apiTraceStatusMessage.trim().length > 0;
   panel.innerHTML = `
     <section class="api-trace-shell" aria-label="Live Trace HTTP inspector">
       <div class="api-trace-toolbar">
         <div class="api-trace-title">
-          <h2>Live Trace</h2>
+          <div class="api-trace-title-row">
+            <h2>Live Trace</h2>
+            <span class="api-trace-state-badge ${statusClass}" aria-label="Live Trace state">${escapeHtml(formatTraceStateLabel(apiTraceState))}</span>
+          </div>
         </div>
         <div class="api-trace-actions">
           <button type="button" class="primary-action api-trace-action-btn" data-action="api-trace-start" ${isActive ? 'disabled' : ''}>Start Listening</button>
@@ -665,10 +687,7 @@ function renderLiveTracePanel() {
         </div>
       </div>
 
-      <div class="api-trace-status-line ${statusClass}" role="status">
-        <span>State: ${escapeHtml(apiTraceState)}</span>
-        <span>${escapeHtml(apiTraceStatusMessage)}</span>
-      </div>
+      ${shouldShowStatusLine ? `<div class="api-trace-status-line ${statusClass}" role="status">${escapeHtml(apiTraceStatusMessage)}</div>` : ''}
 
       <div class="api-trace-controls">
         <fieldset class="api-trace-control-group">
@@ -866,8 +885,8 @@ function updateWorkbenchSection() {
     mainPanel.innerHTML = `
         <!-- Request Section -->
         <section class="api-request-section" aria-label="API Request Builder" style="gap: 8px; padding-top: 12px; padding-bottom: 12px;">
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <div class="api-url-bar" style="flex: 1; margin: 0;">
+          <div class="api-request-url-row">
+            <div class="api-url-bar">
               <select class="api-method-select" data-action="api-select-method" style="background: var(--vscode-button-background, #007acc); color: var(--vscode-button-foreground, #ffffff); font-weight: bold; border: none; padding: 4px 8px; outline: none; cursor: pointer; -webkit-appearance: none; text-align: center; font-size: 11px;">
                 <option value="GET">GET</option>
                 <option value="POST">POST</option>
@@ -990,10 +1009,12 @@ function updateSidebarSection() {
 
   const renderLoading = () => {
     sidebar.innerHTML = `
-      <div style="padding: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; opacity: 0.7;">
-        <div class="api-loading-spinner-large" style="margin-bottom: 16px;"></div>
-        <div style="font-size: 13px; font-weight: 500; color: var(--vscode-foreground);">Discovering Endpoints...</div>
-        <div style="font-size: 11px; margin-top: 8px; color: var(--vscode-descriptionForeground);">Fetching metadata from the deployed application</div>
+      <div class="api-sidebar-loading">
+        <div class="api-sidebar-loading-content">
+          <div class="api-loading-spinner-large"></div>
+          <div class="api-sidebar-loading-title">Discovering Endpoints...</div>
+          <div class="api-sidebar-loading-subtitle">Fetching metadata from the deployed application</div>
+        </div>
       </div>
     `;
   };
@@ -1025,13 +1046,12 @@ function updateSidebarSection() {
   const searchTerm = searchInput ? searchInput.value : '';
 
   sidebar.innerHTML = `
-    <div style="padding: 12px 0 0 0; background: var(--vscode-sideBar-background, #252526); z-index: 10;">
-      <div class="api-entities-list-title" style="margin-bottom: 8px; padding: 0 12px; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 1; color: var(--vscode-sideBarTitle-foreground, var(--vscode-foreground));">Endpoints (${currentCatalog.entities.length}) ${apiCatalogState === 'syncing' ? '<span class="api-sync-spinner" style="display:inline-block; animation: api-spin 1s linear infinite; margin-left: 4px; font-size: 10px;">&#8635;</span>' : ''}</div>
-      <div class="api-search-container" style="padding: 0 12px 12px 12px; border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);">
-        <div style="position: relative; display: flex; align-items: center; background: var(--vscode-input-background, #3c3c3c); border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px;">
-          <span aria-hidden="true" style="position: absolute; left: 6px; font-size: 14px; color: var(--vscode-input-foreground, #cccccc);">&#128269;</span>
-          <input type="search" data-action="api-search-entity" value="${escapeHtml(searchTerm)}" placeholder="Search endpoints" style="width: 100%; padding: 4px 6px 4px 28px; background: transparent; border: none; color: var(--vscode-input-foreground, #cccccc); outline: none; font-family: inherit; font-size: 13px;" />
-        </div>
+    <div class="api-sidebar-search-shell">
+      <div class="api-search-container">
+        <label class="api-endpoint-search search-input-with-icon">
+          <span class="search-input-icon" aria-hidden="true">&#128269;</span>
+          <input class="api-endpoint-search-input" type="search" data-action="api-search-entity" value="${escapeHtml(searchTerm)}" placeholder="Search endpoints" />
+        </label>
       </div>
     </div>
     <div class="api-entities-list-container" style="padding: 0; display: flex; flex-direction: column; flex: 1; overflow-y: auto;">
@@ -1511,7 +1531,7 @@ window.addEventListener('message', (event) => {
   if (event.data.type === 'sapTools.apis.trace.state') {
     const payload = event.data.payload || {};
     apiTraceState = payload.state || apiTraceState;
-    apiTraceStatusMessage = payload.message || apiTraceStatusMessage;
+    apiTraceStatusMessage = typeof payload.message === 'string' ? payload.message : apiTraceStatusMessage;
     apiTraceRuntimeHookInstalled = payload.runtimeHookInstalled === true;
     apiTraceRuntimeHookMayRemain = payload.runtimeHookMayRemain === true;
     renderLiveTracePanel();
@@ -1564,7 +1584,7 @@ window.addEventListener('message', (event) => {
     apiResultPayload = null;
     apiActiveMainTab = 'request-runner';
     apiTraceState = 'idle';
-    apiTraceStatusMessage = 'Ready to listen for runtime HTTP traffic.';
+    apiTraceStatusMessage = '';
     apiTraceEvents = [];
     apiTraceSelectedEventId = '';
     apiTraceSelectedUrl = 'all';
@@ -1580,7 +1600,7 @@ window.addEventListener('message', (event) => {
       $select: '',
       $filter: '',
       $expand: '',
-      $top: '5',
+      $top: API_DEFAULT_TOP,
       $skip: '0'
     };
     

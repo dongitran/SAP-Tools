@@ -548,6 +548,26 @@ describe('prototype Log-API-Event workspace', () => {
     expect(styles).toContain('.api-main-tab-panel');
   });
 
+  it('keeps Request Runner discovery, search, URL controls, and defaults aligned', async () => {
+    const source = await readApiWebviewSource();
+    const styles = await readApiStylesSource();
+
+    expect(source).toContain("const API_DEFAULT_TOP = '100';");
+    expect(source).toContain('$top: API_DEFAULT_TOP');
+    expect(source).toContain('class="api-sidebar-loading"');
+    expect(source).toContain('class="api-endpoint-search search-input-with-icon"');
+    expect(source).toContain('class="search-input-icon"');
+    expect(source).toContain('class="api-endpoint-search-input"');
+    expect(source).toContain('class="api-request-url-row"');
+    expect(source).not.toContain('api-entities-list-title');
+    expect(source).not.toContain('Endpoints (${currentCatalog.entities.length})');
+
+    expect(styles).toContain('.api-sidebar-loading');
+    expect(styles).toContain('.api-endpoint-search');
+    expect(styles).toContain('.api-endpoint-search-input');
+    expect(styles).toContain('.api-request-url-row');
+  });
+
   it('renders Live Trace as a request/response inspector with URL aggregation controls', async () => {
     const source = await readApiWebviewSource();
     const styles = await readApiStylesSource();
@@ -572,6 +592,11 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source).toContain('captureHeaders: apiTraceCaptureHeaders');
     expect(source).toContain('if (apiTracePaused) return;');
     expect(source).toContain("apiTraceState = 'preparingCli'");
+    expect(source).toContain('class="api-trace-title-row"');
+    expect(source).toContain('class="api-trace-state-badge ${statusClass}"');
+    expect(source).toContain('formatTraceStateLabel(apiTraceState)');
+    expect(source).not.toContain('Ready to listen for runtime HTTP traffic.');
+    expect(source).not.toContain('State: ${escapeHtml(apiTraceState)}');
     expect(source).not.toContain('Trace detail views');
     expect(source).not.toContain('api-trace-switch-detail');
     expect(source).not.toContain('Runtime HTTP Trace · Hook');
@@ -583,6 +608,8 @@ describe('prototype Log-API-Event workspace', () => {
     expect(styles).toContain('.api-trace-detail-grid');
     expect(styles).toContain('.api-trace-detail-columns');
     expect(styles).toContain('.api-trace-url-select');
+    expect(styles).toContain('.api-trace-title-row');
+    expect(styles).toContain('.api-trace-state-badge');
   });
 
   it('keeps Live Trace UI free of inline event handlers and new inline trace styles', async () => {

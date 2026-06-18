@@ -1,5 +1,10 @@
 # SAP Tools Extension Changelog
 
+## 0.10.144 (stable)
+- UI: Request Runner now centers endpoint discovery loading in the left panel, restores the full-width endpoint search box with an inline search icon, keeps the auth gear beside the URL bar, and removes the endpoint count title.
+- UI: Live Trace now shows the current state as a compact badge beside the title and no longer renders idle status copy.
+- Change: Request Runner now defaults `$top` to `100` for newly selected endpoints and apps.
+
 ## 0.10.143 (stable)
 - Feature: Live Trace now attempts a real Node Inspector runtime trace path through CF SSH tunneling, Inspector WebSocket injection, bounded in-process event queues, and best-effort hook uninstall on stop.
 - UI: Live Trace now uses equal-height Start/Stop/Clear controls, removes the hook status subtitle, and shows request summary, request headers/body, and response headers/body in one combined detail view.
