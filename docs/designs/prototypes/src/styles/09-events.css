@@ -96,8 +96,6 @@
 
 .event-setup {
   flex: 0 0 auto;
-  max-height: 48%;
-  overflow: auto;
   border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
   padding: 12px 16px;
 }

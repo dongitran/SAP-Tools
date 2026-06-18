@@ -1,5 +1,8 @@
 # SAP Tools Extension Changelog
 
+## 0.10.121 (stable)
+- UI: The "Selected Bindings" setup section no longer has a `max-height: 48%` cap, so it grows naturally with its content and does not scroll as a whole when the binding picker is open. The inner binding results list and selected bindings list retain their own individual max-heights for contained scrolling.
+
 ## 0.10.120 (stable)
 - Fix: The "Add Messaging Binding" picker no longer truncates the results list at 12 items and hides the rest behind a "X more bindings match" hint. All matching bindings are now shown in a scrollable container, sorted alphabetically by name.
 - Fix: The "Publish Event" button now enables as soon as a topic name is typed, without requiring "Format JSON" to be clicked first. Previously, the button's disabled state was only re-evaluated on a full `render()` call; typing in the topic input now calls a targeted `updatePublishSendButton()` that updates only the button in place without rebuilding the form.
