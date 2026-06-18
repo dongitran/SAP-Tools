@@ -1,12 +1,20 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { fetchAppRouteUrlFromTarget, fetchCfOauthTokenFromTarget, fetchXsuaaTokenFromTarget, fetchRemoteCdsServicesFromTarget } from './cfClient.js';
+import { readExecuteRequestPayload, readTraceStartOptions, readUninstallRuntimeHook } from './apisExplorerMessages.js';
+import { ApiTraceSession } from './apiTraceSession.js';
+import type { ApiTraceStopReason } from './apiTraceTypes.js';
+import type { ExecuteRequestPayload } from './apisExplorerMessages.js';
 import type { CacheStore } from './cacheStore.js';
 
 const APIS_EXPLORER_VIEW_TYPE = 'sapTools.apisExplorer';
 
 export interface ApisExplorerPanelSession {
   readonly panel: vscode.WebviewPanel;
+  readonly appId: string;
+  targetParams?: ApisExplorerTargetParams;
+  traceSession?: ApiTraceSession;
+  disposed: boolean;
 }
 
 export interface ApisExplorerTargetParams {
@@ -16,6 +24,27 @@ export interface ApisExplorerTargetParams {
   readonly orgName: string;
   readonly spaceName: string;
   readonly cfHomeDir?: string;
+}
+
+function isTestMode(): boolean {
+  return process.env['SAP_TOOLS_TEST_MODE'] === '1' || process.env['SAP_TOOLS_E2E'] === '1';
+}
+
+function areTargetParamsEqual(
+  left: ApisExplorerTargetParams | undefined,
+  right: ApisExplorerTargetParams | undefined
+): boolean {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+  return (
+    left.apiEndpoint === right.apiEndpoint &&
+    left.email === right.email &&
+    left.password === right.password &&
+    left.orgName === right.orgName &&
+    left.spaceName === right.spaceName &&
+    left.cfHomeDir === right.cfHomeDir
+  );
 }
 
 export class ApisExplorerPanelManager implements vscode.Disposable {
@@ -37,14 +66,33 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
       this.disposables.pop()?.dispose();
     }
     for (const session of this.sessions.values()) {
+      this.stopTraceSession(session, 'shutdown', true);
       session.panel.dispose();
     }
     this.sessions.clear();
   }
 
+  stopAllTraces(reason: ApiTraceStopReason): void {
+    for (const session of this.sessions.values()) {
+      if (session.traceSession?.canStop() ?? false) {
+        this.stopTraceSession(session, reason, true);
+      }
+    }
+  }
+
   openApisExplorer(appId: string, targetParams?: ApisExplorerTargetParams): ApisExplorerPanelSession {
     const existingSession = this.sessions.get(appId);
     if (existingSession !== undefined) {
+      const targetChanged = !areTargetParamsEqual(existingSession.targetParams, targetParams);
+      if (targetChanged && (existingSession.traceSession?.isRunning() ?? false)) {
+        this.stopTraceSession(existingSession, 'target-changed', true);
+      }
+      if (targetParams === undefined) {
+        delete existingSession.targetParams;
+      } else {
+        existingSession.targetParams = targetParams;
+      }
+      existingSession.traceSession?.updateTargetParams(targetParams);
       existingSession.panel.reveal();
       if (targetParams !== undefined) {
         void this.loadApiData(appId, targetParams, existingSession.panel);
@@ -65,7 +113,14 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
       }
     );
 
-    const session: ApisExplorerPanelSession = { panel };
+    const session: ApisExplorerPanelSession = {
+      panel,
+      appId,
+      disposed: false,
+    };
+    if (targetParams !== undefined) {
+      session.targetParams = targetParams;
+    }
     this.sessions.set(appId, session);
 
     panel.webview.html = this.buildWebviewHtml(panel.webview, appId);
@@ -73,31 +128,132 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
     const panelDisposables: vscode.Disposable[] = [];
 
     panel.onDidDispose(() => {
+      session.disposed = true;
       this.sessions.delete(appId);
+      this.stopTraceSession(session, 'panel-closed', true);
       while (panelDisposables.length > 0) {
         panelDisposables.pop()?.dispose();
       }
     });
 
-    panel.webview.onDidReceiveMessage(async (message: unknown) => {
-      if (typeof message === 'object' && message !== null) {
-        const msg = message as Record<string, unknown>;
-        if (msg['type'] === 'sapTools.apis.executeRequest') {
-          const payload = msg['payload'] as { url: string; method: string; auth: string; body?: string };
-          await this.handleExecuteRequest(appId, payload.url, payload.method, payload.auth, targetParams, panel, payload.body);
-        } else if (msg['type'] === 'sapTools.apis.webviewReady') {
-          if (targetParams !== undefined) {
-            void this.loadApiData(appId, targetParams, panel);
-          }
-        }
-      }
+    panel.webview.onDidReceiveMessage((message: unknown) => {
+      void this.handleWebviewMessage(session, message);
     }, null, panelDisposables);
 
     return session;
   }
 
+  private async handleWebviewMessage(
+    session: ApisExplorerPanelSession,
+    message: unknown
+  ): Promise<void> {
+    if (typeof message !== 'object' || message === null) {
+      return;
+    }
+    const msg = message as Record<string, unknown>;
+    const type = msg['type'];
+
+    if (type === 'sapTools.apis.executeRequest') {
+      const payload = readExecuteRequestPayload(msg['payload']);
+      if (payload !== null) {
+        await this.handleExecuteRequest(session, payload);
+      }
+      return;
+    }
+    if (type === 'sapTools.apis.webviewReady') {
+      if (session.targetParams !== undefined) {
+        void this.loadApiData(session.appId, session.targetParams, session.panel);
+      }
+      return;
+    }
+    if (type === 'sapTools.apis.trace.start') {
+      this.startTrace(session, msg['payload']);
+      return;
+    }
+    if (type === 'sapTools.apis.trace.stop') {
+      this.stopTraceSession(session, 'user', readUninstallRuntimeHook(msg['payload']));
+      return;
+    }
+    if (type === 'sapTools.apis.trace.clear') {
+      session.traceSession?.clear();
+    }
+  }
+
+  private startTrace(session: ApisExplorerPanelSession, payload: unknown): void {
+    const options = readTraceStartOptions(payload);
+    if (options === null) {
+      this.postTraceState(session, 'error', 'Invalid trace start request.', false, false);
+      return;
+    }
+    const traceSession = this.getTraceSession(session);
+    traceSession.start(options);
+  }
+
+  private getTraceSession(session: ApisExplorerPanelSession): ApiTraceSession {
+    session.traceSession ??= new ApiTraceSession({
+      appId: session.appId,
+      targetParams: session.targetParams,
+      isTestMode: isTestMode(),
+      callbacks: {
+        postState: (payload): void => {
+          this.post(session, { type: 'sapTools.apis.trace.state', payload });
+        },
+        postBatch: (payload): void => {
+          this.post(session, { type: 'sapTools.apis.trace.batch', payload });
+        },
+        postUrlSummary: (payload): void => {
+          this.post(session, { type: 'sapTools.apis.trace.urlSummary', payload });
+        },
+        log: (message): void => {
+          this.log(message);
+        },
+      },
+    });
+    session.traceSession.updateTargetParams(session.targetParams);
+    return session.traceSession;
+  }
+
+  private stopTraceSession(
+    session: ApisExplorerPanelSession,
+    reason: ApiTraceStopReason,
+    uninstallRuntimeHook: boolean
+  ): void {
+    const traceSession = session.traceSession;
+    if (traceSession === undefined) {
+      return;
+    }
+    traceSession.stop(reason, uninstallRuntimeHook);
+  }
+
+  private postTraceState(
+    session: ApisExplorerPanelSession,
+    state: 'error',
+    message: string,
+    runtimeHookInstalled: boolean,
+    runtimeHookMayRemain: boolean
+  ): void {
+    this.post(session, {
+      type: 'sapTools.apis.trace.state',
+      payload: {
+        state,
+        appId: session.appId,
+        mode: 'runtime-http',
+        message,
+        runtimeHookInstalled,
+        runtimeHookMayRemain,
+      },
+    });
+  }
+
+  private post(session: ApisExplorerPanelSession, message: Record<string, unknown>): void {
+    if (session.disposed) {
+      return;
+    }
+    void session.panel.webview.postMessage(message);
+  }
+
   private async loadApiData(appId: string, targetParams: ApisExplorerTargetParams, panel: vscode.WebviewPanel): Promise<void> {
-    if (process.env['SAP_TOOLS_TEST_MODE'] === '1' || process.env['SAP_TOOLS_E2E'] === '1') {
+    if (isTestMode()) {
       // Return a mock catalog immediately for E2E tests to match expected UI flow
       void panel.webview.postMessage({
         type: 'sapTools.apis.catalogLoaded',
@@ -330,21 +486,16 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
   }
 
   private async handleExecuteRequest(
-    appId: string, 
-    url: string, 
-    method: string, 
-    auth: string, 
-    targetParams: ApisExplorerTargetParams | undefined,
-    panel: vscode.WebviewPanel,
-    body?: string
+    session: ApisExplorerPanelSession,
+    payload: ExecuteRequestPayload
   ): Promise<void> {
     try {
-      this.log(`Executing ${method} ${url} with auth ${auth}`);
+      this.log(`Executing ${payload.method} ${formatUrlForLog(payload.url)} with auth ${payload.auth}`);
 
-      if (process.env['SAP_TOOLS_TEST_MODE'] === '1' || process.env['SAP_TOOLS_E2E'] === '1') {
+      if (isTestMode()) {
         // Return a mock successful response immediately for E2E tests
         setTimeout(() => {
-          void panel.webview.postMessage({
+          void session.panel.webview.postMessage({
             type: 'sapTools.apis.executeResponse',
             payload: {
               status: '200 OK',
@@ -359,55 +510,60 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
       const headers: Record<string, string> = {
         'Accept': 'application/json'
       };
+      const targetParams = session.targetParams;
 
-      if (auth === 'CF Token' && targetParams !== undefined) {
+      if (payload.auth === 'CF Token' && targetParams !== undefined) {
         const token = await fetchCfOauthTokenFromTarget(targetParams);
         if (token !== null) {
           headers['Authorization'] = token;
         }
-      } else if (auth === 'xsuaa-auto' && targetParams !== undefined) {
-        const token = await fetchXsuaaTokenFromTarget({ ...targetParams, appName: appId });
+      } else if (payload.auth === 'xsuaa-auto' && targetParams !== undefined) {
+        const token = await fetchXsuaaTokenFromTarget({ ...targetParams, appName: session.appId });
         if (token !== null) {
           headers['Authorization'] = token;
         }
       }
 
-      if (body !== undefined && body.trim().length > 0) {
+      if (session.traceSession?.isRunning() ?? false) {
+        headers['x-saptools-trace-id'] = randomBytes(12).toString('hex');
+      }
+
+      if (payload.body !== undefined && payload.body.trim().length > 0) {
         headers['Content-Type'] = 'application/json';
       }
 
       const startTime = Date.now();
       const fetchOptions: RequestInit = {
-        method,
+        method: payload.method,
         headers,
         signal: AbortSignal.timeout(10000)
       };
-      if (body !== undefined && body.trim().length > 0) {
-        fetchOptions.body = body;
+      if (payload.body !== undefined && payload.body.trim().length > 0) {
+        fetchOptions.body = payload.body;
       }
-      const res = await fetch(url, fetchOptions);
+      const res = await fetch(payload.url, fetchOptions);
       const elapsedTime = Date.now() - startTime;
 
       
-      let payload: unknown;
+      let responsePayload: unknown;
       const text = await res.text();
       try {
-        payload = JSON.parse(text);
+        responsePayload = JSON.parse(text);
       } catch {
-        payload = { value: [{ info: "Response is not JSON", text }] };
+        responsePayload = { value: [{ info: "Response is not JSON", text }] };
       }
 
-      void panel.webview.postMessage({
+      void session.panel.webview.postMessage({
         type: 'sapTools.apis.executeResponse',
         payload: {
           status: `${String(res.status)} ${res.statusText}`,
           time: elapsedTime,
-          data: payload
+          data: responsePayload
         }
       });
     } catch (e) {
-      this.log(`Error executing request for ${appId}: ${String(e)}`);
-      void panel.webview.postMessage({
+      this.log(`Error executing request for ${session.appId}: ${String(e)}`);
+      void session.panel.webview.postMessage({
         type: 'sapTools.apis.executeResponse',
         payload: {
           status: 'Error',
@@ -429,14 +585,22 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
     const apisWebviewJsUriStr = apisWebviewJsUri.with({ query: `t=${Date.now().toString()}` }).toString();
 
     const nonce = randomBytes(16).toString('base64url');
+    const csp = [
+      "default-src 'none'",
+      `img-src ${webview.cspSource} data:`,
+      `style-src ${webview.cspSource} 'nonce-${nonce}' 'unsafe-inline'`,
+      `font-src ${webview.cspSource}`,
+      `script-src 'nonce-${nonce}' ${webview.cspSource}`,
+    ].join('; ');
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="${csp}" />
   <title>APIs Explorer</title>
-  <style>
+  <style nonce="${nonce}">
     @font-face {
       font-family: 'Outfit';
       src: url('${fontUriStr}') format('truetype');
@@ -475,4 +639,13 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
 </html>`;
   }
 
+}
+
+function formatUrlForLog(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    return `${parsed.origin}${parsed.pathname}${parsed.search.length > 0 ? '?<query omitted>' : ''}`;
+  } catch {
+    return '<invalid-url>';
+  }
 }

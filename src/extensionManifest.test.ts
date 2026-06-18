@@ -31,6 +31,10 @@ function readChangelogTopHeading(): string {
     ?.trim() ?? '';
 }
 
+function readExtensionSource(): string {
+  return readFileSync(new URL('./extension.ts', import.meta.url), 'utf8');
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -179,5 +183,13 @@ describe('Extension manifest feature surface', () => {
         type: 'string',
       })
     );
+  });
+
+  it('registers the APIs Explorer manager for extension shutdown disposal', () => {
+    const source = readExtensionSource();
+    const subscriptionsBlock = /context\.subscriptions\.push\(([\s\S]*?)\n  \);/.exec(source)?.[1] ?? '';
+
+    expect(subscriptionsBlock).toContain('apisExplorerPanelManager');
+    expect(subscriptionsBlock).toContain('eventMeshPanelManager');
   });
 });

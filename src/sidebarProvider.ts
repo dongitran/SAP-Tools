@@ -501,12 +501,14 @@ export class RegionSidebarProvider
       if (appId !== '' && this.currentConfirmedScope !== undefined) {
         const credentials = await getEffectiveCredentials(this.context);
         if (credentials !== null) {
+          const cfHomeDir = await ensureCfHomeDir(this.context);
           this.apisExplorerPanelManager.openApisExplorer(appId, {
             apiEndpoint: getCfApiEndpoint(this.currentConfirmedScope.regionCode),
             email: credentials.email,
             password: credentials.password,
             orgName: this.currentConfirmedScope.orgName,
-            spaceName: this.currentConfirmedScope.spaceName
+            spaceName: this.currentConfirmedScope.spaceName,
+            cfHomeDir,
           });
         } else {
           this.apisExplorerPanelManager.openApisExplorer(appId);
@@ -782,6 +784,7 @@ export class RegionSidebarProvider
       // An open event viewer is bound to the previous scope's app/queue; stop its
       // AMQP listener and delete its debug queue so we never leak a tap across scopes.
       this.eventMeshPanelManager.stopAllListeners('scope-changed');
+      this.apisExplorerPanelManager.stopAllTraces('scope-changed');
     }
     const shouldWriteSharedScope = options.writeSharedScope ?? true;
     if (shouldWriteSharedScope) {

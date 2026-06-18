@@ -14,9 +14,29 @@ let apiResultTime = 0;
 let apiResultStatus = '';
 let apiResultPayload = null;
 let apiActiveView = 'json';
+let apiActiveMainTab = 'request-runner';
 
 let apiCatalogState = 'loading';
 let apiCurrentCatalog = null;
+
+let apiTraceState = 'idle';
+let apiTraceStatusMessage = 'Ready to listen for runtime HTTP traffic.';
+let apiTraceRuntimeHookInstalled = false;
+let apiTraceRuntimeHookMayRemain = false;
+let apiTraceEvents = [];
+let apiTraceSelectedEventId = '';
+let apiTraceSelectedDetailTab = 'overview';
+let apiTraceSelectedUrl = 'all';
+let apiTracePathFilter = '';
+let apiTraceMethodFilter = 'all';
+let apiTraceStatusFilter = 'all';
+let apiTraceSearchText = '';
+let apiTracePaused = false;
+let apiTraceCaptureHeaders = false;
+let apiTraceCaptureRequestBody = false;
+let apiTraceCaptureResponseBody = false;
+
+const API_TRACE_EVENT_LIMIT = 1000;
 
 const endpointSessions = new Map();
 
@@ -134,6 +154,98 @@ const API_MOCK_RESPONSES = {
     }
   }
 };
+
+const API_MOCK_TRACE_EVENTS = [
+  {
+    id: 'trace-001',
+    timestamp: '2026-06-18T07:22:10.120Z',
+    appId: 'demo-app',
+    instance: '0',
+    method: 'GET',
+    path: '/odata/v4/products',
+    url: 'https://mock.example.com/odata/v4/products?$top=5&access_token=demo-access-token',
+    normalizedUrl: '/odata/v4/products?$top=5&access_token=demo-access-token',
+    status: 200,
+    durationMs: 84,
+    requestBytes: 0,
+    responseBytes: 1248,
+    requestHeaders: {
+      accept: 'application/json',
+      authorization: 'Bearer demo-access-token',
+      'x-saptools-trace-id': 'trace-runner-001'
+    },
+    responseHeaders: {
+      'content-type': 'application/json',
+      'set-cookie': 'session=demo-cookie'
+    },
+    requestBodyPreview: '',
+    responseBodyPreview: '{ "value": [{ "ID": "P001", "name": "Notebook" }] }',
+    requestBodyTruncated: false,
+    responseBodyTruncated: false,
+    droppedBeforeEvent: 0,
+    source: 'runtime-http',
+    traceId: 'trace-001',
+    correlationId: 'trace-runner-001'
+  },
+  {
+    id: 'trace-002',
+    timestamp: '2026-06-18T07:22:12.340Z',
+    appId: 'demo-app',
+    instance: '0',
+    method: 'POST',
+    path: '/odata/v4/orders',
+    url: 'https://mock.example.com/odata/v4/orders',
+    normalizedUrl: '/odata/v4/orders',
+    status: 201,
+    durationMs: 133,
+    requestBytes: 96,
+    responseBytes: 420,
+    requestHeaders: {
+      authorization: 'Bearer demo-access-token',
+      'content-type': 'application/json'
+    },
+    responseHeaders: {
+      'content-type': 'application/json'
+    },
+    requestBodyPreview: '{ "amount": 1200, "token": "demo-access-token" }',
+    responseBodyPreview: '{ "ID": "O1001", "status": "created" }',
+    requestBodyTruncated: false,
+    responseBodyTruncated: false,
+    droppedBeforeEvent: 0,
+    source: 'runtime-http',
+    traceId: 'trace-002',
+    correlationId: null
+  },
+  {
+    id: 'trace-003',
+    timestamp: '2026-06-18T07:22:18.900Z',
+    appId: 'demo-app',
+    instance: '0',
+    method: 'PATCH',
+    path: '/odata/v4/orders(1)',
+    url: 'https://mock.example.com/odata/v4/orders(1)',
+    normalizedUrl: '/odata/v4/orders(1)',
+    status: 400,
+    durationMs: 49,
+    requestBytes: 74,
+    responseBytes: 292,
+    requestHeaders: {
+      authorization: 'Bearer demo-access-token',
+      'x-csrf-token': 'demo-csrf-token'
+    },
+    responseHeaders: {
+      'content-type': 'application/json'
+    },
+    requestBodyPreview: '{ "status": "invalid", "client_secret": "demo-client-secret" }',
+    responseBodyPreview: '{ "error": { "message": "Validation failed" } }',
+    requestBodyTruncated: false,
+    responseBodyTruncated: false,
+    droppedBeforeEvent: 0,
+    source: 'runtime-http',
+    traceId: 'trace-003',
+    correlationId: null
+  }
+];
 
 const appElement = document.getElementById('webview-app');
 
@@ -286,6 +398,368 @@ function renderApiJsonResult(payload) {
   return `<pre class="api-raw-json is-json" aria-label="API JSON response">${highlightApiJson(json)}</pre>`;
 }
 
+function formatTraceClock(timestamp) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '--:--:--';
+  return date.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function statusBucket(status) {
+  if (typeof status !== 'number') return 'unknown';
+  if (status >= 200 && status < 300) return '2xx';
+  if (status >= 300 && status < 400) return '3xx';
+  if (status >= 400 && status < 500) return '4xx';
+  if (status >= 500 && status < 600) return '5xx';
+  return 'unknown';
+}
+
+function normalizeTraceUrl(rawUrl) {
+  if (typeof rawUrl !== 'string' || rawUrl.length === 0) return '/';
+  try {
+    const parsed = new URL(rawUrl, 'https://saptools.local');
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return rawUrl;
+  }
+}
+
+function normalizedTraceEvent(event) {
+  const normalizedUrl = normalizeTraceUrl(event.normalizedUrl || event.url || event.path);
+  return {
+    id: String(event.id || event.traceId || `${Date.now()}-${Math.random()}`),
+    timestamp: String(event.timestamp || new Date().toISOString()),
+    appId: String(event.appId || apiSelectedAppId || ''),
+    instance: String(event.instance || '0'),
+    method: String(event.method || 'GET').toUpperCase(),
+    path: String(event.path || normalizedUrl),
+    url: normalizeTraceUrl(event.url || normalizedUrl),
+    normalizedUrl,
+    status: typeof event.status === 'number' ? event.status : null,
+    durationMs: typeof event.durationMs === 'number' ? event.durationMs : null,
+    requestBytes: typeof event.requestBytes === 'number' ? event.requestBytes : 0,
+    responseBytes: typeof event.responseBytes === 'number' ? event.responseBytes : 0,
+    requestHeaders: event.requestHeaders && typeof event.requestHeaders === 'object' ? event.requestHeaders : {},
+    responseHeaders: event.responseHeaders && typeof event.responseHeaders === 'object' ? event.responseHeaders : {},
+    requestBodyPreview: typeof event.requestBodyPreview === 'string' ? event.requestBodyPreview : '',
+    responseBodyPreview: typeof event.responseBodyPreview === 'string' ? event.responseBodyPreview : '',
+    requestBodyTruncated: event.requestBodyTruncated === true,
+    responseBodyTruncated: event.responseBodyTruncated === true,
+    droppedBeforeEvent: typeof event.droppedBeforeEvent === 'number' ? event.droppedBeforeEvent : 0,
+    source: 'runtime-http',
+    traceId: String(event.traceId || event.id || ''),
+    correlationId: typeof event.correlationId === 'string' ? event.correlationId : null
+  };
+}
+
+function appendTraceEvents(events) {
+  const normalized = events.map(normalizedTraceEvent);
+  apiTraceEvents = [...apiTraceEvents, ...normalized].slice(-API_TRACE_EVENT_LIMIT);
+  if (!apiTraceSelectedEventId && apiTraceEvents.length > 0) {
+    apiTraceSelectedEventId = apiTraceEvents[apiTraceEvents.length - 1].id;
+  }
+  if (apiTracePaused) return;
+  renderLiveTracePanel();
+}
+
+function buildTraceUrlSummaries() {
+  const summaries = new Map();
+  for (const event of apiTraceEvents) {
+    const key = event.normalizedUrl || normalizeTraceUrl(event.url || event.path);
+    const existing = summaries.get(key) || {
+      normalizedUrl: key,
+      displayUrl: key,
+      methods: new Set(),
+      totalCount: 0,
+      statusCounts: { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0, unknown: 0 },
+      latestStatus: null,
+      latestDurationMs: null,
+      latestSeenAt: ''
+    };
+    existing.methods.add(event.method);
+    existing.totalCount += 1;
+    existing.statusCounts[statusBucket(event.status)] += 1;
+    existing.latestStatus = event.status;
+    existing.latestDurationMs = event.durationMs;
+    existing.latestSeenAt = event.timestamp;
+    summaries.set(key, existing);
+  }
+  return [...summaries.values()]
+    .map((summary) => ({ ...summary, methods: [...summary.methods].sort() }))
+    .sort((left, right) => right.latestSeenAt.localeCompare(left.latestSeenAt));
+}
+
+function eventMatchesTraceFilters(event) {
+  if (apiTraceSelectedUrl !== 'all' && event.normalizedUrl !== apiTraceSelectedUrl) return false;
+  if (apiTraceMethodFilter !== 'all' && event.method !== apiTraceMethodFilter) return false;
+  if (apiTraceStatusFilter !== 'all' && statusBucket(event.status) !== apiTraceStatusFilter) return false;
+  const manual = apiTracePathFilter.trim().toLowerCase();
+  if (manual && !`${event.normalizedUrl} ${event.path} ${event.url}`.toLowerCase().includes(manual)) return false;
+  const search = apiTraceSearchText.trim().toLowerCase();
+  if (!search) return true;
+  const haystack = [
+    event.traceId,
+    event.correlationId || '',
+    event.method,
+    event.normalizedUrl,
+    JSON.stringify(event.requestHeaders),
+    JSON.stringify(event.responseHeaders),
+    event.requestBodyPreview,
+    event.responseBodyPreview
+  ].join(' ').toLowerCase();
+  return haystack.includes(search);
+}
+
+function filteredTraceEvents() {
+  return apiTraceEvents.filter(eventMatchesTraceFilters).slice().reverse();
+}
+
+function selectedTraceEvent() {
+  const selected = apiTraceEvents.find((event) => event.id === apiTraceSelectedEventId);
+  if (selected && eventMatchesTraceFilters(selected)) return selected;
+  return filteredTraceEvents()[0] || null;
+}
+
+function renderHeaderTable(headers) {
+  const entries = Object.entries(headers || {});
+  if (entries.length === 0) return '<div class="api-trace-empty-detail">No headers captured.</div>';
+  return `
+    <dl class="api-trace-header-list">
+      ${entries.map(([key, value]) => `
+        <dt>${escapeHtml(key)}</dt>
+        <dd>${escapeHtml(String(value))}</dd>
+      `).join('')}
+    </dl>
+  `;
+}
+
+function renderPreview(preview, truncated) {
+  if (!preview) return '<div class="api-trace-empty-detail">No body preview captured.</div>';
+  return `
+    <pre class="api-trace-preview">${escapeHtml(preview)}${truncated ? '\n[truncated]' : ''}</pre>
+  `;
+}
+
+function renderTraceStats(summaries, events) {
+  const errorCount = apiTraceEvents.filter((event) => {
+    const bucket = statusBucket(event.status);
+    return bucket === '4xx' || bucket === '5xx';
+  }).length;
+  const timedEvents = apiTraceEvents.filter((event) => typeof event.durationMs === 'number');
+  const avg = timedEvents.length === 0
+    ? 0
+    : Math.round(timedEvents.reduce((sum, event) => sum + event.durationMs, 0) / timedEvents.length);
+  return `
+    <div class="api-trace-stats" aria-label="Live Trace summary">
+      <span>Observed URLs <strong>${summaries.length}</strong></span>
+      <span>Requests <strong>${apiTraceEvents.length}</strong></span>
+      <span>Visible <strong>${events.length}</strong></span>
+      <span>Errors <strong>${errorCount}</strong></span>
+      <span>Avg <strong>${avg}ms</strong></span>
+    </div>
+  `;
+}
+
+function renderTraceUrlOptions(summaries) {
+  const options = summaries.map((summary) => {
+    const methods = summary.methods.join(',');
+    return `<option value="${escapeHtml(summary.normalizedUrl)}">${escapeHtml(methods)} ${escapeHtml(summary.displayUrl)} (${summary.totalCount})</option>`;
+  }).join('');
+  return `<option value="all">All observed URLs</option>${options}`;
+}
+
+function renderTraceEventRows(events) {
+  if (events.length === 0) {
+    return `
+      <div class="api-trace-empty">
+        No matching trace events. Start listening, call the app, or relax the filters.
+      </div>
+    `;
+  }
+  return events.map((event) => {
+    const isSelected = selectedTraceEvent()?.id === event.id;
+    const bucket = statusBucket(event.status);
+    return `
+      <button type="button" class="api-trace-row${isSelected ? ' is-active' : ''}" data-action="api-trace-select-event" data-event-id="${escapeHtml(event.id)}" aria-pressed="${isSelected ? 'true' : 'false'}">
+        <span class="api-trace-time">${escapeHtml(formatTraceClock(event.timestamp))}</span>
+        <span class="api-trace-method">${escapeHtml(event.method)}</span>
+        <span class="api-trace-status is-${bucket}">${event.status === null ? '---' : escapeHtml(String(event.status))}</span>
+        <span class="api-trace-path" title="${escapeHtml(event.normalizedUrl)}">${escapeHtml(event.normalizedUrl)}</span>
+        <span class="api-trace-duration">${event.durationMs === null ? '-' : `${event.durationMs}ms`}</span>
+      </button>
+    `;
+  }).join('');
+}
+
+function renderTraceDetailContent(event) {
+  if (event === null) {
+    return '<div class="api-trace-empty-detail">Select a request to inspect its request and response.</div>';
+  }
+  if (apiTraceSelectedDetailTab === 'request') {
+    return `
+      <section class="api-trace-detail-section">
+        <h4>Request Headers</h4>
+        ${renderHeaderTable(event.requestHeaders)}
+        <h4>Request Body Preview</h4>
+        ${renderPreview(event.requestBodyPreview, event.requestBodyTruncated)}
+      </section>
+    `;
+  }
+  if (apiTraceSelectedDetailTab === 'response') {
+    return `
+      <section class="api-trace-detail-section">
+        <h4>Response Headers</h4>
+        ${renderHeaderTable(event.responseHeaders)}
+        <h4>Response Body Preview</h4>
+        ${renderPreview(event.responseBodyPreview, event.responseBodyTruncated)}
+      </section>
+    `;
+  }
+  return `
+    <section class="api-trace-overview">
+      <div><span>Status</span><strong>${event.status === null ? 'Unknown' : escapeHtml(String(event.status))}</strong></div>
+      <div><span>Duration</span><strong>${event.durationMs === null ? '-' : `${event.durationMs}ms`}</strong></div>
+      <div><span>Instance</span><strong>${escapeHtml(event.instance)}</strong></div>
+      <div><span>Request bytes</span><strong>${event.requestBytes}</strong></div>
+      <div><span>Response bytes</span><strong>${event.responseBytes}</strong></div>
+      <div><span>Trace ID</span><strong>${escapeHtml(event.traceId || event.id)}</strong></div>
+      <div><span>Correlation ID</span><strong>${escapeHtml(event.correlationId || '-')}</strong></div>
+    </section>
+  `;
+}
+
+function renderTraceDetail(event) {
+  return `
+    <aside class="api-trace-detail" aria-label="Request/Response detail">
+      <div class="api-trace-detail-head">
+        <div>
+          <h3>Request/Response detail</h3>
+          <p>${event === null ? 'No request selected' : `${escapeHtml(event.method)} ${escapeHtml(event.normalizedUrl)}`}</p>
+        </div>
+      </div>
+      <div class="api-view-tabs" role="tablist" aria-label="Trace detail views">
+        ${['overview', 'request', 'response'].map((tab) => `
+          <button type="button" class="api-view-tab-btn${apiTraceSelectedDetailTab === tab ? ' is-active' : ''}" data-action="api-trace-switch-detail" data-detail-tab="${tab}">
+            ${tab === 'overview' ? 'Overview' : tab === 'request' ? 'Request' : 'Response'}
+          </button>
+        `).join('')}
+      </div>
+      <div class="api-trace-detail-body">
+        ${renderTraceDetailContent(event)}
+      </div>
+    </aside>
+  `;
+}
+
+function renderLiveTracePanel() {
+  const panel = document.querySelector('.api-live-trace-panel');
+  if (!panel) return;
+  const summaries = buildTraceUrlSummaries();
+  const events = filteredTraceEvents();
+  const selected = selectedTraceEvent();
+  const isActive = isTraceActiveState(apiTraceState);
+  const canStop = isTraceStoppableState(apiTraceState);
+  const statusClass = apiTraceState === 'error' ? 'is-error' : isActive ? 'is-streaming' : 'is-idle';
+  panel.innerHTML = `
+    <section class="api-trace-shell" aria-label="Live Trace HTTP inspector">
+      <div class="api-trace-toolbar">
+        <div class="api-trace-title">
+          <h2>Live Trace</h2>
+          <p>Runtime HTTP Trace · Hook ${apiTraceRuntimeHookInstalled ? 'installed' : 'not installed'} · ${apiTraceRuntimeHookMayRemain ? 'hook may remain after local stop' : 'local session clean'}</p>
+        </div>
+        <div class="api-trace-actions">
+          <button type="button" class="primary-action" data-action="api-trace-start" ${isActive || apiTraceState === 'needsInspector' ? 'disabled' : ''}>Start Listening</button>
+          <button type="button" class="secondary-action" data-action="api-trace-stop" ${canStop ? '' : 'disabled'}>Stop Listening</button>
+          <button type="button" class="secondary-action" data-action="api-trace-clear">Clear</button>
+        </div>
+      </div>
+
+      <div class="api-trace-status-line ${statusClass}" role="status">
+        <span>State: ${escapeHtml(apiTraceState)}</span>
+        <span>${escapeHtml(apiTraceStatusMessage)}</span>
+      </div>
+
+      <div class="api-trace-controls">
+        <fieldset class="api-trace-control-group">
+          <legend>Trace target</legend>
+          <label>
+            <span>Instance</span>
+            <select data-action="api-trace-instance" aria-label="Trace instance">
+              <option value="0">Instance 0</option>
+            </select>
+          </label>
+          <label>
+            <span>Mode</span>
+            <select aria-label="Trace mode" disabled>
+              <option>Runtime HTTP Trace</option>
+            </select>
+          </label>
+        </fieldset>
+        <fieldset class="api-trace-control-group">
+          <legend>Capture</legend>
+          <label class="api-trace-check"><input type="checkbox" checked disabled /> Method/path/status/time</label>
+          <label class="api-trace-check"><input type="checkbox" data-action="api-trace-capture-headers" ${apiTraceCaptureHeaders ? 'checked' : ''} /> Headers</label>
+          <label class="api-trace-check"><input type="checkbox" data-action="api-trace-capture-request-body" ${apiTraceCaptureRequestBody ? 'checked' : ''} /> Request body preview</label>
+          <label class="api-trace-check"><input type="checkbox" data-action="api-trace-capture-response-body" ${apiTraceCaptureResponseBody ? 'checked' : ''} /> Response preview</label>
+        </fieldset>
+      </div>
+
+      <div class="api-trace-filters" aria-label="Live Trace filters">
+        <label class="api-trace-url-filter">
+          <span>Observed URL</span>
+          <select class="api-trace-url-select" data-action="api-trace-select-url" aria-label="Observed URL">
+            ${renderTraceUrlOptions(summaries)}
+          </select>
+        </label>
+        <label>
+          <span>Path or URL contains</span>
+          <input type="search" data-action="api-trace-filter-path" value="${escapeHtml(apiTracePathFilter)}" placeholder="/odata/v4/products" />
+        </label>
+        <label>
+          <span>Method</span>
+          <select data-action="api-trace-filter-method" aria-label="Trace method filter">
+            ${['all', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((method) => `<option value="${method}" ${apiTraceMethodFilter === method ? 'selected' : ''}>${method === 'all' ? 'All' : method}</option>`).join('')}
+          </select>
+        </label>
+        <label>
+          <span>Status</span>
+          <select data-action="api-trace-filter-status" aria-label="Trace status filter">
+            ${['all', '2xx', '3xx', '4xx', '5xx'].map((status) => `<option value="${status}" ${apiTraceStatusFilter === status ? 'selected' : ''}>${status === 'all' ? 'All' : status}</option>`).join('')}
+          </select>
+        </label>
+        <label>
+          <span>Search</span>
+          <input type="search" data-action="api-trace-filter-search" value="${escapeHtml(apiTraceSearchText)}" placeholder="trace id, header, body" />
+        </label>
+      </div>
+
+      ${renderTraceStats(summaries, events)}
+
+      <div class="api-trace-results">
+        <section class="api-trace-stream" aria-label="Trace request stream">
+          <div class="api-trace-stream-head">
+            <h3>Trace request stream</h3>
+            <button type="button" class="secondary-action" data-action="api-trace-toggle-pause">${apiTracePaused ? 'Resume' : 'Pause'}</button>
+          </div>
+          <div class="api-trace-list" role="list">
+            ${renderTraceEventRows(events)}
+          </div>
+        </section>
+        ${renderTraceDetail(selected)}
+      </div>
+    </section>
+  `;
+  const select = panel.querySelector('[data-action="api-trace-select-url"]');
+  if (select) select.value = apiTraceSelectedUrl;
+}
+
+function isTraceActiveState(state) {
+  return ['preparingCli', 'checkingRuntime', 'openingTunnel', 'injecting', 'streaming', 'paused', 'stopping'].includes(state);
+}
+
+function isTraceStoppableState(state) {
+  return isTraceActiveState(state) || state === 'needsInspector';
+}
+
 function updateResponseSection() {
   const responseBody = document.querySelector('.api-response-body');
   const headerSection = document.querySelector('.api-response-header');
@@ -412,11 +886,11 @@ function updateWorkbenchSection() {
               <input type="text" class="api-url-input" value="" aria-label="API Target URL" style="flex: 1; border: none; background: transparent; outline: none; padding: 4px 8px; color: inherit;" />
             </div>
             
-            <div class="api-settings-container" style="position: relative; display: flex; align-items: center; justify-content: center;">
-              <button type="button" data-action="api-toggle-auth-settings" style="background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; font-size: 16px; opacity: 0.8; padding: 4px; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px;" title="Auth Settings" onmouseover="this.style.background='var(--vscode-toolbar-hoverBackground, rgba(90,93,94,0.31))'" onmouseout="this.style.background='transparent'">&#9881;&#65039;</button>
-              <div class="api-auth-popover" style="display: none; position: absolute; right: 0; top: calc(100% + 4px); background: var(--vscode-editor-background); border: 1px solid var(--vscode-input-border, #3c3c3c); padding: 8px; z-index: 10; border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); width: 200px;">
-                <label style="font-size: 11px; margin-bottom: 4px; display: block; opacity: 0.8;">Authentication Method</label>
-                <select id="api-auth-select" class="api-auth-select" data-action="api-select-auth" style="width: 100%; border: 1px solid var(--vscode-input-border, #3c3c3c); background: var(--vscode-input-background, #3c3c3c); color: var(--vscode-input-foreground, #cccccc); padding: 4px; outline: none; cursor: pointer; font-family: inherit;">
+            <div class="api-settings-container">
+              <button type="button" class="api-auth-settings-btn" data-action="api-toggle-auth-settings" title="Auth Settings" aria-label="Auth Settings">&#9881;&#65039;</button>
+              <div class="api-auth-popover">
+                <label for="api-auth-select" class="api-auth-label">Authentication Method</label>
+                <select id="api-auth-select" class="api-auth-select" data-action="api-select-auth">
                   <option value="xsuaa-auto">XSUAA Client (Auto)</option>
                   <option value="local">Local Debug (None)</option>
                   <option value="custom">Custom Token</option>
@@ -592,7 +1066,7 @@ function updateSidebarSection() {
 function initLayout() {
   if (!apiSelectedAppId) {
     appElement.innerHTML = `
-      <main class="api-workbench-panel">
+      <main class="api-workbench-panel api-empty-app-panel">
         <div class="api-placeholder-response">
           <p>Please select an App Service to view its APIs.</p>
         </div>
@@ -602,24 +1076,55 @@ function initLayout() {
   }
 
   // Ensure DOM skeleton exists
-  if (!document.querySelector('.api-split-layout')) {
+  if (!document.querySelector('#api-explorer-root')) {
     appElement.innerHTML = `
-      <div id="api-explorer-root" style="display: flex; height: 100vh; overflow: hidden; font-family: var(--vscode-font-family); color: var(--vscode-foreground);">
-        <!-- Sidebar -->
-        <aside class="api-webview-sidebar" style="width: 250px; min-width: 150px; border-right: 1px solid var(--vscode-panel-border, #3c3c3c); background-color: var(--vscode-sideBar-background, #252526); display: flex; flex-direction: column; overflow: hidden;"></aside>
-        <div class="api-resizer" style="width: 4px; cursor: col-resize; background: transparent; transition: background 0.2s; z-index: 5;"></div>
-        <main class="api-workbench-panel" style="flex: 1; display: flex; flex-direction: column; overflow-y: auto;"></main>
+      <div id="api-explorer-root" class="api-explorer-root">
+        <header class="api-main-tabs-shell">
+          <div class="api-main-tabs" role="tablist" aria-label="APIs Explorer modes">
+            <button type="button" class="api-main-tab-btn" data-action="api-switch-main-tab" data-tab-id="request-runner" role="tab" aria-controls="api-request-runner-panel">
+              Request Runner
+            </button>
+            <button type="button" class="api-main-tab-btn" data-action="api-switch-main-tab" data-tab-id="live-trace" role="tab" aria-controls="api-live-trace-panel">
+              Live Trace
+            </button>
+          </div>
+        </header>
+        <section id="api-request-runner-panel" class="api-main-tab-panel api-request-runner-panel" data-role="api-request-runner-panel" role="tabpanel">
+          <div class="api-split-layout">
+            <aside class="api-webview-sidebar"></aside>
+            <div class="api-resizer"></div>
+            <main class="api-workbench-panel"></main>
+          </div>
+        </section>
+        <section id="api-live-trace-panel" class="api-main-tab-panel api-live-trace-panel" data-role="api-live-trace-panel" role="tabpanel"></section>
       </div>
     `;
   }
+  updateMainTabVisibility();
 }
 
 function renderWebview() {
   initLayout();
   if (apiSelectedAppId) {
+    updateMainTabVisibility();
     updateSidebarSection();
     updateWorkbenchSection();
+    renderLiveTracePanel();
   }
+}
+
+function updateMainTabVisibility() {
+  const requestPanel = document.querySelector('[data-role="api-request-runner-panel"]');
+  const tracePanel = document.querySelector('[data-role="api-live-trace-panel"]');
+  const tabs = document.querySelectorAll('.api-main-tab-btn');
+  tabs.forEach((tab) => {
+    const isActive = tab.dataset.tabId === apiActiveMainTab;
+    tab.classList.toggle('is-active', isActive);
+    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    tab.setAttribute('tabindex', isActive ? '0' : '-1');
+  });
+  if (requestPanel) requestPanel.hidden = apiActiveMainTab !== 'request-runner';
+  if (tracePanel) tracePanel.hidden = apiActiveMainTab !== 'live-trace';
 }
 
 function updateApiEntitySelection() {
@@ -638,6 +1143,12 @@ appElement.addEventListener('click', (event) => {
   if (!actionElement) return;
 
   const action = actionElement.dataset.action;
+
+  if (action === 'api-switch-main-tab') {
+    apiActiveMainTab = actionElement.dataset.tabId === 'live-trace' ? 'live-trace' : 'request-runner';
+    renderWebview();
+    return;
+  }
 
   if (action === 'api-select-entity') {
     saveEndpointSession();
@@ -690,12 +1201,107 @@ appElement.addEventListener('click', (event) => {
         updateWorkbenchSection();
       }, 1000);
     }
+    return;
+  }
+
+  if (action === 'api-trace-start') {
+    apiTraceState = 'preparingCli';
+    apiTraceStatusMessage = 'Starting runtime HTTP trace session.';
+    apiTraceRuntimeHookInstalled = false;
+    apiTraceRuntimeHookMayRemain = false;
+    if (vscodeApi) {
+      vscodeApi.postMessage({
+        type: 'sapTools.apis.trace.start',
+        payload: {
+          mode: 'runtime-http',
+          instanceIndex: 0,
+          processName: 'web',
+          captureHeaders: apiTraceCaptureHeaders,
+          captureRequestBody: apiTraceCaptureRequestBody,
+          captureResponseBody: apiTraceCaptureResponseBody,
+          maxBodyBytes: 4096,
+          filters: {
+            method: [],
+            pathContains: apiTracePathFilter,
+            statusClass: apiTraceStatusFilter
+          }
+        }
+      });
+    } else {
+      apiTraceState = 'streaming';
+      apiTraceStatusMessage = 'Streaming prototype HTTP requests for this app.';
+      apiTraceRuntimeHookInstalled = true;
+      appendTraceEvents(API_MOCK_TRACE_EVENTS);
+    }
+    renderLiveTracePanel();
+    return;
+  }
+
+  if (action === 'api-trace-stop') {
+    apiTraceState = vscodeApi ? 'stopping' : 'stopped';
+    apiTraceStatusMessage = vscodeApi
+      ? 'Stopping local Inspector polling and tunnel.'
+      : 'Local prototype trace is stopped.';
+    if (!vscodeApi) {
+      apiTraceRuntimeHookInstalled = false;
+      apiTraceRuntimeHookMayRemain = false;
+    }
+    if (vscodeApi) {
+      vscodeApi.postMessage({
+        type: 'sapTools.apis.trace.stop',
+        payload: { uninstallRuntimeHook: true }
+      });
+    }
+    renderLiveTracePanel();
+    return;
+  }
+
+  if (action === 'api-trace-clear') {
+    apiTraceEvents = [];
+    apiTraceSelectedEventId = '';
+    if (vscodeApi) {
+      vscodeApi.postMessage({ type: 'sapTools.apis.trace.clear' });
+    }
+    renderLiveTracePanel();
+    return;
+  }
+
+  if (action === 'api-trace-toggle-pause') {
+    apiTracePaused = !apiTracePaused;
+    renderLiveTracePanel();
+    return;
+  }
+
+  if (action === 'api-trace-select-event') {
+    apiTraceSelectedEventId = actionElement.dataset.eventId ?? '';
+    renderLiveTracePanel();
+    return;
+  }
+
+  if (action === 'api-trace-switch-detail') {
+    apiTraceSelectedDetailTab = actionElement.dataset.detailTab ?? 'overview';
+    renderLiveTracePanel();
   }
 });
 
 // Select
 appElement.addEventListener('change', (event) => {
   const target = event.target;
+  if (target instanceof HTMLInputElement) {
+    const action = target.dataset.action;
+    if (action === 'api-trace-capture-headers') {
+      apiTraceCaptureHeaders = target.checked;
+      return;
+    }
+    if (action === 'api-trace-capture-request-body') {
+      apiTraceCaptureRequestBody = target.checked;
+      return;
+    }
+    if (action === 'api-trace-capture-response-body') {
+      apiTraceCaptureResponseBody = target.checked;
+      return;
+    }
+  }
   if (!(target instanceof HTMLSelectElement)) return;
   const action = target.dataset.action;
   if (action === 'api-select-auth') {
@@ -706,6 +1312,18 @@ appElement.addEventListener('change', (event) => {
   if (action === 'api-select-method') {
     apiHttpMethod = target.value;
     updateWorkbenchSection();
+  }
+  if (action === 'api-trace-select-url') {
+    apiTraceSelectedUrl = target.value;
+    renderLiveTracePanel();
+  }
+  if (action === 'api-trace-filter-method') {
+    apiTraceMethodFilter = target.value;
+    renderLiveTracePanel();
+  }
+  if (action === 'api-trace-filter-status') {
+    apiTraceStatusFilter = target.value;
+    renderLiveTracePanel();
   }
 });
 
@@ -718,6 +1336,18 @@ appElement.addEventListener('input', (event) => {
   }
 
   if (!(target instanceof HTMLInputElement)) return;
+
+  if (target.dataset.action === 'api-trace-filter-path') {
+    apiTracePathFilter = target.value;
+    renderLiveTracePanel();
+    return;
+  }
+
+  if (target.dataset.action === 'api-trace-filter-search') {
+    apiTraceSearchText = target.value;
+    renderLiveTracePanel();
+    return;
+  }
 
   if (target.dataset.action === 'api-search-entity') {
     const term = target.value.trim().toLowerCase();
@@ -891,6 +1521,31 @@ window.addEventListener('message', (event) => {
     }
   }
 
+  if (event.data.type === 'sapTools.apis.trace.state') {
+    const payload = event.data.payload || {};
+    apiTraceState = payload.state || apiTraceState;
+    apiTraceStatusMessage = payload.message || apiTraceStatusMessage;
+    apiTraceRuntimeHookInstalled = payload.runtimeHookInstalled === true;
+    apiTraceRuntimeHookMayRemain = payload.runtimeHookMayRemain === true;
+    renderLiveTracePanel();
+    return;
+  }
+
+  if (event.data.type === 'sapTools.apis.trace.event') {
+    if (event.data.payload) {
+      appendTraceEvents([event.data.payload]);
+    }
+    return;
+  }
+
+  if (event.data.type === 'sapTools.apis.trace.batch') {
+    const payload = event.data.payload || {};
+    if (Array.isArray(payload.events)) {
+      appendTraceEvents(payload.events);
+    }
+    return;
+  }
+
   if (event.data.type === 'sapTools.apis.error') {
     apiCatalogState = 'error'; // Reset state so next load does a full render
     const errorMsg = event.data.payload?.message || 'An unknown error occurred.';
@@ -920,6 +1575,21 @@ window.addEventListener('message', (event) => {
     apiHttpBody = '';
     apiResultState = 'idle';
     apiResultPayload = null;
+    apiActiveMainTab = 'request-runner';
+    apiTraceState = 'idle';
+    apiTraceStatusMessage = 'Ready to listen for runtime HTTP traffic.';
+    apiTraceEvents = [];
+    apiTraceSelectedEventId = '';
+    apiTraceSelectedUrl = 'all';
+    apiTracePathFilter = '';
+    apiTraceMethodFilter = 'all';
+    apiTraceStatusFilter = 'all';
+    apiTraceSearchText = '';
+    apiTracePaused = false;
+    apiTraceSelectedDetailTab = 'overview';
+    apiTraceCaptureHeaders = false;
+    apiTraceCaptureRequestBody = false;
+    apiTraceCaptureResponseBody = false;
     apiParams = {
       $select: '',
       $filter: '',

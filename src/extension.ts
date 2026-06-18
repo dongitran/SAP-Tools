@@ -126,6 +126,7 @@ export function activate(context: vscode.ExtensionContext): void {
     regionSidebarProvider,
     cfLogsPanel,
     hanaSqlWorkbench,
+    apisExplorerPanelManager,
     eventMeshPanelManager,
     webviewProviderRegistration,
     cfLogsPanelRegistration,

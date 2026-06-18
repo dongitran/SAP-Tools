@@ -21,47 +21,55 @@ async function openConfirmedWorkspace(): Promise<{ session: ExtensionHostSession
   return { session, webviewFrame };
 }
 
+async function findApisExplorerFrame(session: ExtensionHostSession): Promise<Frame | null> {
+  const candidateFrames = session.window.frames().filter((f) => f.url().includes('vscode-webview://'));
+  for (const f of [...candidateFrames].reverse()) {
+    if (await f.getByRole('tab', { name: 'Request Runner' }).isVisible().catch(() => false)) {
+      return f;
+    }
+    if (await f.getByText('Endpoints', { exact: false }).isVisible().catch(() => false)) {
+      return f;
+    }
+  }
+  return null;
+}
+
+async function openApisExplorerFromLogsTab(
+  session: ExtensionHostSession,
+  webviewFrame: Frame
+): Promise<Frame> {
+  await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Log-API-Event' }));
+  await expect(webviewFrame.locator('.app-logs-panel')).toBeVisible();
+
+  const appItem = webviewFrame.locator('.app-log-item').first();
+  await expect(appItem).toBeVisible();
+  await appItem.hover();
+
+  const apisButton = appItem.getByRole('button', { name: 'APIs' });
+  await expect(apisButton).toBeVisible();
+  await clickWithFallback(apisButton);
+
+  await expect.poll(async () => {
+    return (await findApisExplorerFrame(session)) !== null;
+  }, { timeout: 20000 }).toBe(true);
+
+  const apisFrame = await findApisExplorerFrame(session);
+  if (apisFrame === null) {
+    throw new Error('Could not find APIs Explorer frame');
+  }
+  return apisFrame;
+}
+
 test.describe('APIs Explorer Workspace Flow', () => {
   test('User can open APIs webview from Log-API-Event tab', async () => {
     const { session, webviewFrame } = await openConfirmedWorkspace();
 
     try {
-      // Click the Log-API-Event tab button
-      await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Log-API-Event' }));
-      
-      // Assert that the app logs panel is visible
-      await expect(webviewFrame.locator('.app-logs-panel')).toBeVisible();
-
-      // Find the first app that has an APIs button
-      const appItem = webviewFrame.locator('.app-log-item').first();
-      await expect(appItem).toBeVisible();
-
-      // Hover over the app item to reveal the APIs button
-      await appItem.hover();
-
-      // Click APIs button
-      const apisButton = appItem.getByRole('button', { name: 'APIs' });
-      await expect(apisButton).toBeVisible();
-      await clickWithFallback(apisButton);
-
-      // Wait for the new Webview Panel to open by polling frames
-      let centerWebviewFrame: Frame | null = null;
-      await expect.poll(async () => {
-        const candidateFrames = session.window.frames().filter((f) => f.url().includes('vscode-webview://'));
-        for (const f of [...candidateFrames].reverse()) {
-          if (await f.getByText('Endpoints', { exact: false }).isVisible().catch(() => false)) {
-            centerWebviewFrame = f;
-            return true;
-          }
-        }
-        return false;
-      }, { timeout: 20000 }).toBe(true);
-
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (centerWebviewFrame === null) {
-        throw new Error('Could not find centerWebviewFrame');
-      }
-      const frame = centerWebviewFrame as Frame;
+      const frame = await openApisExplorerFromLogsTab(session, webviewFrame);
+      await expect(frame.getByRole('tab', { name: 'Request Runner' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
 
       // Verify the sidebar exists inside the new APIs webview panel
       const apiSidebar = frame.locator('.api-webview-sidebar');
@@ -140,34 +148,7 @@ test.describe('APIs Explorer Workspace Flow', () => {
     const { session, webviewFrame } = await openConfirmedWorkspace();
 
     try {
-      await clickWithFallback(webviewFrame.getByRole('tab', { name: 'Log-API-Event' }));
-      await expect(webviewFrame.locator('.app-logs-panel')).toBeVisible();
-
-      const appItem = webviewFrame.locator('.app-log-item').first();
-      await expect(appItem).toBeVisible();
-      await appItem.hover();
-
-      const apisButton = appItem.getByRole('button', { name: 'APIs' });
-      await expect(apisButton).toBeVisible();
-      await clickWithFallback(apisButton);
-
-      let apisFrame: Frame | null = null;
-      await expect.poll(async () => {
-        const candidateFrames = session.window.frames().filter((f) => f.url().includes('vscode-webview://'));
-        for (const f of [...candidateFrames].reverse()) {
-          if (await f.getByText('Endpoints', { exact: false }).isVisible().catch(() => false)) {
-            apisFrame = f;
-            return true;
-          }
-        }
-        return false;
-      }, { timeout: 20000 }).toBe(true);
-
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (apisFrame === null) {
-        throw new Error('Could not find APIs Explorer frame');
-      }
-      const frame = apisFrame as Frame;
+      const frame = await openApisExplorerFromLogsTab(session, webviewFrame);
 
       await frame.evaluate(() => {
         window.dispatchEvent(new MessageEvent('message', {
@@ -224,6 +205,44 @@ test.describe('APIs Explorer Workspace Flow', () => {
 
       const scrollAfter = await list.evaluate((element) => element.scrollTop);
       expect(scrollAfter).toBeGreaterThan(0);
+    } finally {
+      await cleanupExtensionHost(session);
+    }
+  });
+
+  test('User can start Live Trace and inspect raw request and response details', async () => {
+    const { session, webviewFrame } = await openConfirmedWorkspace();
+
+    try {
+      const frame = await openApisExplorerFromLogsTab(session, webviewFrame);
+
+      await clickWithFallback(frame.getByRole('tab', { name: 'Live Trace' }));
+      await expect(frame.getByRole('button', { name: 'Start Listening' })).toBeVisible();
+      await clickWithFallback(frame.getByRole('button', { name: 'Start Listening' }));
+
+      await expect(frame.getByText('State: streaming')).toBeVisible({ timeout: 15000 });
+      await expect(frame.getByLabel('Live Trace summary')).toContainText('Observed URLs');
+      await expect(frame.getByRole('button', { name: /POST 201 \/odata\/v4\/orders/i })).toBeVisible();
+
+      await frame.getByLabel('Observed URL').selectOption('/odata/v4/orders');
+      await expect(frame.getByText('Visible')).toBeVisible();
+      await expect(frame.getByRole('button', { name: /POST 201 \/odata\/v4\/orders/i })).toBeVisible();
+      await expect(frame.getByRole('button', { name: /PATCH 400 \/odata\/v4\/orders\(1\)/i })).toHaveCount(0);
+
+      await clickWithFallback(frame.getByRole('button', { name: 'Request' }));
+      await expect(frame.getByText('authorization')).toBeVisible();
+      await expect(frame.getByText('Bearer demo-access-token').first()).toBeVisible();
+      await expect(frame.getByRole('heading', { name: 'Request Body Preview' })).toBeVisible();
+
+      await clickWithFallback(frame.getByRole('button', { name: 'Response' }));
+      await expect(frame.getByRole('heading', { name: 'Response Headers' })).toBeVisible();
+      await expect(frame.getByRole('heading', { name: 'Response Body Preview' })).toBeVisible();
+
+      await clickWithFallback(frame.getByRole('button', { name: 'Stop Listening' }));
+      await expect(frame.getByText('State: stopped')).toBeVisible({ timeout: 15000 });
+
+      await clickWithFallback(frame.getByRole('tab', { name: 'Request Runner' }));
+      await expect(frame.getByRole('button', { name: 'Execute' })).toBeVisible();
     } finally {
       await cleanupExtensionHost(session);
     }

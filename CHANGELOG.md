@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.142 (stable)
+- Feature: APIs Explorer now includes a Live Trace workspace beside Request Runner, with a live request stream, observed URL aggregation, URL/status/method filters, and request/response detail inspection.
+- Change: Live Trace now preserves raw captured query values, headers, and body previews instead of masking trace data, while extension output logs still omit query strings.
+
 ## 0.10.141 (stable)
 - Hardening: Event Mesh management API calls now have bounded timeouts, and AMQP listener startup now fails fast on timeout, early close/disconnect, or Stop before subscription activation instead of hanging.
 - Hardening: Event Mesh viewer initialization now stale-scans debug queues for each binding, while received-message batches are coalesced on a timer and capped to reduce webview IPC pressure during high-volume streams.

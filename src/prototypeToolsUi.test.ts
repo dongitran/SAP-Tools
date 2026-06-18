@@ -532,6 +532,61 @@ describe('prototype Log-API-Event workspace', () => {
     expect(styles).toContain('.api-grid-empty');
   });
 
+  it('adds a professional main tab shell for Request Runner and Live Trace', async () => {
+    const source = await readApiWebviewSource();
+    const styles = await readApiStylesSource();
+
+    expect(source).toContain("apiActiveMainTab = 'request-runner'");
+    expect(source).toContain('data-action="api-switch-main-tab"');
+    expect(source).toContain('Request Runner');
+    expect(source).toContain('Live Trace');
+    expect(source).toContain('role="tablist" aria-label="APIs Explorer modes"');
+    expect(source).toContain('class="api-split-layout"');
+
+    expect(styles).toContain('.api-main-tabs');
+    expect(styles).toContain('.api-main-tab-btn');
+    expect(styles).toContain('.api-main-tab-panel');
+  });
+
+  it('renders Live Trace as a request/response inspector with URL aggregation controls', async () => {
+    const source = await readApiWebviewSource();
+    const styles = await readApiStylesSource();
+
+    expect(source).toContain('function renderLiveTracePanel()');
+    expect(source).toContain('Start Listening');
+    expect(source).toContain('Stop Listening');
+    expect(source).toContain('Observed URL');
+    expect(source).toContain('Path or URL contains');
+    expect(source).toContain('Trace request stream');
+    expect(source).toContain('Request/Response detail');
+    expect(source).toContain('Overview');
+    expect(source).toContain('Request');
+    expect(source).toContain('Response');
+    expect(source).toContain('authorization');
+    expect(source).toContain('sapTools.apis.trace.start');
+    expect(source).toContain('sapTools.apis.trace.stop');
+    expect(source).toContain('sapTools.apis.trace.clear');
+    expect(source).toContain('apiTraceCaptureHeaders');
+    expect(source).toContain('captureHeaders: apiTraceCaptureHeaders');
+    expect(source).toContain('if (apiTracePaused) return;');
+    expect(source).toContain("apiTraceState = 'preparingCli'");
+
+    expect(styles).toContain('.api-trace-shell');
+    expect(styles).toContain('.api-trace-stream');
+    expect(styles).toContain('.api-trace-detail');
+    expect(styles).toContain('.api-trace-url-select');
+  });
+
+  it('keeps Live Trace UI free of inline event handlers and new inline trace styles', async () => {
+    const source = await readApiWebviewSource();
+
+    expect(source).not.toContain('onmouseover=');
+    expect(source).not.toContain('onmouseout=');
+    expect(source).not.toContain('api-trace-shell" style=');
+    expect(source).not.toContain('api-trace-stream" style=');
+    expect(source).not.toContain('api-trace-detail" style=');
+  });
+
   it('loads the standalone APIs prototype with mock catalog data outside VS Code', async () => {
     const source = await readApiWebviewSource();
 

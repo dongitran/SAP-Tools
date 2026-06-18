@@ -119,6 +119,7 @@ interface SidebarProviderTestAccess {
     payload: ConfirmScopePayloadForTest,
     options?: ConfirmScopeOptionsForTest
   ): Promise<void>;
+  handleWebviewMessage(message: unknown): Promise<void>;
   handleExternalScopeChange(scope: SharedCfScope): Promise<void>;
   hydrateQuickConfirmedScope(payload: ConfirmScopePayloadForTest): Promise<void>;
   hydrateRestoredScope(scope: unknown): Promise<void>;
@@ -131,6 +132,8 @@ interface SidebarProviderTestAccess {
 
 interface ProviderFixture {
   readonly access: SidebarProviderTestAccess;
+  readonly apisOpenExplorerMock: ReturnType<typeof vi.fn>;
+  readonly apisStopAllTracesMock: ReturnType<typeof vi.fn>;
   readonly cfLogsPanelUpdateAppsMock: ReturnType<typeof vi.fn>;
   readonly globalStateUpdateMock: ReturnType<typeof vi.fn>;
   readonly hanaInvalidateAllAppContextsMock: ReturnType<typeof vi.fn>;
@@ -217,6 +220,7 @@ function createProviderFixture(): ProviderFixture {
   } as unknown as vscode.OutputChannel;
   const apisExplorerPanelManager = {
     openApisExplorer: vi.fn(),
+    stopAllTraces: vi.fn(),
     dispose: vi.fn(),
   } as unknown as ApisExplorerPanelManager;
   const eventMeshPanelManager = {
@@ -239,6 +243,8 @@ function createProviderFixture(): ProviderFixture {
 
   return {
     access: provider as unknown as SidebarProviderTestAccess,
+    apisOpenExplorerMock: apisExplorerPanelManager.openApisExplorer as ReturnType<typeof vi.fn>,
+    apisStopAllTracesMock: apisExplorerPanelManager.stopAllTraces as ReturnType<typeof vi.fn>,
     cfLogsPanelUpdateAppsMock: cfLogsPanel.updateApps as ReturnType<typeof vi.fn>,
     globalStateUpdateMock,
     hanaInvalidateAllAppContextsMock:
@@ -512,6 +518,27 @@ describe('RegionSidebarProvider shared CF scope sync', () => {
     expect(hanaInvalidateAllAppContextsMock).toHaveBeenCalledTimes(1);
   });
 
+  it('stops API traces when the confirmed scope changes', async () => {
+    const { access, apisStopAllTracesMock } = createProviderFixture();
+    access.currentConfirmedScope = {
+      regionCode: 'us10',
+      orgName: 'finance-services-prod',
+      spaceName: 'uat',
+    };
+
+    await access.handleConfirmScope({
+      regionId: 'br10',
+      regionCode: 'br-10',
+      regionName: 'Brazil (Sao Paulo)',
+      regionArea: 'Americas',
+      orgGuid: 'org-br10-billing-reconciliation',
+      orgName: 'billing-reconciliation-prod',
+      spaceName: 'etl',
+    });
+
+    expect(apisStopAllTracesMock).toHaveBeenCalledWith('scope-changed');
+  });
+
   it('keeps HANA app contexts when the confirmed scope is unchanged', async () => {
     const { access, hanaInvalidateAllAppContextsMock } = createProviderFixture();
     access.currentConfirmedScope = {
@@ -531,6 +558,29 @@ describe('RegionSidebarProvider shared CF scope sync', () => {
     });
 
     expect(hanaInvalidateAllAppContextsMock).not.toHaveBeenCalled();
+  });
+
+  it('passes cfHomeDir when opening APIs Explorer from a confirmed scope', async () => {
+    const { access, apisOpenExplorerMock } = createProviderFixture();
+    access.currentConfirmedScope = {
+      regionCode: 'us10',
+      orgName: 'finance-services-prod',
+      spaceName: 'uat',
+    };
+
+    await access.handleWebviewMessage({
+      type: 'saptools.openApisExplorer',
+      appId: 'finance-uat-api',
+    });
+
+    expect(apisOpenExplorerMock).toHaveBeenCalledWith(
+      'finance-uat-api',
+      expect.objectContaining({
+        cfHomeDir: '/tmp/cf-home',
+        orgName: 'finance-services-prod',
+        spaceName: 'uat',
+      })
+    );
   });
 
   it('confirms quick scope selection with org GUID resolved from test mode topology', async () => {
