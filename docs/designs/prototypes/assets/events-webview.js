@@ -6,7 +6,10 @@
 const vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
 const appId = (typeof window !== 'undefined' && window.eventMeshAppId) || 'demo-app';
 
-const MAX_MESSAGES = 1000; // ring-buffer cap held in memory
+const DEFAULT_MESSAGE_BUFFER_LIMIT = 1000;
+const MIN_MESSAGE_BUFFER_LIMIT = 100;
+const MAX_MESSAGE_BUFFER_LIMIT = 10000;
+const MESSAGE_BUFFER_INPUT_DEBOUNCE_MS = 250;
 const MAX_DOM_ROWS = 300; // rows actually painted (newest first)
 const SIMPLE_GROUP_EXPAND_COOLDOWN_MS = 300;
 
@@ -30,6 +33,10 @@ let streaming = false;
 let stoppedReason = '';
 let paused = false;
 let bindingFilterIndex = null;
+let messageSearch = '';
+let eventSettingsOpen = false;
+let messageBufferLimit = DEFAULT_MESSAGE_BUFFER_LIMIT;
+let messageBufferLimitTimer = null;
 
 let publishBindingIndex = null;
 let publishTopic = '';
@@ -198,14 +205,71 @@ function plural(count, singular, pluralValue) {
   return `${count} ${count === 1 ? singular : pluralValue}`;
 }
 
-function liveBindingCount() {
-  return selectedBindings().filter((binding) => topicStateFor(binding.index).status === 'listening').length;
+function normalizeMessageBufferLimit(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return DEFAULT_MESSAGE_BUFFER_LIMIT;
+  return Math.min(MAX_MESSAGE_BUFFER_LIMIT, Math.max(MIN_MESSAGE_BUFFER_LIMIT, Math.round(numeric)));
 }
 
-function liveTopicCount() {
-  return selectedBindings().reduce((total, binding) => {
-    return total + topicStateFor(binding.index).liveTopics.size;
-  }, 0);
+function pruneExpandedMessageState() {
+  const liveSeqs = new Set(messages.map((message) => message.seq));
+  for (const seq of [...expandedSeqs]) {
+    if (!liveSeqs.has(seq)) expandedSeqs.delete(seq);
+  }
+}
+
+function trimStoredMessages() {
+  if (messages.length > messageBufferLimit) {
+    messages = messages.slice(-messageBufferLimit);
+  }
+  pruneExpandedMessageState();
+}
+
+function applyMessageBufferLimit(value) {
+  if (messageBufferLimitTimer !== null) {
+    clearTimeout(messageBufferLimitTimer);
+    messageBufferLimitTimer = null;
+  }
+  messageBufferLimit = normalizeMessageBufferLimit(value);
+  trimStoredMessages();
+  const input = document.querySelector('[data-role="em-message-buffer-limit"]');
+  if (input) input.value = String(messageBufferLimit);
+  renderMessages();
+}
+
+function scheduleMessageBufferLimitApply(value) {
+  const raw = String(value || '').trim();
+  if (raw.length === 0 || Number(raw) < MIN_MESSAGE_BUFFER_LIMIT) return;
+  if (messageBufferLimitTimer !== null) clearTimeout(messageBufferLimitTimer);
+  messageBufferLimitTimer = setTimeout(() => {
+    messageBufferLimitTimer = null;
+    applyMessageBufferLimit(raw);
+  }, MESSAGE_BUFFER_INPUT_DEBOUNCE_MS);
+}
+
+function stringifyForSearch(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '';
+  }
+}
+
+function messageMatchesSearch(message, query) {
+  const haystack = [
+    messageBindingName(message),
+    message.bindingNamespace,
+    message.queueName,
+    message.topic,
+    message.contentType,
+    message.messageId,
+    message.encoding,
+    message.payload,
+    stringifyForSearch(message.headers),
+  ].join(' ').toLowerCase();
+  return haystack.includes(query);
 }
 
 // --- Rendering ---------------------------------------------------------------
@@ -266,13 +330,52 @@ function renderHeader() {
         <span class="event-app">${escapeHtml(appId)}</span>
       </div>
       <div class="event-header-end">
-        <div class="event-tabs" role="tablist">
-          <button type="button" class="event-tab${activeTab === 'subscribe-simple' ? ' is-active' : ''}" role="tab" data-action="em-switch-tab" data-tab="subscribe-simple" aria-selected="${activeTab === 'subscribe-simple'}">Subscribe Simple</button>
-          <button type="button" class="event-tab${activeTab === 'subscribe-advance' ? ' is-active' : ''}" role="tab" data-action="em-switch-tab" data-tab="subscribe-advance" aria-selected="${activeTab === 'subscribe-advance'}">Subscribe Advance</button>
-          <button type="button" class="event-tab${activeTab === 'publish' ? ' is-active' : ''}" role="tab" data-action="em-switch-tab" data-tab="publish" aria-selected="${activeTab === 'publish'}">Publish</button>
+        <div class="event-tabs-row">
+          <div class="event-tabs" role="tablist">
+            <button type="button" class="event-tab${activeTab === 'subscribe-simple' ? ' is-active' : ''}" role="tab" data-action="em-switch-tab" data-tab="subscribe-simple" aria-selected="${activeTab === 'subscribe-simple'}">Subscribe Simple</button>
+            <button type="button" class="event-tab${activeTab === 'subscribe-advance' ? ' is-active' : ''}" role="tab" data-action="em-switch-tab" data-tab="subscribe-advance" aria-selected="${activeTab === 'subscribe-advance'}">Subscribe Advance</button>
+            <button type="button" class="event-tab${activeTab === 'publish' ? ' is-active' : ''}" role="tab" data-action="em-switch-tab" data-tab="publish" aria-selected="${activeTab === 'publish'}">Publish</button>
+          </div>
+          <button
+            type="button"
+            class="event-settings-toggle${eventSettingsOpen ? ' is-active' : ''}"
+            data-action="em-toggle-settings"
+            data-role="event-settings-toggle"
+            aria-label="Event settings"
+            aria-controls="event-settings-panel"
+            aria-expanded="${eventSettingsOpen}"
+            title="Event settings"
+          >⚙</button>
         </div>
       </div>
-    </header>`;
+    </header>
+    ${renderEventSettingsPanel()}`;
+}
+
+function renderEventSettingsPanel() {
+  if (!eventSettingsOpen) return '';
+  return `
+    <section
+      id="event-settings-panel"
+      class="event-settings-panel"
+      data-role="event-settings-panel"
+      aria-label="Event settings"
+    >
+      <label class="event-settings-field">
+        <span class="event-label">Message Buffer</span>
+        <input
+          type="number"
+          class="event-input event-settings-number"
+          data-role="em-message-buffer-limit"
+          value="${messageBufferLimit}"
+          min="${MIN_MESSAGE_BUFFER_LIMIT}"
+          max="${MAX_MESSAGE_BUFFER_LIMIT}"
+          step="100"
+          aria-label="Message buffer limit"
+        />
+      </label>
+      <span class="event-settings-unit">messages</span>
+    </section>`;
 }
 
 function renderReady() {
@@ -723,7 +826,7 @@ function renderResults() {
   return `
     <div class="event-results-head">
       <span class="event-status-pill ${stateClass}">${stateLabel}</span>
-      <span class="event-result-summary">${escapeHtml(resultSummary())}</span>
+      ${renderMessageSearchInput()}
       <span class="event-toolbar-spacer"></span>
       ${renderBindingFilterSelect(liveBindings)}
       <button type="button" class="event-btn event-btn-compact" data-action="em-pause" ${streaming ? '' : 'disabled'}>${paused ? 'Resume' : 'Pause'}</button>
@@ -734,8 +837,20 @@ function renderResults() {
     <div class="event-list" id="event-list"></div>`;
 }
 
-function resultSummary() {
-  return `${plural(liveBindingCount(), 'binding', 'bindings')} - ${plural(liveTopicCount(), 'topic', 'topics')} - ${totalReceived} received`;
+function renderMessageSearchInput() {
+  return `
+    <label class="event-result-search search-input-with-icon">
+      <span class="search-input-icon" aria-hidden="true">&#128269;</span>
+      <input
+        type="search"
+        class="event-result-search-input"
+        data-role="em-message-search"
+        value="${escapeHtml(messageSearch)}"
+        placeholder="Search messages"
+        aria-label="Search received messages"
+        autocomplete="off"
+      />
+    </label>`;
 }
 
 function listeningBindings() {
@@ -765,7 +880,6 @@ function renderBindingFilterSelect(liveBindings) {
 
 function scheduleMessageRender() {
   if (paused) {
-    updateCount();
     return;
   }
   if (messageRenderScheduled) return;
@@ -778,15 +892,9 @@ function scheduleMessageRender() {
   });
 }
 
-function updateCount() {
-  const summary = document.querySelector('.event-result-summary');
-  if (summary) summary.textContent = resultSummary();
-}
-
 function renderMessages() {
   const list = document.getElementById('event-list');
   if (!list) return;
-  updateCount();
   const visibleMessages = filteredMessages();
 
   if (visibleMessages.length === 0) {
@@ -801,8 +909,12 @@ function renderMessages() {
 }
 
 function filteredMessages() {
-  if (bindingFilterIndex === null) return messages;
-  return messages.filter((message) => message.bindingIndex === bindingFilterIndex);
+  const query = messageSearch.trim().toLowerCase();
+  return messages.filter((message) => {
+    if (bindingFilterIndex !== null && message.bindingIndex !== bindingFilterIndex) return false;
+    if (query.length === 0) return true;
+    return messageMatchesSearch(message, query);
+  });
 }
 
 function renderMessageRow(message) {
@@ -874,6 +986,8 @@ function handleReady(data) {
   simpleGroupExpansionTimestamps.clear();
   addBindingOpen = bindings.length > 1;
   bindingSearch = '';
+  messageSearch = '';
+  eventSettingsOpen = false;
   startError = '';
   publishBindingIndex = null;
   publishResult = null;
@@ -959,7 +1073,7 @@ function handleMessages(data) {
   if (events.length === 0) return;
   totalReceived += events.length;
   messages = messages.concat(events);
-  if (messages.length > MAX_MESSAGES) messages = messages.slice(-MAX_MESSAGES);
+  trimStoredMessages();
   scheduleMessageRender();
 }
 
@@ -1144,13 +1258,31 @@ function formatPublishPayload() {
 }
 
 document.addEventListener('click', (event) => {
-  const actionEl = event.target.closest('[data-action]');
-  if (!actionEl) return;
+  const target = event.target;
+  const clickedSettings =
+    target &&
+    target.closest &&
+    (target.closest('[data-role="event-settings-panel"]') ||
+      target.closest('[data-role="event-settings-toggle"]'));
+  const actionEl = target && target.closest ? target.closest('[data-action]') : null;
+  if (!actionEl) {
+    if (eventSettingsOpen && !clickedSettings) {
+      eventSettingsOpen = false;
+      render();
+    }
+    return;
+  }
   const action = actionEl.dataset.action;
   const index = bindingId(actionEl.dataset.bindingIndex);
+  if (eventSettingsOpen && !clickedSettings && action !== 'em-toggle-settings') {
+    eventSettingsOpen = false;
+  }
 
   if (action === 'em-switch-tab') {
     activeTab = actionEl.dataset.tab || 'subscribe-simple';
+    render();
+  } else if (action === 'em-toggle-settings') {
+    eventSettingsOpen = !eventSettingsOpen;
     render();
   } else if (action === 'ep-send') {
     postPublishEvent();
@@ -1220,6 +1352,11 @@ document.addEventListener('input', (event) => {
   if (el.matches('[data-role="em-binding-search"]')) {
     bindingSearch = el.value || '';
     updateBindingPickerResults();
+  } else if (el.matches('[data-role="em-message-search"]')) {
+    messageSearch = el.value || '';
+    renderMessages();
+  } else if (el.matches('[data-role="em-message-buffer-limit"]')) {
+    scheduleMessageBufferLimitApply(el.value);
   } else if (el.matches('[data-role="ep-topic-input"]')) {
     publishTopic = el.value || '';
     updatePublishSendButton();
@@ -1238,6 +1375,8 @@ document.addEventListener('change', (event) => {
   } else if (el.matches('[data-role="em-binding-filter-select"]')) {
     bindingFilterIndex = el.value === '' ? null : bindingId(el.value);
     renderMessages();
+  } else if (el.matches('[data-role="em-message-buffer-limit"]')) {
+    applyMessageBufferLimit(el.value);
   } else if (el.matches('[data-role="em-topic-checkbox"]')) {
     const index = bindingId(el.dataset.bindingIndex);
     const topic = el.dataset.topic;

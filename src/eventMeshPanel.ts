@@ -24,6 +24,8 @@ const DEBUG_QUEUE_SEGMENT = 'saptools-debug';
 const FLUSH_INTERVAL_MS = 250;
 /** Flush immediately once the buffer reaches this many messages (burst handling). */
 const FLUSH_THRESHOLD = 40;
+/** Max pending received events kept before they are flushed to the webview. */
+export const DEFAULT_EVENT_MESSAGE_BUFFER_LIMIT = 1000;
 /** Max payload bytes forwarded to the webview per message. */
 const MAX_PAYLOAD_BYTES = 20000;
 /** Cap on how many existing queues to inspect when discovering candidate topics. */
@@ -129,6 +131,16 @@ function toSerializableHeaders(headers: Record<string, unknown>): unknown {
 
 function parseTopics(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.filter((t): t is string => typeof t === 'string' && t.length > 0) : [];
+}
+
+export function trimOutgoingEventBuffer<T>(
+  buffer: readonly T[],
+  limit = DEFAULT_EVENT_MESSAGE_BUFFER_LIMIT
+): T[] {
+  if (limit <= 0 || buffer.length <= limit) {
+    return [...buffer];
+  }
+  return buffer.slice(-limit);
 }
 
 function buildRunId(): string {
@@ -529,6 +541,7 @@ export class EventMeshPanelManager implements vscode.Disposable {
       size: payload.size,
       headers: toSerializableHeaders(normalized.headers),
     });
+    session.buffer = trimOutgoingEventBuffer(session.buffer);
 
     if (session.buffer.length >= FLUSH_THRESHOLD) {
       this.flush(session);

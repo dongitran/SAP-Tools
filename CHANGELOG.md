@@ -1,5 +1,10 @@
 # SAP Tools Extension Changelog
 
+## 0.10.128 (stable)
+- Fix: Event Mesh listener results now keep only the newest 1000 received messages by default, with both webview and extension-host pending buffers capped to reduce memory and UI pressure during high-volume streams.
+- UI: Added an Event Mesh settings gear beside the `Publish` tab for configuring the retained message buffer size.
+- UI: Replaced the result summary text beside `Listening` with a searchable message input using the extension's existing search-with-icon style; search covers binding metadata, topic, message id, payload, and headers.
+
 ## 0.10.127 (stable)
 - UI: Event Mesh `Subscribe Simple` group expand/collapse controls now have a larger visible button and ignore rapid repeat clicks for 300ms, preventing accidental double toggles.
 - UI: Clicking blank space in a Simple group row now expands/collapses the group reliably; only the checkbox/name label toggles group selection.

@@ -329,6 +329,58 @@ describe('prototype Log-API-Event workspace', () => {
     expect(styles).not.toContain('.event-filter-row');
   });
 
+  it('renders an Event settings gear next to Publish outside the tab list', async () => {
+    const source = await readEventWebviewSource();
+    const styles = await readEventStylesSource();
+
+    expect(source).toContain('data-action="em-toggle-settings"');
+    expect(source).toContain('aria-controls="event-settings-panel"');
+    expect(source).toContain('renderEventSettingsPanel()');
+    const publishTabIndex = source.indexOf('data-tab="publish"');
+    const tabsCloseIndex = source.indexOf('</div>', publishTabIndex);
+    const gearIndex = source.indexOf('data-action="em-toggle-settings"');
+    expect(publishTabIndex).toBeGreaterThan(-1);
+    expect(tabsCloseIndex).toBeGreaterThan(publishTabIndex);
+    expect(gearIndex).toBeGreaterThan(tabsCloseIndex);
+    expect(styles).toContain('.event-settings-toggle');
+    expect(styles).toContain('.event-settings-panel');
+  });
+
+  it('configures the received message buffer cap from Event settings', async () => {
+    const source = await readEventWebviewSource();
+
+    expect(source).toContain('const DEFAULT_MESSAGE_BUFFER_LIMIT = 1000;');
+    expect(source).toContain('const MIN_MESSAGE_BUFFER_LIMIT = 100;');
+    expect(source).toContain('const MAX_MESSAGE_BUFFER_LIMIT = 10000;');
+    expect(source).toContain('let messageBufferLimit = DEFAULT_MESSAGE_BUFFER_LIMIT;');
+    expect(source).toContain('data-role="em-message-buffer-limit"');
+    expect(source).toContain('normalizeMessageBufferLimit');
+    expect(source).toContain('applyMessageBufferLimit');
+    expect(source).toContain('scheduleMessageBufferLimitApply');
+    expect(source).toContain('trimStoredMessages');
+    expect(source).toContain('const MESSAGE_BUFFER_INPUT_DEBOUNCE_MS = 250;');
+    expect(source).toContain('if (messages.length > messageBufferLimit)');
+    expect(source).toContain("el.matches('[data-role=\"em-message-buffer-limit\"]')");
+    expect(source).not.toContain('if (messages.length > MAX_MESSAGES)');
+  });
+
+  it('replaces the result summary text with a searchable message input', async () => {
+    const source = await readEventWebviewSource();
+    const styles = await readEventStylesSource();
+
+    expect(source).toContain('let messageSearch =');
+    expect(source).toContain('renderMessageSearchInput()');
+    expect(source).toContain('data-role="em-message-search"');
+    expect(source).toContain('class="event-result-search search-input-with-icon"');
+    expect(source).toContain('class="search-input-icon"');
+    expect(source).toContain('messageMatchesSearch');
+    expect(source).not.toContain('event-result-summary');
+    expect(source).not.toContain('function resultSummary()');
+    expect(styles).toContain('.event-result-search');
+    expect(styles).toContain('.event-result-search-input');
+    expect(styles).not.toContain('.event-result-summary');
+  });
+
   it('preserves received messages when a new startListening batch succeeds', async () => {
     const source = await readEventWebviewSource();
     const match = /function handleListening\(data\) \{([\s\S]*?)\n\}/.exec(source);

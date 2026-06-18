@@ -17,8 +17,10 @@ vi.mock('vscode', () => ({
 }));
 
 import {
+  DEFAULT_EVENT_MESSAGE_BUFFER_LIMIT,
   EventMeshPanelManager,
   isStaleDebugQueueNameForTest,
+  trimOutgoingEventBuffer,
   type EventMeshTargetParams,
 } from './eventMeshPanel';
 
@@ -147,5 +149,25 @@ describe('EventMeshPanelManager webview security', () => {
     expect(panel.webview.html).toContain('style-src');
     expect(panel.webview.html).toContain('font-src');
     expect(panel.webview.html).toContain('nonce-');
+  });
+});
+
+describe('EventMeshPanelManager outgoing message buffer safety', () => {
+  it('keeps only the newest pending outgoing events by default', () => {
+    const buffer = Array.from({ length: DEFAULT_EVENT_MESSAGE_BUFFER_LIMIT + 25 }, (_, index) => ({
+      seq: index + 1,
+    }));
+
+    const trimmed = trimOutgoingEventBuffer(buffer);
+
+    expect(trimmed).toHaveLength(DEFAULT_EVENT_MESSAGE_BUFFER_LIMIT);
+    expect(trimmed[0]?.seq).toBe(26);
+    expect(trimmed.at(-1)?.seq).toBe(DEFAULT_EVENT_MESSAGE_BUFFER_LIMIT + 25);
+  });
+
+  it('leaves short pending outgoing buffers unchanged', () => {
+    const buffer = [{ seq: 1 }, { seq: 2 }, { seq: 3 }];
+
+    expect(trimOutgoingEventBuffer(buffer, 1000)).toEqual(buffer);
   });
 });
