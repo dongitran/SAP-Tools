@@ -4887,9 +4887,44 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   padding: 8px 16px 12px 38px;
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 12px;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--vscode-editor-foreground);
+  tab-size: 2;
+}
+
+.event-payload.is-json {
+  background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.08));
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.22));
+}
+
+.event-json-key {
+  color: var(--vscode-symbolIcon-propertyForeground, #4fc1ff);
+}
+
+.event-json-string {
+  color: var(--vscode-symbolIcon-stringForeground, #ce9178);
+}
+
+.event-json-number {
+  color: var(--vscode-symbolIcon-numberForeground, #b5cea8);
+}
+
+.event-json-literal {
+  color: var(--vscode-symbolIcon-booleanForeground, #569cd6);
+  font-weight: 600;
+}
+
+.event-json-punctuation {
+  color: var(--vscode-descriptionForeground);
+}
+
+.event-payload-note {
+  padding: 0 16px 8px 38px;
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
 }
 
 .event-msgid {

@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.131 (stable)
+- UI: Expanded Event Mesh received-message payloads now syntax-highlight valid JSON keys, strings, numbers, booleans, nulls, and punctuation.
+- UI: Non-JSON payloads still render as escaped plain text, preserving the existing fallback behavior for text and base64 messages.
+
 ## 0.10.130 (stable)
 - Fix: Event Mesh `Publish` topic and queue candidate pickers now use a controlled dropdown that toggles closed when the dropdown button is clicked again.
 - UI: Publish candidate lists now have a bounded height with internal scrolling, so long topic lists no longer stretch to the bottom of the VS Code panel.

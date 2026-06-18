@@ -306,6 +306,42 @@ function messageMatchesSearch(message, query) {
   return haystack.includes(query);
 }
 
+const JSON_TOKEN_PATTERN = /"(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b|[{}\[\],:]/g;
+
+function highlightJsonPayload(json) {
+  return json.replace(JSON_TOKEN_PATTERN, (token, offset, source) => {
+    let tokenClass = 'event-json-punctuation';
+    if (token.startsWith('"')) {
+      const afterToken = source.slice(offset + token.length);
+      tokenClass = /^\s*:/.test(afterToken) ? 'event-json-key' : 'event-json-string';
+    } else if (/^-?\d/.test(token)) {
+      tokenClass = 'event-json-number';
+    } else if (token === 'true' || token === 'false' || token === 'null') {
+      tokenClass = 'event-json-literal';
+    }
+    return `<span class="${tokenClass}">${escapeHtml(token)}</span>`;
+  });
+}
+
+function renderJsonPayload(payload) {
+  try {
+    const json = JSON.stringify(JSON.parse(payload), null, 2);
+    return `<pre class="event-payload is-json">${highlightJsonPayload(json)}</pre>`;
+  } catch {
+    return null;
+  }
+}
+
+function renderPayloadBody(message) {
+  const payload = String(message.payload ?? '');
+  const jsonPayload = renderJsonPayload(payload);
+  if (jsonPayload !== null) {
+    const note = message.truncated ? '<div class="event-payload-note">… (truncated)</div>' : '';
+    return `${jsonPayload}${note}`;
+  }
+  return `<pre class="event-payload">${escapeHtml(payload)}${message.truncated ? '\n… (truncated)' : ''}</pre>`;
+}
+
 // --- Rendering ---------------------------------------------------------------
 
 function render() {
@@ -1127,7 +1163,7 @@ function renderMessageRow(message) {
     .filter(Boolean)
     .join(' - ');
   const body = expanded
-    ? `<pre class="event-payload">${escapeHtml(message.payload)}${message.truncated ? '\n… (truncated)' : ''}</pre>
+    ? `${renderPayloadBody(message)}
        ${message.messageId ? `<div class="event-msgid">message-id: ${escapeHtml(message.messageId)}</div>` : ''}`
     : `<div class="event-preview">${escapeHtml(oneLinePreview(message.payload))}</div>`;
   return `
