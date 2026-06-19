@@ -107,7 +107,7 @@ jobs:
         run: node scripts/run-e2e-lane.mjs --validate
 
   e2e:
-    name: E2E Lane ${{ matrix.lane }} (~${{ matrix.expected }}s)
+    name: E2E Lane ${{ matrix.lane }}
     runs-on: ubuntu-latest
     needs: [build, e2e-validate]
     strategy:
@@ -115,29 +115,17 @@ jobs:
       matrix:
         include:
           - lane: '01'
-            expected: '84.1'
           - lane: '02'
-            expected: '84.0'
           - lane: '03'
-            expected: '84.0'
           - lane: '04'
-            expected: '82.6'
           - lane: '05'
-            expected: '80.5'
           - lane: '06'
-            expected: '80.3'
           - lane: '07'
-            expected: '85.9'
           - lane: '08'
-            expected: '85.7'
           - lane: '09'
-            expected: '85.4'
           - lane: '10'
-            expected: '84.8'
           - lane: '11'
-            expected: '84.7'
           - lane: '12'
-            expected: '84.6'
     steps:
       - uses: actions/checkout@v4
 

@@ -229,11 +229,23 @@ test.describe('APIs Explorer Workspace Flow', () => {
       await expect(frame.getByRole('button', { name: /POST 201 \/odata\/v4\/orders/i })).toBeVisible();
       await expect(frame.getByRole('button', { name: /PATCH 400 \/odata\/v4\/orders\(1\)/i })).toHaveCount(0);
 
+      await expect(frame.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+      await expect(frame.getByLabel('Trace event overview')).toContainText('Status');
+      await expect(frame.getByLabel('Trace event overview')).toContainText('Duration');
+      await expect(frame.getByLabel('Trace event overview')).toContainText('Trace ID');
+
+      await clickWithFallback(frame.getByRole('tab', { name: 'Request' }));
+      await expect(frame.getByRole('tab', { name: 'Request' })).toHaveAttribute('aria-selected', 'true');
+      await expect(frame.getByRole('heading', { name: 'Request Body' })).toBeVisible();
+      await expect(frame.getByRole('heading', { name: 'Request Headers' })).toBeVisible();
       await expect(frame.getByText('authorization')).toBeVisible();
       await expect(frame.getByText('Bearer demo-access-token').first()).toBeVisible();
-      await expect(frame.getByRole('heading', { name: 'Request Body Preview' })).toBeVisible();
+
+      await clickWithFallback(frame.getByRole('tab', { name: 'Response' }));
+      await expect(frame.getByRole('tab', { name: 'Response' })).toHaveAttribute('aria-selected', 'true');
+      await expect(frame.getByRole('heading', { name: 'Response Body' })).toBeVisible();
       await expect(frame.getByRole('heading', { name: 'Response Headers' })).toBeVisible();
-      await expect(frame.getByRole('heading', { name: 'Response Body Preview' })).toBeVisible();
+      await expect(frame.getByText('created')).toBeVisible();
 
       await clickWithFallback(frame.getByRole('button', { name: 'Stop Listening' }));
       await expect(frame.getByLabel('Live Trace state')).toHaveText('Stopped', { timeout: 15000 });

@@ -108,14 +108,13 @@ function summarizeRows(rows) {
   const totals = new Map();
 
   for (const row of rows) {
-    const total = totals.get(row.lane) ?? { seconds: 0, count: 0 };
-    total.seconds += row.seconds;
+    const total = totals.get(row.lane) ?? { count: 0 };
     total.count += 1;
     totals.set(row.lane, total);
   }
 
   for (const [lane, total] of [...totals.entries()].sort()) {
-    writeOut(`Lane ${lane}: ${total.count} tests, ${total.seconds.toFixed(1)} expected seconds`);
+    writeOut(`Lane ${lane}: ${total.count} tests`);
   }
 }
 
@@ -137,13 +136,12 @@ async function main() {
 
   const lane = normalizeLane(laneArg);
   const laneRows = rows.filter((row) => row.lane === lane);
-  const totalSeconds = laneRows.reduce((sum, row) => sum + row.seconds, 0);
   const specFiles = [...new Set(laneRows.map((row) => specPathFromSelector(row.selector)))];
   const grepPattern = `(?:${laneRows.map((row) => escapeRegExp(row.title)).join('|')})`;
   const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   const args = ['exec', '--', 'playwright', 'test', '--grep', grepPattern, ...extraArgs, ...specFiles];
 
-  writeOut(`Running E2E lane ${lane}: ${laneRows.length} tests, ${totalSeconds.toFixed(1)} expected seconds`);
+  writeOut(`Running E2E lane ${lane}: ${laneRows.length} tests`);
 
   const child = spawn(npmCommand, args, {
     cwd: e2eDir,
