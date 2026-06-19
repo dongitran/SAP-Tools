@@ -1,5 +1,8 @@
 # SAP Tools Extension Changelog
 
+## 0.10.150 (stable)
+- UI: Live Trace now removes the fixed Mode selector and compact summary strip, moves Observed URL beside Instance, and combines path/URL and detail search into one Search Trace filter.
+
 ## 0.10.149 (stable)
 - Fix: Live Trace now snapshots the original incoming request URL before framework routing can rewrite `req.url`, so Copy cURL preserves service path prefixes.
 - UI: Live Trace Request Body preview now has 30% more vertical room while retaining scroll behavior for long payloads.

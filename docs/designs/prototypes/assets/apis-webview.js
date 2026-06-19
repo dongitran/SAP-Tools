@@ -28,7 +28,6 @@ let apiTraceRuntimeHookMayRemain = false;
 let apiTraceEvents = [];
 let apiTraceSelectedEventId = '';
 let apiTraceSelectedUrl = 'all';
-let apiTracePathFilter = '';
 let apiTraceMethodFilter = 'all';
 let apiTraceStatusFilter = 'all';
 let apiTraceSearchText = '';
@@ -608,15 +607,17 @@ function eventMatchesTraceFilters(event) {
   if (apiTraceSelectedUrl !== 'all' && event.normalizedUrl !== apiTraceSelectedUrl) return false;
   if (apiTraceMethodFilter !== 'all' && event.method !== apiTraceMethodFilter) return false;
   if (apiTraceStatusFilter !== 'all' && statusBucket(event.status) !== apiTraceStatusFilter) return false;
-  const manual = apiTracePathFilter.trim().toLowerCase();
-  if (manual && !`${event.normalizedUrl} ${event.path} ${event.url}`.toLowerCase().includes(manual)) return false;
   const search = apiTraceSearchText.trim().toLowerCase();
   if (!search) return true;
   const haystack = [
     event.traceId,
     event.correlationId || '',
     event.method,
+    event.status === null ? '' : String(event.status),
+    event.instance,
     event.normalizedUrl,
+    event.path,
+    event.url,
     JSON.stringify(event.requestHeaders),
     JSON.stringify(event.responseHeaders),
     event.requestBodyPreview,
@@ -726,26 +727,6 @@ function copyTraceCurl(button) {
       button.textContent = previous;
     }, 1200);
   }).catch(() => undefined);
-}
-
-function renderTraceStats(summaries, events) {
-  const errorCount = apiTraceEvents.filter((event) => {
-    const bucket = statusBucket(event.status);
-    return bucket === '4xx' || bucket === '5xx';
-  }).length;
-  const timedEvents = apiTraceEvents.filter((event) => typeof event.durationMs === 'number');
-  const avg = timedEvents.length === 0
-    ? 0
-    : Math.round(timedEvents.reduce((sum, event) => sum + event.durationMs, 0) / timedEvents.length);
-  return `
-    <div class="api-trace-stats" aria-label="Live Trace summary">
-      <span>Observed URLs <strong>${summaries.length}</strong></span>
-      <span>Requests <strong>${apiTraceEvents.length}</strong></span>
-      <span>Visible <strong>${events.length}</strong></span>
-      <span>Errors <strong>${errorCount}</strong></span>
-      <span>Avg <strong>${avg}ms</strong></span>
-    </div>
-  `;
 }
 
 function renderTraceUrlOptions(summaries) {
@@ -926,25 +907,15 @@ function renderLiveTracePanel() {
             <option value="0">Instance 0</option>
           </select>
         </label>
-        <label class="api-trace-control-field">
-          <span>Mode</span>
-          <select aria-label="Trace mode" disabled>
-            <option>Runtime HTTP Trace</option>
-          </select>
-        </label>
-      </div>
-
-      <div class="api-trace-filters" aria-label="Live Trace filters">
         <label class="api-trace-control-field api-trace-url-filter">
           <span>Observed URL</span>
           <select class="api-trace-url-select" data-action="api-trace-select-url" aria-label="Observed URL">
             ${renderTraceUrlOptions(summaries)}
           </select>
         </label>
-        <label class="api-trace-control-field">
-          <span>Path or URL contains</span>
-          <input type="search" data-action="api-trace-filter-path" value="${escapeHtml(apiTracePathFilter)}" placeholder="/odata/v4/products" />
-        </label>
+      </div>
+
+      <div class="api-trace-filters" aria-label="Live Trace filters">
         <label class="api-trace-control-field">
           <span>Method</span>
           <select data-action="api-trace-filter-method" aria-label="Trace method filter">
@@ -957,13 +928,11 @@ function renderLiveTracePanel() {
             ${['all', '2xx', '3xx', '4xx', '5xx'].map((status) => `<option value="${status}" ${apiTraceStatusFilter === status ? 'selected' : ''}>${status === 'all' ? 'All' : status}</option>`).join('')}
           </select>
         </label>
-        <label class="api-trace-control-field">
-          <span>Search</span>
-          <input type="search" data-action="api-trace-filter-search" value="${escapeHtml(apiTraceSearchText)}" placeholder="trace id, header, body" />
+        <label class="api-trace-control-field api-trace-search-filter">
+          <span>Search trace</span>
+          <input type="search" data-action="api-trace-filter-search" value="${escapeHtml(apiTraceSearchText)}" placeholder="path, URL, trace id, header, body" />
         </label>
       </div>
-
-      ${renderTraceStats(summaries, events)}
 
       <div class="api-trace-results">
         <section class="api-trace-stream" aria-label="Trace request stream">
@@ -1481,7 +1450,7 @@ appElement.addEventListener('click', (event) => {
           maxBodyBytes: 0,
           filters: {
             method: [],
-            pathContains: apiTracePathFilter,
+            pathContains: '',
             statusClass: apiTraceStatusFilter
           }
         }
@@ -1600,12 +1569,6 @@ appElement.addEventListener('input', (event) => {
   }
 
   if (!(target instanceof HTMLInputElement)) return;
-
-  if (target.dataset.action === 'api-trace-filter-path') {
-    apiTracePathFilter = target.value;
-    renderLiveTracePanel();
-    return;
-  }
 
   if (target.dataset.action === 'api-trace-filter-search') {
     apiTraceSearchText = target.value;
@@ -1846,7 +1809,6 @@ window.addEventListener('message', (event) => {
     apiTraceEvents = [];
     apiTraceSelectedEventId = '';
     apiTraceSelectedUrl = 'all';
-    apiTracePathFilter = '';
     apiTraceMethodFilter = 'all';
     apiTraceStatusFilter = 'all';
     apiTraceSearchText = '';

@@ -991,28 +991,12 @@ body.vscode-high-contrast .api-raw-json.is-json {
   grid-column: span 2;
 }
 
+.api-trace-search-filter {
+  grid-column: span 2;
+}
+
 .api-trace-url-select {
   max-width: 100%;
-}
-
-.api-trace-stats {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);
-  color: var(--vscode-descriptionForeground, #a0a0a0);
-  font-size: 11px;
-  overflow-x: auto;
-}
-
-.api-trace-stats span {
-  white-space: nowrap;
-}
-
-.api-trace-stats strong {
-  color: var(--vscode-foreground, #cccccc);
 }
 
 .api-trace-results {
@@ -1469,7 +1453,8 @@ body.vscode-high-contrast .api-trace-preview.is-json {
     overflow-x: auto;
   }
 
-  .api-trace-url-filter {
+  .api-trace-url-filter,
+  .api-trace-search-filter {
     grid-column: auto;
   }
 

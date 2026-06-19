@@ -221,11 +221,10 @@ test.describe('APIs Explorer Workspace Flow', () => {
       await clickWithFallback(frame.getByRole('button', { name: 'Start Listening' }));
 
       await expect(frame.getByLabel('Live Trace state')).toHaveText('Streaming', { timeout: 15000 });
-      await expect(frame.getByLabel('Live Trace summary')).toContainText('Observed URLs');
+      await expect(frame.getByLabel('Observed URL')).toBeVisible();
       await expect(frame.getByRole('button', { name: /POST 201 \/odata\/v4\/orders/i })).toBeVisible();
 
       await frame.getByLabel('Observed URL').selectOption('/odata/v4/orders');
-      await expect(frame.getByText('Visible')).toBeVisible();
       await expect(frame.getByRole('button', { name: /POST 201 \/odata\/v4\/orders/i })).toBeVisible();
       await expect(frame.getByRole('button', { name: /PATCH 400 \/odata\/v4\/orders\(1\)/i })).toHaveCount(0);
 

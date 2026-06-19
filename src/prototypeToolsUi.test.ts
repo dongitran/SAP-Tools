@@ -578,7 +578,14 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source).toContain('Start Listening');
     expect(source).toContain('Stop Listening');
     expect(source).toContain('Observed URL');
-    expect(source).toContain('Path or URL contains');
+    expect(source.indexOf('<span>Observed URL</span>')).toBeGreaterThan(
+      source.indexOf('<div class="api-trace-controls"')
+    );
+    expect(source.indexOf('<span>Observed URL</span>')).toBeLessThan(
+      source.indexOf('<div class="api-trace-filters"')
+    );
+    expect(source).toContain('Search trace');
+    expect(source).toContain('path, URL, trace id, header, body');
     expect(source).toContain('Trace request stream');
     expect(source).toContain('Trace event details');
     expect(source).toContain('apiTraceDetailTab');
@@ -616,6 +623,19 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source).toContain('function updateTraceTopActions()');
     expect(source).toContain('class="api-trace-state-badge ${statusClass}"');
     expect(source).toContain('formatTraceStateLabel(apiTraceState)');
+    expect(source).not.toContain('function renderTraceStats');
+    expect(source).not.toContain('aria-label="Live Trace summary"');
+    expect(source).not.toContain('<span>Observed URLs');
+    expect(source).not.toContain('<span>Requests <strong>');
+    expect(source).not.toContain('<span>Visible <strong>');
+    expect(source).not.toContain('<span>Errors <strong>');
+    expect(source).not.toContain('<span>Avg <strong>');
+    expect(source).not.toContain('Path or URL contains');
+    expect(source).not.toContain('apiTracePathFilter');
+    expect(source).not.toContain('data-action="api-trace-filter-path"');
+    expect(source).not.toContain('pathContains: apiTracePathFilter');
+    expect(source).not.toContain('<span>Mode</span>');
+    expect(source).not.toContain('aria-label="Trace mode"');
     expect(source).not.toContain('<h2>Live Trace</h2>');
     expect(source).not.toContain('class="api-trace-toolbar"');
     expect(source).not.toContain('Ready to listen for runtime HTTP traffic.');
@@ -648,6 +668,7 @@ describe('prototype Log-API-Event workspace', () => {
     expect(styles).toContain('.api-trace-settings-container');
     expect(styles).toContain('.api-trace-settings-popover');
     expect(styles).toContain('.api-trace-stream-toggle');
+    expect(styles).not.toContain('.api-trace-stats');
     expect(styles).not.toContain('.api-trace-detail-columns');
   });
 
