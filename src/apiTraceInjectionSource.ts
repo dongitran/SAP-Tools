@@ -1,5 +1,5 @@
 export const API_TRACE_GLOBAL_NAME = '__SAP_TOOLS_HTTP_TRACE__';
-export const API_TRACE_RUNTIME_VERSION = 2;
+export const API_TRACE_RUNTIME_VERSION = 3;
 
 export interface ApiTraceRuntimeInstallOptions {
   readonly appId: string;
@@ -74,6 +74,7 @@ export const API_TRACE_RUNTIME_SOURCE = `
     if (!state.enabled || !req || !res || state.seen.has(req)) return;
     state.seen.add(req);
     const started = Date.now();
+    const initialUrl = String(req.url || '');
     const traceId = String(state.nextId++);
     let requestBytes = 0;
     let responseBytes = 0;
@@ -111,7 +112,7 @@ export const API_TRACE_RUNTIME_SOURCE = `
       req.emit = originalReqEmit;
       res.write = originalWrite;
       res.end = originalEnd;
-      const rawUrl = String(req.url || '');
+      const rawUrl = initialUrl || String(req.url || '');
       const event = {
         id: traceId,
         timestamp: new Date().toISOString(),

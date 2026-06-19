@@ -28,3 +28,4 @@ designs-tmp/
 
 # Local-only tunnel experiments (may contain customer env/credentials — never commit)
 scripts-privates/
+privates/

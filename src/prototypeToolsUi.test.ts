@@ -666,6 +666,7 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source).toContain('sessionStorage.getItem(API_TRACE_PREFERENCES_KEY)');
     expect(source).toContain('renderTraceHeaderSection');
     expect(source).toContain('renderTraceBodySection');
+    expect(source).toContain('class="api-trace-subsection api-trace-body-section is-${escapeHtml(kind)}"');
     expect(source).toContain('apiTraceCaptureHeaders ? renderTraceHeaderSection');
     expect(source).toContain('apiTraceCaptureRequestBody ? renderTraceBodySection');
     expect(source).toContain('apiTraceCaptureResponseBody ? renderTraceBodySection');
@@ -688,6 +689,7 @@ describe('prototype Log-API-Event workspace', () => {
     expect(styles).toContain('.api-trace-json-token');
     expect(styles).toMatch(/\.api-trace-overview-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
     expect(styles).toMatch(/\.api-trace-preview\s*\{[\s\S]*?max-height:\s*260px;/);
+    expect(styles).toMatch(/\.api-trace-body-section\.is-request\s+\.api-trace-preview\s*\{[\s\S]*?max-height:\s*338px;/);
     expect(styles).toMatch(/\.api-trace-preview\s*\{[\s\S]*?overflow:\s*auto;/);
   });
 

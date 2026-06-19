@@ -660,7 +660,7 @@ function renderTraceHeaderSection(title, headers) {
 function renderTraceBodySection(kind, title, preview, truncated) {
   const hasPreview = typeof preview === 'string' && preview.length > 0;
   return `
-    <section class="api-trace-subsection">
+    <section class="api-trace-subsection api-trace-body-section is-${escapeHtml(kind)}">
       <div class="api-trace-subsection-head">
         <h5>${escapeHtml(title)}</h5>
         ${hasPreview ? `<button type="button" class="api-trace-copy-body-btn" data-action="api-trace-copy-body" data-body-kind="${escapeHtml(kind)}" aria-label="Copy ${escapeHtml(title)}" title="Copy ${escapeHtml(title)}">&#128203;</button>` : ''}

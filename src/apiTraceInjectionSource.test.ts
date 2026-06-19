@@ -1,4 +1,5 @@
 import { runInNewContext } from 'node:vm';
+import { EventEmitter } from 'node:events';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -14,6 +15,14 @@ import {
 interface RuntimeApi {
   readonly version: number;
   install(options: unknown): unknown;
+  drainEvents(maxCount: number): { readonly events: readonly RuntimeTraceEvent[] };
+}
+
+interface RuntimeTraceEvent {
+  readonly url: string;
+  readonly normalizedUrl: string;
+  readonly path: string;
+  readonly responseBodyPreview: string;
 }
 
 describe('apiTraceInjectionSource', () => {
@@ -106,20 +115,125 @@ describe('apiTraceInjectionSource', () => {
     expect(runtimeApi).toBe(currentRuntime);
     expect(currentUninstall).not.toHaveBeenCalled();
   });
+
+  it('captures the original incoming URL before frameworks mutate request paths', () => {
+    const { runtimeApi, httpModule } = installRuntimeSource();
+    const req = createRuntimeRequest('/service/demo1?$top=5');
+    const res = createRuntimeResponse();
+
+    httpModule.Server.prototype.emit('request', req, res);
+    req.url = '/demo1?$top=5';
+    res.end('{"ok":true}');
+    res.emit('finish');
+
+    const drained = runtimeApi.drainEvents(10);
+
+    expect(drained.events).toHaveLength(1);
+    expect(drained.events[0]).toEqual(
+      expect.objectContaining({
+        url: '/service/demo1?$top=5',
+        normalizedUrl: '/service/demo1?$top=5',
+        path: '/service/demo1',
+        responseBodyPreview: '{"ok":true}',
+      })
+    );
+  });
 });
 
-function createRuntimeRequireStub(): (moduleName: string) => unknown {
-  return (moduleName: string): unknown => {
-    if (moduleName === 'http' || moduleName === 'https') {
-      return {
-        Server: {
-          prototype: {
-            emit() {
-              return true;
-            },
-          },
+interface RuntimeModule {
+  readonly Server: {
+    readonly prototype: {
+      emit(eventName: string, ...args: unknown[]): boolean;
+    };
+  };
+}
+
+function installRuntimeSource(): {
+  readonly runtimeApi: RuntimeApi;
+  readonly httpModule: RuntimeModule;
+} {
+  const httpModule = createRuntimeHttpModule();
+  const httpsModule = createRuntimeHttpModule();
+  const context: Record<string, unknown> = {
+    Buffer,
+    WeakSet,
+    require: createRuntimeRequireStub({ httpModule, httpsModule }),
+  };
+  const runtimeApi = runInNewContext(API_TRACE_RUNTIME_SOURCE, context);
+  if (!isRuntimeApi(runtimeApi)) {
+    throw new Error('Runtime source did not return a trace API.');
+  }
+  runtimeApi.install({
+    appId: 'orders-api',
+    instance: '0',
+    captureHeaders: true,
+    captureRequestBody: true,
+    captureResponseBody: true,
+    maxBodyBytes: 0,
+    maxEvents: 1000,
+  });
+  return { runtimeApi, httpModule };
+}
+
+function createRuntimeHttpModule(): RuntimeModule {
+  return {
+    Server: {
+      prototype: {
+        emit() {
+          return true;
         },
+      },
+    },
+  };
+}
+
+function createRuntimeRequest(url: string): EventEmitter & {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+} {
+  return Object.assign(new EventEmitter(), {
+    url,
+    method: 'GET',
+    headers: {
+      host: 'app.example.com',
+      accept: 'application/json',
+    },
+  });
+}
+
+function createRuntimeResponse(): EventEmitter & {
+  statusCode: number;
+  write(chunk: string): boolean;
+  end(chunk?: string): boolean;
+  getHeaders(): Record<string, string>;
+} {
+  return Object.assign(new EventEmitter(), {
+    statusCode: 200,
+    write() {
+      return true;
+    },
+    end() {
+      return true;
+    },
+    getHeaders() {
+      return {
+        'content-type': 'application/json',
       };
+    },
+  });
+}
+
+function createRuntimeRequireStub(modules?: {
+  readonly httpModule: RuntimeModule;
+  readonly httpsModule: RuntimeModule;
+}): (moduleName: string) => unknown {
+  return (moduleName: string): unknown => {
+    if (moduleName === 'http') {
+      return modules?.httpModule ?? createRuntimeHttpModule();
+    }
+    if (moduleName === 'https') {
+      return modules?.httpsModule ?? createRuntimeHttpModule();
     }
     throw new Error(`Unexpected runtime require: ${moduleName}`);
   };
@@ -130,6 +244,7 @@ function isRuntimeApi(value: unknown): value is RuntimeApi {
     typeof value === 'object' &&
     value !== null &&
     typeof (value as { readonly version?: unknown }).version === 'number' &&
-    typeof (value as { readonly install?: unknown }).install === 'function'
+    typeof (value as { readonly install?: unknown }).install === 'function' &&
+    typeof (value as { readonly drainEvents?: unknown }).drainEvents === 'function'
   );
 }

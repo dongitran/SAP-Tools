@@ -5063,6 +5063,10 @@ body.vscode-high-contrast .api-raw-json.is-json {
   tab-size: 2;
 }
 
+.api-trace-body-section.is-request .api-trace-preview {
+  max-height: 338px;
+}
+
 .api-trace-preview.is-json {
   --api-trace-json-key: #9cdcfe;
   --api-trace-json-string: #ce9178;
