@@ -1,4 +1,5 @@
 export const API_TRACE_GLOBAL_NAME = '__SAP_TOOLS_HTTP_TRACE__';
+export const API_TRACE_RUNTIME_VERSION = 2;
 
 export interface ApiTraceRuntimeInstallOptions {
   readonly appId: string;
@@ -13,10 +14,16 @@ export interface ApiTraceRuntimeInstallOptions {
 export const API_TRACE_RUNTIME_SOURCE = `
 (() => {
   const name = '${API_TRACE_GLOBAL_NAME}';
+  const runtimeVersion = ${String(API_TRACE_RUNTIME_VERSION)};
   const existing = globalThis[name];
-  if (existing && existing.version === 1) return existing;
+  if (existing && typeof existing.version === 'number' && existing.version >= runtimeVersion) return existing;
+  if (existing && typeof existing.uninstall === 'function') {
+    try {
+      existing.uninstall();
+    } catch {}
+  }
   const state = {
-    version: 1,
+    version: runtimeVersion,
     installed: false,
     enabled: false,
     options: { appId: '', instance: '0', captureHeaders: false, captureRequestBody: false, captureResponseBody: false, maxBodyBytes: 4096, maxEvents: 1000 },
@@ -144,7 +151,7 @@ export const API_TRACE_RUNTIME_SOURCE = `
     return original;
   };
   const api = {
-    version: 1,
+    version: runtimeVersion,
     install(options) {
       state.options = { ...state.options, ...options };
       if (!state.installed) {

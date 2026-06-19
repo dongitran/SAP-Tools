@@ -1,5 +1,8 @@
 # SAP Tools Extension Changelog
 
+## 0.10.148 (stable)
+- Fix: Live Trace now replaces stale injected runtime hooks before installing the current hook, so existing app processes no longer turn the unlimited body capture sentinel into empty request/response body previews after an extension update.
+
 ## 0.10.147 (stable)
 - UI: Live Trace detail inspection now uses compact Overview, Request, and Response tabs beside the selected method/URL, with Overview showing six two-column metrics and Bytes without request/response labels.
 - Feature: Live Trace now adds Copy cURL for the selected request, preserving captured method, URL, headers, and body when those capture sections are enabled.
