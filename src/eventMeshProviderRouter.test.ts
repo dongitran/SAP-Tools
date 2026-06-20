@@ -129,9 +129,10 @@ describe('EventMeshProviderRouter', () => {
     const classic = { openEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const advanced = { openAdvancedEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const params = makeTargetParams();
+    const env = advancedEventEnv();
     const router = new EventMeshProviderRouter(classic, advanced, {
       prepareCfCliSession: vi.fn(async () => undefined),
-      fetchDefaultEnvJsonFromTarget: vi.fn(async () => JSON.stringify(advancedEventEnv())),
+      fetchDefaultEnvJsonFromTarget: vi.fn(async () => JSON.stringify(env)),
     });
 
     await router.openEventMeshViewer('demo-app', params);
@@ -139,6 +140,7 @@ describe('EventMeshProviderRouter', () => {
     expect(classic.openEventMeshViewer).not.toHaveBeenCalled();
     expect(advanced.openAdvancedEventMeshViewer).toHaveBeenCalledWith('demo-app', params, {
       classicAvailable: false,
+      defaultEnv: env,
     });
   });
 
@@ -146,11 +148,10 @@ describe('EventMeshProviderRouter', () => {
     const classic = { openEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const advanced = { openAdvancedEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const params = makeTargetParams();
+    const env = mergedEnv(regularEventEnv(), advancedEventEnv());
     const router = new EventMeshProviderRouter(classic, advanced, {
       prepareCfCliSession: vi.fn(async () => undefined),
-      fetchDefaultEnvJsonFromTarget: vi.fn(async () =>
-        JSON.stringify(mergedEnv(regularEventEnv(), advancedEventEnv()))
-      ),
+      fetchDefaultEnvJsonFromTarget: vi.fn(async () => JSON.stringify(env)),
     });
 
     await router.openEventMeshViewer('demo-app', params);
@@ -158,6 +159,7 @@ describe('EventMeshProviderRouter', () => {
     expect(classic.openEventMeshViewer).not.toHaveBeenCalled();
     expect(advanced.openAdvancedEventMeshViewer).toHaveBeenCalledWith('demo-app', params, {
       classicAvailable: true,
+      defaultEnv: env,
     });
   });
 

@@ -85,6 +85,7 @@ describe('AdvancedEventMeshSempClient', () => {
       { topic: 'topic/a', queues: ['q-one'] },
       { topic: 'topic/shared', queues: ['q-one', 'q/two'] },
     ]);
+    expect(discovery.unreadableQueueCount).toBe(0);
 
     const methods = fetchFn.mock.calls.map((call) => (call[1] as RequestInit | undefined)?.method ?? 'GET');
     expect(methods).toEqual(['POST', 'GET', 'GET', 'GET']);
@@ -146,6 +147,118 @@ describe('AdvancedEventMeshSempClient', () => {
     );
 
     expect((await client.listQueues()).map((queue) => queue.queueName)).toEqual(['q1', 'q2']);
+  });
+
+  it('rejects cross-origin SEMP pagination links before requesting a token for that page', async () => {
+    const fetchFn = vi.fn((url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return Promise.resolve(jsonResponse(200, { access_token: 'tok', expires_in: 600 }));
+      }
+      if (url.endsWith('/queues?count=100')) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            data: [{ queueName: 'q1' }],
+            meta: { pagination: { nextPageUri: 'https://evil.example.com/SEMP/v2/config/x' } },
+          })
+        );
+      }
+      return Promise.resolve(jsonResponse(404, 'not found'));
+    });
+    const client = new AdvancedEventMeshSempClient(
+      makeBinding(),
+      fetchFn as unknown as AdvancedEventMeshFetchFn
+    );
+
+    await expect(client.listQueues()).rejects.toThrow(/outside/i);
+    expect(fetchFn.mock.calls.map((call) => String(call[0]))).not.toContain(
+      'https://evil.example.com/SEMP/v2/config/x'
+    );
+  });
+
+  it('stops SEMP pagination loops instead of following the same page repeatedly', async () => {
+    const fetchFn = vi.fn((url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return Promise.resolve(jsonResponse(200, { access_token: 'tok', expires_in: 600 }));
+      }
+      return Promise.resolve(
+        jsonResponse(200, {
+          data: [{ queueName: 'q1' }],
+          meta: { pagination: { nextPageUri: '/SEMP/v2/config/msgVpns/simplemdg-aem/queues?count=100' } },
+        })
+      );
+    });
+    const client = new AdvancedEventMeshSempClient(
+      makeBinding(),
+      fetchFn as unknown as AdvancedEventMeshFetchFn
+    );
+
+    await expect(client.listQueues()).rejects.toThrow(/loop/i);
+  });
+
+  it('reports unreadable queues while preserving topics from readable queues', async () => {
+    const fetchFn = vi.fn((url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return Promise.resolve(jsonResponse(200, { access_token: 'tok', expires_in: 600 }));
+      }
+      if (url.endsWith('/queues?count=100')) {
+        return Promise.resolve(
+          jsonResponse(200, { data: [{ queueName: 'q1' }, { queueName: 'q2' }] })
+        );
+      }
+      if (url.includes('/queues/q1/subscriptions')) {
+        return Promise.resolve(jsonResponse(500, 'temporary failure'));
+      }
+      return Promise.resolve(jsonResponse(200, { data: [{ subscriptionTopic: 'topic/ok' }] }));
+    });
+    const client = new AdvancedEventMeshSempClient(
+      makeBinding(),
+      fetchFn as unknown as AdvancedEventMeshFetchFn
+    );
+
+    await expect(client.discoverQueueSubscriptions()).resolves.toEqual({
+      queues: [{ queueName: 'q1' }, { queueName: 'q2' }],
+      topics: [{ topic: 'topic/ok', queues: ['q2'] }],
+      unreadableQueueCount: 1,
+    });
+  });
+
+  it('aborts a pending SEMP request when the caller aborts the signal', async () => {
+    const controller = new AbortController();
+    const fetchFn = vi.fn((url: string, init?: RequestInit): Promise<Response> => {
+      if (url.includes('/oauth2/token')) {
+        return Promise.resolve(jsonResponse(200, { access_token: 'tok', expires_in: 600 }));
+      }
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (signal instanceof AbortSignal) {
+          signal.addEventListener('abort', () => {
+            reject(new Error('fetch aborted'));
+          }, { once: true });
+        }
+      });
+    });
+    const client = new AdvancedEventMeshSempClient(
+      makeBinding(),
+      fetchFn as unknown as AdvancedEventMeshFetchFn
+    );
+
+    const request = client.listQueues(controller.signal);
+    controller.abort();
+
+    await expect(request).rejects.toThrow(/aborted/i);
+  });
+
+  it('does not start a SEMP request when the caller signal is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetchFn = vi.fn(() => Promise.resolve(jsonResponse(200, { data: [] })));
+    const client = new AdvancedEventMeshSempClient(
+      makeBinding(),
+      fetchFn as unknown as AdvancedEventMeshFetchFn
+    );
+
+    await expect(client.listQueues(controller.signal)).rejects.toThrow(/aborted/i);
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it('does not leak the client secret in HTTP error messages', async () => {

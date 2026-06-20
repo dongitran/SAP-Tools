@@ -4,6 +4,8 @@ import type { AdvancedEventMeshBinding, AdvancedEventMeshOAuth } from './advance
 const SEMP_CONFIG_PREFIX = '/SEMP/v2/config';
 const DEFAULT_PAGE_SIZE = 100;
 const DEFAULT_SEMP_TIMEOUT_MS = 15000;
+const DEFAULT_SUBSCRIPTION_DISCOVERY_CONCURRENCY = 6;
+const MAX_SEMP_PAGES = 100;
 
 export type AdvancedEventMeshFetchFn = typeof fetch;
 
@@ -23,6 +25,7 @@ export interface AdvancedEventMeshTopicSummary {
 export interface AdvancedEventMeshQueueDiscovery {
   readonly queues: AdvancedEventMeshQueueSummary[];
   readonly topics: AdvancedEventMeshTopicSummary[];
+  readonly unreadableQueueCount: number;
 }
 
 export class AdvancedEventMeshSempError extends Error {
@@ -142,6 +145,29 @@ function parseSubscriptionTopic(entry: unknown): string | null {
     : null;
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && /aborted/i.test(error.message);
+}
+
+async function runWithConcurrency<T>(
+  items: readonly T[],
+  limit: number,
+  work: (item: T) => Promise<void>
+): Promise<void> {
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(limit, 1), items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex];
+      nextIndex += 1;
+      if (item !== undefined) {
+        await work(item);
+      }
+    }
+  });
+  await Promise.all(workers);
+}
+
 async function withTimeout<T>(
   label: string,
   timeoutMs: number,
@@ -156,6 +182,11 @@ async function withTimeout<T>(
   const abortPromise = new Promise<never>((_resolve, reject) => {
     rejectAbort = reject;
   });
+  const abortFromParent = (): void => {
+    rejectAbort(new Error(`${label} was aborted.`));
+    controller.abort(parentSignal?.reason);
+  };
+  parentSignal?.addEventListener('abort', abortFromParent, { once: true });
   const timeout = setTimeout(() => {
     const error = new AdvancedEventMeshTimeoutError(label, timeoutMs);
     rejectAbort(error);
@@ -165,6 +196,7 @@ async function withTimeout<T>(
     return await Promise.race([work(controller.signal), abortPromise]);
   } finally {
     clearTimeout(timeout);
+    parentSignal?.removeEventListener('abort', abortFromParent);
   }
 }
 
@@ -236,7 +268,8 @@ export class AdvancedEventMeshSempClient {
   async discoverQueueSubscriptions(signal?: AbortSignal): Promise<AdvancedEventMeshQueueDiscovery> {
     const queues = await this.listQueues(signal);
     const topicsByName = new Map<string, Set<string>>();
-    for (const queue of queues) {
+    let unreadableQueueCount = 0;
+    await runWithConcurrency(queues, DEFAULT_SUBSCRIPTION_DISCOVERY_CONCURRENCY, async (queue) => {
       try {
         const topics = await this.listQueueSubscriptions(queue.queueName, signal);
         for (const topic of topics) {
@@ -244,11 +277,15 @@ export class AdvancedEventMeshSempClient {
           queueNames.add(queue.queueName);
           topicsByName.set(topic, queueNames);
         }
-      } catch {
+      } catch (error) {
+        if (isAbortError(error)) {
+          throw error;
+        }
         // Keep discovery useful when one queue is unreadable.
+        unreadableQueueCount += 1;
       }
-    }
-    return { queues, topics: this.toTopicSummaries(topicsByName) };
+    });
+    return { queues, topics: this.toTopicSummaries(topicsByName), unreadableQueueCount };
   }
 
   private toTopicSummaries(topicsByName: Map<string, Set<string>>): AdvancedEventMeshTopicSummary[] {
@@ -263,25 +300,33 @@ export class AdvancedEventMeshSempClient {
   private async readCollectionPages(path: string, signal?: AbortSignal): Promise<readonly unknown[]> {
     const items: unknown[] = [];
     let nextPath: string | null = path;
-    while (nextPath !== null) {
-      const page = await this.readCollectionPage(nextPath, signal);
+    const seenUrls = new Set<string>();
+    for (let pageCount = 0; nextPath !== null; pageCount += 1) {
+      if (pageCount >= MAX_SEMP_PAGES) {
+        throw new Error(`Advanced Event Mesh SEMP pagination exceeded ${String(MAX_SEMP_PAGES)} pages.`);
+      }
+      const url = this.buildSempUrl(nextPath);
+      if (seenUrls.has(url)) {
+        throw new Error('Advanced Event Mesh SEMP pagination loop detected.');
+      }
+      seenUrls.add(url);
+      const page = await this.readCollectionPageUrl(url, signal);
       items.push(...page.items);
       nextPath = page.nextPageUri;
     }
     return items;
   }
 
-  private async readCollectionPage(path: string, signal?: AbortSignal): Promise<SempPage> {
-    const payload = await this.sempGetJson(path, signal);
+  private async readCollectionPageUrl(url: string, signal?: AbortSignal): Promise<SempPage> {
+    const payload = await this.sempGetJsonUrl(url, signal);
     return {
       items: readCollection(payload),
       nextPageUri: readNextPageUri(payload),
     };
   }
 
-  private async sempGetJson(path: string, signal?: AbortSignal): Promise<unknown> {
+  private async sempGetJsonUrl(url: string, signal?: AbortSignal): Promise<unknown> {
     return withTimeout('GET Advanced Event Mesh SEMP request', this.requestTimeoutMs, signal, async (requestSignal) => {
-      const url = this.buildSempUrl(path);
       const token = await this.getToken(requestSignal);
       const response = await this.fetchImpl(url, {
         method: 'GET',
@@ -297,10 +342,14 @@ export class AdvancedEventMeshSempClient {
   }
 
   private buildSempUrl(path: string): string {
-    if (/^https?:\/\//u.test(path)) {
-      return path;
-    }
     const base = new URL(this.binding.managementUri);
+    if (/^https?:\/\//u.test(path)) {
+      const url = new URL(path);
+      if (url.origin !== base.origin) {
+        throw new Error('Advanced Event Mesh SEMP pagination link points outside the management endpoint.');
+      }
+      return url.toString();
+    }
     const prefixedPath = path.startsWith(SEMP_CONFIG_PREFIX)
       ? path
       : `${SEMP_CONFIG_PREFIX}${path.startsWith('/') ? path : `/${path}`}`;

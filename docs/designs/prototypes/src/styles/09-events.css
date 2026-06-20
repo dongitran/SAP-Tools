@@ -1247,6 +1247,15 @@ body.vscode-high-contrast .event-payload.is-json {
   min-width: 0;
 }
 
+.aem-warning {
+  padding: 7px 10px;
+  border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(255, 204, 0, 0.35));
+  border-radius: 4px;
+  background: var(--vscode-inputValidation-warningBackground, rgba(255, 204, 0, 0.08));
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+  font-size: 12px;
+}
+
 .aem-grid {
   min-height: 0;
   display: grid;

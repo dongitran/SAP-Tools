@@ -1,7 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { createWebviewPanelMock } = vi.hoisted(() => ({
+// cspell:ignore Semp simplemdg
+
+const {
+  createWebviewPanelMock,
+  discoverQueueSubscriptionsMock,
+  fetchDefaultEnvJsonFromTargetMock,
+  prepareCfCliSessionMock,
+} = vi.hoisted(() => ({
   createWebviewPanelMock: vi.fn(),
+  discoverQueueSubscriptionsMock: vi.fn(),
+  fetchDefaultEnvJsonFromTargetMock: vi.fn(),
+  prepareCfCliSessionMock: vi.fn(),
 }));
 
 vi.mock('vscode', () => ({
@@ -14,6 +24,17 @@ vi.mock('vscode', () => ({
   window: {
     createWebviewPanel: createWebviewPanelMock,
   },
+}));
+
+vi.mock('./cfClient', () => ({
+  fetchDefaultEnvJsonFromTarget: fetchDefaultEnvJsonFromTargetMock,
+  prepareCfCliSession: prepareCfCliSessionMock,
+}));
+
+vi.mock('./advancedEventMeshClient', () => ({
+  AdvancedEventMeshSempClient: vi.fn(() => ({
+    discoverQueueSubscriptions: discoverQueueSubscriptionsMock,
+  })),
 }));
 
 import { AdvancedEventMeshPanelManager } from './advancedEventMeshPanel';
@@ -75,6 +96,9 @@ function makeTargetParams(spaceName: string): EventMeshTargetParams {
 describe('AdvancedEventMeshPanelManager webview security', () => {
   beforeEach(() => {
     createWebviewPanelMock.mockReset();
+    discoverQueueSubscriptionsMock.mockReset();
+    fetchDefaultEnvJsonFromTargetMock.mockReset();
+    prepareCfCliSessionMock.mockReset();
   });
 
   it('adds a restrictive content security policy to the Advanced Event Mesh HTML', () => {
@@ -118,5 +142,60 @@ describe('AdvancedEventMeshPanelManager webview security', () => {
     expect(createWebviewPanelMock).toHaveBeenCalledTimes(2);
     expect(firstPanel.dispose).toHaveBeenCalledTimes(1);
     expect(firstPanel.reveal).not.toHaveBeenCalled();
+  });
+
+  it('uses a preloaded default env on first initialization instead of fetching CF env again', async () => {
+    const panel = createMockPanel();
+    createWebviewPanelMock.mockReturnValue(panel);
+    discoverQueueSubscriptionsMock.mockResolvedValue({
+      queues: [{ queueName: 'q1' }],
+      topics: [{ topic: 'topic/one', queues: ['q1'] }],
+      unreadableQueueCount: 0,
+    });
+    const manager = new AdvancedEventMeshPanelManager({} as never, { appendLine: vi.fn() } as never);
+
+    manager.openAdvancedEventMeshViewer('demo-app', makeTargetParams('space-a'), {
+      classicAvailable: false,
+      defaultEnv: {
+        VCAP_SERVICES: {
+          'user-provided': [
+            {
+              name: 'advanced-event-mesh',
+              instance_name: 'advanced-event-mesh',
+              credentials: {
+                'authentication-service': {
+                  tokenendpoint: 'https://ias.example.com/oauth2/token',
+                  clientid: 'client-id',
+                  clientsecret: 'client-secret',
+                },
+                endpoints: {
+                  'advanced-event-mesh': {
+                    uri: 'https://broker.example.com:943',
+                    smf_uri: 'wss://broker.example.com:443',
+                  },
+                },
+                vpn: 'simplemdg-aem',
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const handler = panel.webview.onDidReceiveMessage.mock.calls[0]?.[0] as
+      | ((raw: unknown) => void)
+      | undefined;
+    handler?.({ type: 'sapTools.aem.webviewReady' });
+    await vi.waitFor(() => expect(panel.webview.postMessage).toHaveBeenCalled());
+
+    expect(prepareCfCliSessionMock).not.toHaveBeenCalled();
+    expect(fetchDefaultEnvJsonFromTargetMock).not.toHaveBeenCalled();
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'sapTools.aem.ready',
+        queues: [{ queueName: 'q1' }],
+        topics: [{ topic: 'topic/one', queues: ['q1'] }],
+      })
+    );
   });
 });

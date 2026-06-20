@@ -22,6 +22,7 @@ const ADVANCED_EVENT_MESH_VIEW_TYPE = 'sapTools.advancedEventMeshViewer';
 
 export interface AdvancedEventMeshPanelOptions {
   readonly classicAvailable: boolean;
+  readonly defaultEnv?: Record<string, unknown>;
 }
 
 interface AdvancedEventMeshPanelSession {
@@ -29,6 +30,8 @@ interface AdvancedEventMeshPanelSession {
   readonly appId: string;
   readonly targetParams: EventMeshTargetParams;
   readonly providerTabs: AdvancedEventMeshProviderTabs;
+  preloadedDefaultEnv: Record<string, unknown> | null;
+  abortController: AbortController | null;
   disposed: boolean;
 }
 
@@ -45,6 +48,7 @@ interface AdvancedEventMeshReadyPayload {
   readonly binding: AdvancedEventMeshBindingPayload;
   readonly queues: readonly AdvancedEventMeshQueueSummary[];
   readonly topics: readonly AdvancedEventMeshTopicSummary[];
+  readonly unreadableQueueCount: number;
   readonly providerTabs: AdvancedEventMeshProviderTabs;
 }
 
@@ -152,6 +156,8 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
       appId,
       targetParams,
       providerTabs,
+      preloadedDefaultEnv: options.defaultEnv ?? null,
+      abortController: null,
       disposed: false,
     };
     this.sessions.set(appId, session);
@@ -180,6 +186,7 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
   private bindPanelLifecycle(session: AdvancedEventMeshPanelSession): void {
     session.panel.onDidDispose(() => {
       session.disposed = true;
+      session.abortController?.abort();
       if (this.sessions.get(session.appId) === session) {
         this.sessions.delete(session.appId);
       }
@@ -222,6 +229,7 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
       binding: payload.binding,
       queues: payload.queues,
       topics: payload.topics,
+      unreadableQueueCount: payload.unreadableQueueCount,
       providerTabs: payload.providerTabs,
     });
   }
@@ -235,21 +243,37 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
       this.postMockReady(session);
       return;
     }
+    session.abortController?.abort();
+    const controller = new AbortController();
+    session.abortController = controller;
     try {
+      const preloadedDefaultEnv = session.preloadedDefaultEnv;
+      session.preloadedDefaultEnv = null;
+      if (preloadedDefaultEnv !== null) {
+        await this.readAndPostDiscovery(session, preloadedDefaultEnv, controller.signal);
+        return;
+      }
       await prepareCfCliSession(session.targetParams);
       const envJson = await fetchDefaultEnvJsonFromTarget({
         appName: session.appId,
         cfHomeDir: session.targetParams.cfHomeDir,
       });
-      await this.readAndPostDiscovery(session, JSON.parse(envJson) as unknown);
+      await this.readAndPostDiscovery(session, JSON.parse(envJson) as unknown, controller.signal);
     } catch (error) {
-      this.postError(session, describeError(error));
+      if (!controller.signal.aborted) {
+        this.postError(session, describeError(error));
+      }
+    } finally {
+      if (session.abortController === controller) {
+        session.abortController = null;
+      }
     }
   }
 
   private async readAndPostDiscovery(
     session: AdvancedEventMeshPanelSession,
-    defaultEnv: unknown
+    defaultEnv: unknown,
+    signal?: AbortSignal
   ): Promise<void> {
     const bindings = extractAdvancedEventMeshDiscovery(defaultEnv).brokerBindings;
     const binding = bindings[0];
@@ -259,11 +283,15 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
     }
     this.log(`Found ${String(bindings.length)} Advanced Event Mesh binding(s) for ${session.appId}`);
     const client = new AdvancedEventMeshSempClient(binding);
-    const discovery = await client.discoverQueueSubscriptions();
+    const discovery = await client.discoverQueueSubscriptions(signal);
+    if (signal?.aborted === true) {
+      return;
+    }
     this.postReady(session, {
       binding: toBindingPayload(binding),
       queues: discovery.queues,
       topics: discovery.topics,
+      unreadableQueueCount: discovery.unreadableQueueCount,
       providerTabs: session.providerTabs,
     });
   }
@@ -288,6 +316,7 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
         },
       ],
       topics: [{ topic: 'mock/topic/created', queues: ['mock/events'] }],
+      unreadableQueueCount: 0,
       providerTabs: session.providerTabs,
     });
   }

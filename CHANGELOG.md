@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.153 (stable)
+- Hardening: Advanced Event Mesh discovery now reuses the already-read app environment, aborts stale refreshes, and guards management pagination against loops or cross-origin links.
+- Performance: Advanced Event Mesh topic discovery now reads queue subscriptions with bounded concurrency and reports partial queue read failures without blocking the whole view.
+
 ## 0.10.152 (stable)
 - Feature: Event viewer now detects Advanced Event Mesh bindings and opens a read-only Advanced Event Mesh editor tab that lists queues and queue subscription topics via the management API.
 - Hardening: Event viewer provider detection falls back to the existing Event Mesh viewer when app env discovery is unavailable or no Advanced Event Mesh binding is present.

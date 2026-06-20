@@ -21,6 +21,7 @@ export interface AdvancedEventMeshViewer {
 
 export interface AdvancedEventMeshOpenOptions {
   readonly classicAvailable: boolean;
+  readonly defaultEnv?: Record<string, unknown>;
 }
 
 interface EventMeshProviderRouterDependencies {
@@ -61,6 +62,7 @@ export class EventMeshProviderRouter {
     if (advancedBindings.length > 0) {
       await this.advancedViewer.openAdvancedEventMeshViewer(appId, targetParams, {
         classicAvailable: classicBindings.length > 0,
+        defaultEnv,
       });
       return;
     }

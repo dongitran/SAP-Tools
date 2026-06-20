@@ -13,6 +13,7 @@ let queues = [];
 let topics = [];
 let query = '';
 let refreshing = false;
+let unreadableQueueCount = 0;
 let providerTabs = {
   classicAvailable: initialProviderTabs.classicAvailable === true,
 };
@@ -125,6 +126,14 @@ function renderToolbar() {
     </div>`;
 }
 
+function renderPartialWarning() {
+  if (unreadableQueueCount <= 0) return '';
+  return `
+    <div class="aem-warning" role="status">
+      ${plural(unreadableQueueCount, 'queue was', 'queues were')} skipped while reading subscriptions.
+    </div>`;
+}
+
 function renderQueues() {
   if (queues.length === 0) {
     return '<p class="event-hint">No queues found for this Message VPN.</p>';
@@ -184,6 +193,7 @@ function renderReady() {
       ${renderProviderTabs()}
       ${renderSummary()}
       ${renderToolbar()}
+      ${renderPartialWarning()}
       <section class="aem-grid">
         <section class="aem-panel" aria-label="Advanced Event Mesh queues">
           <div class="event-section-head">
@@ -232,6 +242,10 @@ function handleReady(data) {
   binding = data.binding || null;
   queues = Array.isArray(data.queues) ? data.queues : [];
   topics = Array.isArray(data.topics) ? data.topics : [];
+  unreadableQueueCount =
+    Number.isInteger(data.unreadableQueueCount) && data.unreadableQueueCount > 0
+      ? data.unreadableQueueCount
+      : 0;
   providerTabs = {
     classicAvailable: data.providerTabs?.classicAvailable === true,
   };
@@ -241,6 +255,7 @@ function handleReady(data) {
 function handleError(data) {
   phase = 'error';
   refreshing = false;
+  unreadableQueueCount = 0;
   errorMessage = data.message || 'Unknown Advanced Event Mesh error.';
   render();
 }
