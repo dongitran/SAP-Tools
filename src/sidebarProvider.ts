@@ -30,7 +30,7 @@ import {
 import { readSharedAppFolderMappings, readSharedRemoteRoot } from './sharedDebugConfig';
 import { exportSqlToolsConfig } from './sqlToolsConfigExporter';
 import type { ApisExplorerPanelManager } from './apisExplorerPanel';
-import type { EventMeshPanelManager } from './eventMeshPanel';
+import type { EventMeshTargetParams } from './eventMeshPanel';
 import {
   resolveMockApps,
   resolveMockCfTopology,
@@ -67,6 +67,7 @@ import {
   type MicrosoftGraphToolStepProgress,
   sanitizeGraphMessage,
 } from './microsoftGraphTools';
+import type { EventMeshStopReason } from './eventMeshProviderRouter';
 
 export const REGION_VIEW_ID = 'sapTools.regionView';
 
@@ -293,6 +294,11 @@ interface PersistedServiceMappingScopeEntry {
   readonly updatedAt: string;
 }
 
+interface EventMeshViewerController {
+  openEventMeshViewer(appId: string, targetParams?: EventMeshTargetParams): void | Promise<void>;
+  stopAllListeners(reason: EventMeshStopReason): void;
+}
+
 // ── Provider ─────────────────────────────────────────────────────────────────
 
 export class RegionSidebarProvider
@@ -334,7 +340,7 @@ export class RegionSidebarProvider
     private readonly cacheStore: CacheStore,
     private readonly hanaSqlWorkbench: HanaSqlWorkbench,
     private readonly apisExplorerPanelManager: ApisExplorerPanelManager,
-    private readonly eventMeshPanelManager: EventMeshPanelManager
+    private readonly eventMeshPanelManager: EventMeshViewerController
   ) {
     this.hanaSqlWorkbench.registerActiveSessionProvider(() => this.currentLogSessionSeed);
     this.hanaSqlWorkbench.registerTunnelStateListener((appId, active) => {
@@ -528,7 +534,7 @@ export class RegionSidebarProvider
         const credentials = await getEffectiveCredentials(this.context);
         if (credentials !== null) {
           const cfHomeDir = await ensureCfHomeDir(this.context);
-          this.eventMeshPanelManager.openEventMeshViewer(appId, {
+          await this.eventMeshPanelManager.openEventMeshViewer(appId, {
             apiEndpoint: getCfApiEndpoint(this.currentConfirmedScope.regionCode),
             email: credentials.email,
             password: credentials.password,
@@ -539,7 +545,7 @@ export class RegionSidebarProvider
           return;
         }
       }
-      this.eventMeshPanelManager.openEventMeshViewer(appId);
+      await this.eventMeshPanelManager.openEventMeshViewer(appId);
       return;
     }
 

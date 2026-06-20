@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Advanced Event Mesh Webview</title>
+    <link rel="stylesheet" href="../assets/prototype.css?v=20260620" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: var(--editor-bg);
+        color: var(--text-foreground);
+        font-family: var(--font-family);
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      #advanced-event-mesh-app {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+    </style>
+  </head>
+  <body class="vscode-dark">
+    <div id="advanced-event-mesh-app"></div>
+    <script>
+      // cspell:ignore ehog kgtkfy PRDQUEUE simplemdg Refetch Testrun
+      window.advancedEventMeshAppId = 'simplemdg-srv-config-main';
+      window.advancedEventMeshProviderTabs = { classicAvailable: true };
+
+      const demoQueues = [
+        { queueName: 'messaging_core_1/EVENTPROCESSQUEUE', permission: 'consume', ingressEnabled: true, egressEnabled: true, subscriptionCount: 37 },
+        { queueName: 'messaging_core_1/SYSTEMCONFIGQUEUE', permission: 'consume', ingressEnabled: true, egressEnabled: true, subscriptionCount: 62 },
+        { queueName: 'messaging_object_type_1/PRDQUEUE', permission: 'consume', ingressEnabled: true, egressEnabled: true, subscriptionCount: 11 }
+      ];
+      const demoTopics = [
+        { topic: 'messaging_core_1_CRSubmitted', queues: ['messaging_core_1/EVENTPROCESSQUEUE'] },
+        { topic: 'messaging_core_1_RefetchModelMetaDataCaching', queues: ['messaging_core_1/APPROVERPROCESSQUEUE', 'messaging_core_1/REQUESTORPROCESSQUEUE', 'messaging_core_1/SYSTEMCONFIGQUEUE'] },
+        { topic: 'messaging_object_type_1_PRDStartTestrun', queues: ['messaging_object_type_1/PRDQUEUE'] }
+      ];
+
+      window.acquireVsCodeApi = function acquireVsCodeApi() {
+        return {
+          postMessage(message) {
+            window.setTimeout(() => {
+              if (message.type === 'sapTools.aem.webviewReady' || message.type === 'sapTools.aem.refresh') {
+                window.dispatchEvent(new MessageEvent('message', {
+                  data: {
+                    type: 'sapTools.aem.ready',
+                    binding: {
+                      name: 'advanced-event-mesh',
+                      vpn: 'simplemdg-aem',
+                      managementHost: 'mr-connection-kgtkfy6ehog.messaging.solace.cloud'
+                    },
+                    providerTabs: { classicAvailable: true },
+                    queues: demoQueues,
+                    topics: demoTopics
+                  }
+                }));
+              }
+            }, 180);
+          }
+        };
+      };
+    </script>
+    <script src="../assets/advanced-events-webview.js?v=20260620"></script>
+  </body>
+</html>

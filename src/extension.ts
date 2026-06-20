@@ -11,7 +11,9 @@ import { REGION_VIEW_ID, RegionSidebarProvider } from './sidebarProvider';
 import { readCurrentScope } from './scopeSync';
 
 import { ApisExplorerPanelManager } from './apisExplorerPanel';
+import { AdvancedEventMeshPanelManager } from './advancedEventMeshPanel';
 import { EventMeshPanelManager } from './eventMeshPanel';
+import { EventMeshProviderRouter } from './eventMeshProviderRouter';
 
 const OPEN_REGION_MENU_COMMAND = 'sapTools.selectSapBtpRegion';
 const OPEN_CF_LOGS_PANEL_COMMAND = 'sapTools.openCfLogsPanel';
@@ -42,6 +44,17 @@ export function activate(context: vscode.ExtensionContext): void {
     context.globalState
   );
   const eventMeshPanelManager = new EventMeshPanelManager(context.extensionUri, outputChannel);
+  const advancedEventMeshPanelManager = new AdvancedEventMeshPanelManager(
+    context.extensionUri,
+    outputChannel,
+    (appId, targetParams) => {
+      eventMeshPanelManager.openEventMeshViewer(appId, targetParams);
+    }
+  );
+  const eventMeshProviderRouter = new EventMeshProviderRouter(
+    eventMeshPanelManager,
+    advancedEventMeshPanelManager
+  );
 
   const regionSidebarProvider = new RegionSidebarProvider(
     context.extensionUri,
@@ -52,7 +65,7 @@ export function activate(context: vscode.ExtensionContext): void {
     cacheStore,
     hanaSqlWorkbench,
     apisExplorerPanelManager,
-    eventMeshPanelManager
+    eventMeshProviderRouter
   );
 
   void getEffectiveCredentials(context)
@@ -133,6 +146,7 @@ export function activate(context: vscode.ExtensionContext): void {
     hanaSqlWorkbench,
     apisExplorerPanelManager,
     eventMeshPanelManager,
+    advancedEventMeshPanelManager,
     webviewProviderRegistration,
     cfLogsPanelRegistration,
     openRegionMenuCommand,

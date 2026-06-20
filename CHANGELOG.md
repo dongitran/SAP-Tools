@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.152 (stable)
+- Feature: Event viewer now detects Advanced Event Mesh bindings and opens a read-only Advanced Event Mesh editor tab that lists queues and queue subscription topics via the management API.
+- Hardening: Event viewer provider detection falls back to the existing Event Mesh viewer when app env discovery is unavailable or no Advanced Event Mesh binding is present.
+
 ## 0.10.151 (stable)
 - UI: Live Trace selected request details now show the path/query URL in a full-width Overview row above the status metrics.
 - Hardening: Live Trace now cancels late Inspector tunnel startup when an APIs Explorer panel is closed while tracing is still starting.
