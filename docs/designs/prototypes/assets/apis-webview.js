@@ -316,6 +316,7 @@ function resolveMockApiCatalog() {
 
 function resolveApiCatalog() {
   if (apiCurrentCatalog !== null) return apiCurrentCatalog;
+  if (apiCatalogState === 'loading') return null;
   if (!vscodeApi) return resolveMockApiCatalog();
   return null;
 }
@@ -514,11 +515,12 @@ function statusBucket(status) {
 function formatTraceStateLabel(state) {
   const labels = {
     idle: 'Idle',
-    preparingCli: 'Preparing',
+    preparingCli: 'Starting',
+    checkingRuntime: 'Checking runtime',
     openingTunnel: 'Opening tunnel',
-    connectingInspector: 'Connecting',
-    installingHook: 'Installing hook',
-    streaming: 'Streaming',
+    injecting: 'Installing hook',
+    streaming: 'Listening',
+    paused: 'Paused',
     stopping: 'Stopping',
     stopped: 'Stopped',
     needsInspector: 'Needs Inspector',
@@ -874,12 +876,22 @@ function renderTraceDetail(event) {
 function renderTraceActionCluster() {
   const isActive = isTraceActiveState(apiTraceState);
   const canStop = isTraceStoppableState(apiTraceState);
-  const statusClass = apiTraceState === 'error' ? 'is-error' : isActive ? 'is-streaming' : 'is-idle';
+  const isProgress = ['preparingCli', 'checkingRuntime', 'openingTunnel', 'injecting', 'stopping'].includes(apiTraceState);
+  const statusClass = apiTraceState === 'error'
+    ? 'is-error'
+    : isProgress
+      ? 'is-progress'
+      : isActive
+        ? 'is-streaming'
+        : 'is-idle';
   const traceToggleAction = canStop ? 'api-trace-stop' : 'api-trace-start';
   const traceToggleLabel = canStop ? 'Stop Listening' : 'Start Listening';
   const traceToggleClass = canStop ? 'secondary-action' : 'primary-action';
   return `
-    <span class="api-trace-state-badge ${statusClass}" aria-label="Live Trace state">${escapeHtml(formatTraceStateLabel(apiTraceState))}</span>
+    <span class="api-trace-state-badge ${statusClass}" aria-label="Live Trace state" role="status" aria-live="polite" aria-busy="${isProgress ? 'true' : 'false'}">
+      ${isProgress ? '<span class="api-trace-state-spinner" aria-hidden="true"></span>' : ''}
+      ${escapeHtml(formatTraceStateLabel(apiTraceState))}
+    </span>
     <button type="button" class="${traceToggleClass} api-trace-action-btn" data-action="${traceToggleAction}">${traceToggleLabel}</button>
     <button type="button" class="secondary-action api-trace-action-btn" data-action="api-trace-clear">Clear</button>
     <div class="api-trace-settings-container">
@@ -1447,6 +1459,7 @@ appElement.addEventListener('click', (event) => {
     apiTraceStatusMessage = 'Starting runtime HTTP trace session.';
     apiTraceRuntimeHookInstalled = false;
     apiTraceRuntimeHookMayRemain = false;
+    renderLiveTracePanel();
     if (vscodeApi) {
       vscodeApi.postMessage({
         type: 'sapTools.apis.trace.start',
@@ -1466,12 +1479,14 @@ appElement.addEventListener('click', (event) => {
         }
       });
     } else {
-      apiTraceState = 'streaming';
-      apiTraceStatusMessage = 'Streaming prototype HTTP requests for this app.';
-      apiTraceRuntimeHookInstalled = true;
-      appendTraceEvents(API_MOCK_TRACE_EVENTS);
+      window.setTimeout(() => {
+        if (apiTraceState !== 'preparingCli') return;
+        apiTraceState = 'streaming';
+        apiTraceStatusMessage = 'Streaming prototype HTTP requests for this app.';
+        apiTraceRuntimeHookInstalled = true;
+        appendTraceEvents(API_MOCK_TRACE_EVENTS);
+      }, 350);
     }
-    renderLiveTracePanel();
     return;
   }
 
@@ -1693,6 +1708,29 @@ document.addEventListener('mouseleave', () => {
 
 window.addEventListener('message', (event) => {
   if (!event.data) return;
+
+  if (event.data.type === 'sapTools.apis.catalogLoading') {
+    apiCatalogState = 'loading';
+    apiCurrentCatalog = null;
+    apiSelectedEntity = '';
+    apiHttpMethod = 'GET';
+    apiHttpBody = '';
+    apiParams = {
+      $select: '',
+      $filter: '',
+      $expand: '',
+      $top: API_DEFAULT_TOP,
+      $skip: '0'
+    };
+    apiResultState = 'idle';
+    apiResultTime = 0;
+    apiResultStatus = '';
+    apiResultPayload = null;
+    apiActiveView = 'json';
+    endpointSessions.clear();
+    renderWebview();
+    return;
+  }
 
   if (event.data.type === 'sapTools.apis.syncStarted') {
     apiCatalogState = 'syncing';

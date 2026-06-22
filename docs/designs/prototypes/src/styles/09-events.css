@@ -1139,7 +1139,7 @@ body.vscode-high-contrast .event-payload.is-json {
   border: 1px solid var(--vscode-inputValidation-errorBorder, rgba(255, 0, 0, 0.25));
 }
 
-/* --- Advanced Event Mesh read-only viewer --- */
+/* --- Advanced Event Mesh viewer --- */
 
 #advanced-event-mesh-app {
   font-size: 13px;
@@ -1256,6 +1256,68 @@ body.vscode-high-contrast .event-payload.is-json {
   font-size: 12px;
 }
 
+.aem-listen-panel {
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.32));
+  border-radius: 6px;
+}
+
+.aem-topic-choice-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.aem-topic-choice {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.24));
+  border-radius: 4px;
+  background: var(--vscode-editor-background);
+  cursor: pointer;
+}
+
+.aem-topic-choice:hover {
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.16));
+}
+
+.aem-topic-choice.is-live {
+  color: var(--vscode-descriptionForeground);
+}
+
+.aem-custom-topic {
+  margin-top: 8px;
+}
+
+.aem-discovery-details {
+  margin-top: 10px;
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.18));
+  padding-top: 8px;
+}
+
+.aem-discovery-details summary {
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.aem-discovery-details .aem-toolbar {
+  margin-top: 8px;
+}
+
+.aem-discovery-details .aem-grid {
+  margin-top: 8px;
+}
+
+.aem-discovery-details .aem-panel {
+  min-height: 0;
+}
+
 .aem-grid {
   min-height: 0;
   display: grid;
@@ -1324,6 +1386,7 @@ body.vscode-high-contrast .event-payload.is-json {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .aem-topic-choice-list,
   .aem-grid {
     grid-template-columns: 1fr;
   }

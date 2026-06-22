@@ -72,6 +72,13 @@ async function readEventWebviewSource(): Promise<string> {
   );
 }
 
+async function readAdvancedEventWebviewSource(): Promise<string> {
+  return readFile(
+    new URL('../docs/designs/prototypes/assets/advanced-events-webview.js', import.meta.url),
+    'utf8'
+  );
+}
+
 async function readApiWebviewSource(): Promise<string> {
   return readFile(
     new URL('../docs/designs/prototypes/assets/apis-webview.js', import.meta.url),
@@ -478,6 +485,27 @@ describe('prototype Log-API-Event workspace', () => {
     expect(gallery).toContain('./variants/events-webview.html');
   });
 
+  it('derives Advanced Event Mesh queue subscription counts from discovered topics', async () => {
+    const source = await readAdvancedEventWebviewSource();
+
+    expect(source).toContain('function queueSubscriptionCount(queue)');
+    expect(source).toContain('topic.queues.includes(name)');
+    expect(source).toContain('const count = queueSubscriptionCount(queue);');
+  });
+
+  it('adds Advanced Event Mesh subscribe controls without reusing classic Event Mesh messages', async () => {
+    const source = await readAdvancedEventWebviewSource();
+
+    expect(source).toContain('function renderAemListenerSetup()');
+    expect(source).toContain('function renderAemResults()');
+    expect(source).toContain('data-role="aem-topic-checkbox"');
+    expect(source).toContain("'sapTools.aem.startListening'");
+    expect(source).toContain("'sapTools.aem.addTopics'");
+    expect(source).toContain("'sapTools.aem.stopListening'");
+    expect(source).toContain("'sapTools.aem.messages'");
+    expect(source).not.toContain("'sapTools.events.startListening'");
+  });
+
   it('syntax-highlights JSON responses after executing APIs requests', async () => {
     const source = await readApiWebviewSource();
     const styles = await readApiStylesSource();
@@ -628,6 +656,12 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source).toContain('function updateTraceTopActions()');
     expect(source).toContain('class="api-trace-state-badge ${statusClass}"');
     expect(source).toContain('formatTraceStateLabel(apiTraceState)');
+    expect(source).toContain("checkingRuntime: 'Checking runtime'");
+    expect(source).toContain("injecting: 'Installing hook'");
+    expect(source).toContain("streaming: 'Listening'");
+    expect(source).toContain("paused: 'Paused'");
+    expect(source).toContain('class="api-trace-state-spinner"');
+    expect(source).toContain("aria-busy=\"${isProgress ? 'true' : 'false'}\"");
     expect(source).not.toContain('function renderTraceStats');
     expect(source).not.toContain('aria-label="Live Trace summary"');
     expect(source).not.toContain('<span>Observed URLs');
@@ -671,6 +705,10 @@ describe('prototype Log-API-Event workspace', () => {
     expect(styles).toContain('.api-trace-tab-panel');
     expect(styles).toContain('.api-trace-url-select');
     expect(styles).toContain('.api-trace-state-badge');
+    expect(styles).toContain('.api-trace-state-badge.is-progress');
+    expect(styles).toContain('.api-trace-state-spinner');
+    expect(styles).toContain('@keyframes api-trace-state-spin');
+    expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
     expect(styles).toContain('.api-trace-settings-container');
     expect(styles).toContain('.api-trace-settings-popover');
     expect(styles).toContain('.api-trace-stream-toggle');
@@ -743,6 +781,7 @@ describe('prototype Log-API-Event workspace', () => {
     const selectEntityBlock = /if \(action === 'api-select-entity'\) \{([\s\S]*?)\n  \}/.exec(source)?.[1] ?? '';
 
     expect(source).toContain('function resolveApiCatalog()');
+    expect(source).toContain("if (apiCatalogState === 'loading') return null;");
     expect(source).toContain('if (!vscodeApi) return resolveMockApiCatalog();');
     expect(source).toContain('if (currentCatalog === null) {');
     expect(source).toContain("apiSelectedEntity = '';");
@@ -752,6 +791,10 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source).toContain('const previousScrollTop = listContainer ? listContainer.scrollTop : 0;');
     expect(selectEntityBlock).toContain('updateApiEntitySelection();');
     expect(selectEntityBlock).not.toContain('updateSidebarSection();');
+    expect(source).toContain("event.data.type === 'sapTools.apis.catalogLoading'");
+    expect(source).toContain("apiCatalogState = 'loading';");
+    expect(source).toContain('apiCurrentCatalog = null;');
+    expect(source).toContain("apiSelectedEntity = '';");
   });
 
   it('sends sapTools.events.publishEvent message and handles publishResult response', async () => {

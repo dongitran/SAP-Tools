@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { EventMeshProviderRouter } from './eventMeshProviderRouter';
 import type { EventMeshTargetParams } from './eventMeshPanel';
 
-// cspell:ignore simplemdg
+// cspell:ignore demoapp
 
 function makeTargetParams(): EventMeshTargetParams {
   return {
@@ -81,7 +81,7 @@ function advancedEventEnv(): Record<string, unknown> {
                 smf_uri: 'wss://broker.example.com:443',
               },
             },
-            vpn: 'simplemdg-aem',
+            vpn: 'demo-aem',
           },
         },
       ],

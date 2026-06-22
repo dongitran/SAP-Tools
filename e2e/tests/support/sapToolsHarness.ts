@@ -562,12 +562,29 @@ export async function openCustomSelectionMode(webviewFrame: Frame): Promise<void
   if ((await customTab.count()) === 0) {
     return;
   }
-  if ((await customTab.getAttribute('aria-selected')) === 'true') {
-    return;
+  const areaOption = webviewFrame.getByRole('button', { name: AREA_TO_SELECT });
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await expect(customTab).toBeVisible({ timeout: 10000 });
+      if ((await customTab.getAttribute('aria-selected')) !== 'true') {
+        await clickWithFallback(customTab);
+      }
+      await expect(customTab).toHaveAttribute('aria-selected', 'true', { timeout: 10000 });
+      await expect(getCustomSelectionPanel(webviewFrame)).toBeVisible({ timeout: 10000 });
+      await expect(areaOption).toBeVisible({ timeout: 10000 });
+      return;
+    } catch (error) {
+      lastError = error;
+    }
   }
-  await clickWithFallback(customTab);
-  await expect(customTab).toHaveAttribute('aria-selected', 'true', { timeout: 10000 });
-  await expect(getCustomSelectionPanel(webviewFrame)).toBeVisible({ timeout: 10000 });
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error('Custom selection mode did not become ready.');
 }
 
 export function getOrgStageOption(webviewFrame: Frame, name: string | RegExp): Locator {

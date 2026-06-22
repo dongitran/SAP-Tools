@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { randomBytes } from 'node:crypto';
 
 // cspell:ignore Semp
 
@@ -12,18 +13,38 @@ import {
   type AdvancedEventMeshQueueSummary,
   type AdvancedEventMeshTopicSummary,
 } from './advancedEventMeshClient';
+import { DEBUG_QUEUE_SEGMENT, STALE_DEBUG_QUEUE_MAX_AGE_MS } from './eventMeshDebugQueues';
 import type { EventMeshTargetParams } from './eventMeshPanel';
+import {
+  AdvancedEventMeshSolaceListener,
+  type AdvancedEventMeshNormalizedMessage,
+} from './advancedEventMeshSolaceListener';
+import {
+  AdvancedEventMeshListeningSession,
+  isAdvancedEventMeshStartupStoppedError,
+  type AdvancedEventMeshListenCallbacks,
+} from './advancedEventMeshListeningSession';
+import {
+  formatEventMeshPayload,
+  toSerializableEventMeshHeaders,
+  type EventMeshPayloadEncoding,
+} from './eventMeshMessageFormat';
 import {
   buildAdvancedEventMeshWebviewHtml,
   type AdvancedEventMeshProviderTabs,
 } from './advancedEventMeshWebviewHtml';
 
 const ADVANCED_EVENT_MESH_VIEW_TYPE = 'sapTools.advancedEventMeshViewer';
+const FLUSH_INTERVAL_MS = 250;
+const MAX_PAYLOAD_BYTES = 20000;
+const DEFAULT_AEM_MESSAGE_BUFFER_LIMIT = 1000;
 
 export interface AdvancedEventMeshPanelOptions {
   readonly classicAvailable: boolean;
   readonly defaultEnv?: Record<string, unknown>;
 }
+
+type StopReason = 'user' | 'panel-closed' | 'scope-changed' | 'shutdown';
 
 interface AdvancedEventMeshPanelSession {
   readonly panel: vscode.WebviewPanel;
@@ -32,6 +53,13 @@ interface AdvancedEventMeshPanelSession {
   readonly providerTabs: AdvancedEventMeshProviderTabs;
   preloadedDefaultEnv: Record<string, unknown> | null;
   abortController: AbortController | null;
+  binding: AdvancedEventMeshBinding | null;
+  client: AdvancedEventMeshSempClient | null;
+  listenSession: AdvancedEventMeshListeningSession | null;
+  starting: boolean;
+  sequence: number;
+  buffer: AdvancedOutgoingEventMessage[];
+  flushTimer: ReturnType<typeof setTimeout> | null;
   disposed: boolean;
 }
 
@@ -52,6 +80,23 @@ interface AdvancedEventMeshReadyPayload {
   readonly providerTabs: AdvancedEventMeshProviderTabs;
 }
 
+interface AdvancedOutgoingEventMessage {
+  readonly seq: number;
+  readonly time: string;
+  readonly bindingIndex: number;
+  readonly bindingName: string;
+  readonly vpn: string;
+  readonly queueName: string;
+  readonly topic: string | null;
+  readonly contentType: string;
+  readonly messageId: string | null;
+  readonly payload: string;
+  readonly encoding: EventMeshPayloadEncoding;
+  readonly truncated: boolean;
+  readonly size: number;
+  readonly headers: unknown;
+}
+
 type ClassicEventMeshOpener = (
   appId: string,
   targetParams: EventMeshTargetParams
@@ -66,6 +111,15 @@ function describeError(error: unknown): string {
     return error.message;
   }
   return typeof error === 'string' ? error : String(error);
+}
+
+function parseTopics(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw
+        .filter((topic): topic is string => typeof topic === 'string')
+        .map((topic) => topic.trim())
+        .filter((topic) => topic.length > 0)
+    : [];
 }
 
 function hostFromUri(uri: string): string {
@@ -104,6 +158,37 @@ function toBindingPayload(binding: AdvancedEventMeshBinding): AdvancedEventMeshB
   };
 }
 
+function buildRunId(): string {
+  return `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`;
+}
+
+function sanitizeQueueSegment(value: string): string {
+  const cleaned = value.replace(/[^A-Za-z0-9._-]+/gu, '-').replace(/^-+|-+$/gu, '');
+  return (cleaned.length > 0 ? cleaned : 'binding').slice(0, 80);
+}
+
+function queueNamespaceFor(binding: AdvancedEventMeshBinding): string {
+  return `saptools/aem/${sanitizeQueueSegment(binding.vpn)}`;
+}
+
+function buildDebugQueueName(binding: AdvancedEventMeshBinding): string {
+  return `${queueNamespaceFor(binding)}/${DEBUG_QUEUE_SEGMENT}/${buildRunId()}`;
+}
+
+function isStaleDebugQueue(queueName: string, binding: AdvancedEventMeshBinding, nowMs: number): boolean {
+  const prefix = `${queueNamespaceFor(binding)}/${DEBUG_QUEUE_SEGMENT}/`;
+  if (!queueName.startsWith(prefix)) {
+    return false;
+  }
+  const runId = queueName.slice(prefix.length).split('/')[0] ?? '';
+  const timestampPart = runId.split('-')[0] ?? '';
+  if (timestampPart.length < 8 || !/^[0-9a-z]+$/iu.test(timestampPart)) {
+    return false;
+  }
+  const createdAt = Number.parseInt(timestampPart, 36);
+  return Number.isFinite(createdAt) && nowMs - createdAt > STALE_DEBUG_QUEUE_MAX_AGE_MS;
+}
+
 export class AdvancedEventMeshPanelManager implements vscode.Disposable {
   private readonly sessions = new Map<string, AdvancedEventMeshPanelSession>();
 
@@ -119,13 +204,18 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
 
   dispose(): void {
     for (const session of this.sessions.values()) {
+      void this.stopListening(session, 'shutdown', false);
       session.panel.dispose();
     }
     this.sessions.clear();
   }
 
-  stopAllListeners(): void {
-    // Advanced Event Mesh viewer is read-only in this phase.
+  stopAllListeners(reason: StopReason): void {
+    for (const session of this.sessions.values()) {
+      if ((session.listenSession?.hasActiveListener() ?? false) || session.starting) {
+        void this.stopListening(session, reason, true);
+      }
+    }
   }
 
   openAdvancedEventMeshViewer(
@@ -158,6 +248,13 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
       providerTabs,
       preloadedDefaultEnv: options.defaultEnv ?? null,
       abortController: null,
+      binding: null,
+      client: null,
+      listenSession: null,
+      starting: false,
+      sequence: 0,
+      buffer: [],
+      flushTimer: null,
       disposed: false,
     };
     this.sessions.set(appId, session);
@@ -187,6 +284,7 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
     session.panel.onDidDispose(() => {
       session.disposed = true;
       session.abortController?.abort();
+      void this.stopListening(session, 'panel-closed', false);
       if (this.sessions.get(session.appId) === session) {
         this.sessions.delete(session.appId);
       }
@@ -210,6 +308,18 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
     }
     if (type === 'sapTools.aem.openClassic' && this.openClassicEventMeshViewer !== undefined) {
       await this.openClassicEventMeshViewer(session.appId, session.targetParams);
+      return;
+    }
+    if (type === 'sapTools.aem.startListening') {
+      await this.startListening(session, parseTopics((raw as Record<string, unknown>)['topics']));
+      return;
+    }
+    if (type === 'sapTools.aem.addTopics') {
+      await this.addTopics(session, parseTopics((raw as Record<string, unknown>)['topics']));
+      return;
+    }
+    if (type === 'sapTools.aem.stopListening') {
+      await this.stopListening(session, 'user', true);
     }
   }
 
@@ -283,6 +393,16 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
     }
     this.log(`Found ${String(bindings.length)} Advanced Event Mesh binding(s) for ${session.appId}`);
     const client = new AdvancedEventMeshSempClient(binding);
+    if (session.binding !== null && session.binding.index !== binding.index) {
+      await this.stopListening(session, 'scope-changed', true);
+    }
+    session.binding = binding;
+    if (!(session.listenSession?.hasActiveListener() ?? false) && !session.starting) {
+      session.client = client;
+      session.listenSession = this.createListenSession(session);
+    } else {
+      session.client ??= client;
+    }
     const discovery = await client.discoverQueueSubscriptions(signal);
     if (signal?.aborted === true) {
       return;
@@ -294,6 +414,161 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
       unreadableQueueCount: discovery.unreadableQueueCount,
       providerTabs: session.providerTabs,
     });
+  }
+
+  private createListenSession(session: AdvancedEventMeshPanelSession): AdvancedEventMeshListeningSession {
+    return new AdvancedEventMeshListeningSession({
+      buildQueueName: (binding) => buildDebugQueueName(binding),
+      getClient: (): AdvancedEventMeshSempClient => {
+        if (session.client === null) {
+          throw new Error('Advanced Event Mesh management client is not ready.');
+        }
+        return session.client;
+      },
+      createListener: (binding, queueName, callbacks) =>
+        new AdvancedEventMeshSolaceListener(binding, queueName, callbacks),
+      onCleanupError: (message): void => { this.log(message); },
+    });
+  }
+
+  private makeListenCallbacks(session: AdvancedEventMeshPanelSession): AdvancedEventMeshListenCallbacks {
+    return {
+      onMessage: (binding, queueName, normalized): void => { this.enqueueMessage(session, binding, queueName, normalized); },
+      onStatus: (bindingIndex, message): void => { this.post(session, 'sapTools.aem.status', { bindingIndex, message }); },
+      onConnected: (binding, description): void => {
+        this.log(`Solace connected for ${session.appId} binding ${binding.name}${description !== '' ? ` (${description})` : ''}`);
+      },
+    };
+  }
+
+  private async startListening(
+    session: AdvancedEventMeshPanelSession,
+    topics: readonly string[]
+  ): Promise<void> {
+    if (isTestMode()) {
+      this.postMockListening(session, topics);
+      return;
+    }
+    if (session.starting || session.listenSession === null || session.binding === null) {
+      return;
+    }
+    if (topics.length === 0) {
+      this.postError(session, 'Select at least one Advanced Event Mesh topic to listen to.');
+      return;
+    }
+    session.starting = true;
+    try {
+      await this.reapStaleDebugQueues(session.binding, session.client);
+      const binding = await session.listenSession.startBinding(
+        { binding: session.binding, topics },
+        this.makeListenCallbacks(session)
+      );
+      this.post(session, 'sapTools.aem.listening', { binding });
+    } catch (error) {
+      if (!isAdvancedEventMeshStartupStoppedError(error)) {
+        this.postError(session, describeError(error));
+      }
+    } finally {
+      session.starting = false;
+    }
+  }
+
+  private async addTopics(
+    session: AdvancedEventMeshPanelSession,
+    topics: readonly string[]
+  ): Promise<void> {
+    if (session.listenSession === null || session.binding === null) {
+      return;
+    }
+    try {
+      const added = await session.listenSession.addTopics(session.binding.index, topics);
+      this.post(session, 'sapTools.aem.topicsAdded', {
+        bindingIndex: session.binding.index,
+        topics: added,
+      });
+    } catch (error) {
+      this.postError(session, describeError(error));
+    }
+  }
+
+  private async reapStaleDebugQueues(
+    binding: AdvancedEventMeshBinding,
+    client: AdvancedEventMeshSempClient | null
+  ): Promise<void> {
+    if (client === null) {
+      return;
+    }
+    try {
+      const queues = await client.listQueues();
+      for (const queue of queues) {
+        if (isStaleDebugQueue(queue.queueName, binding, Date.now())) {
+          await client.deleteQueue(queue.queueName);
+        }
+      }
+    } catch {
+      // Best-effort cleanup must not block a new listener from starting.
+    }
+  }
+
+  private enqueueMessage(
+    session: AdvancedEventMeshPanelSession,
+    binding: AdvancedEventMeshBinding,
+    queueName: string,
+    normalized: AdvancedEventMeshNormalizedMessage
+  ): void {
+    session.sequence += 1;
+    const payload = formatEventMeshPayload(normalized.body, normalized.contentType, MAX_PAYLOAD_BYTES);
+    session.buffer.push({
+      seq: session.sequence,
+      time: new Date().toISOString(),
+      bindingIndex: binding.index,
+      bindingName: binding.name,
+      vpn: binding.vpn,
+      queueName,
+      topic: normalized.topic,
+      contentType: normalized.contentType,
+      messageId: normalized.messageId,
+      payload: payload.value,
+      encoding: payload.encoding,
+      truncated: payload.truncated,
+      size: payload.size,
+      headers: toSerializableEventMeshHeaders(normalized.headers),
+    });
+    const overflow = session.buffer.length - DEFAULT_AEM_MESSAGE_BUFFER_LIMIT;
+    if (overflow > 0) {
+      session.buffer.splice(0, overflow);
+    }
+    session.flushTimer ??= setTimeout(() => { this.flush(session); }, FLUSH_INTERVAL_MS);
+  }
+
+  private flush(session: AdvancedEventMeshPanelSession): void {
+    if (session.flushTimer !== null) {
+      clearTimeout(session.flushTimer);
+      session.flushTimer = null;
+    }
+    if (session.buffer.length === 0) {
+      return;
+    }
+    const events = session.buffer;
+    session.buffer = [];
+    this.post(session, 'sapTools.aem.messages', { events });
+  }
+
+  private async stopListening(
+    session: AdvancedEventMeshPanelSession,
+    reason: StopReason,
+    notifyWebview: boolean
+  ): Promise<void> {
+    if (notifyWebview) {
+      this.flush(session);
+    } else {
+      session.buffer = [];
+    }
+    session.starting = false;
+    await session.listenSession?.stopAll();
+    if (notifyWebview) {
+      this.post(session, 'sapTools.aem.stopped', { reason });
+    }
   }
 
   private postMockReady(session: AdvancedEventMeshPanelSession): void {
@@ -318,6 +593,42 @@ export class AdvancedEventMeshPanelManager implements vscode.Disposable {
       topics: [{ topic: 'mock/topic/created', queues: ['mock/events'] }],
       unreadableQueueCount: 0,
       providerTabs: session.providerTabs,
+    });
+  }
+
+  private postMockListening(
+    session: AdvancedEventMeshPanelSession,
+    topics: readonly string[]
+  ): void {
+    const selectedTopics = topics.length > 0 ? [...topics] : ['mock/topic/created'];
+    this.post(session, 'sapTools.aem.listening', {
+      binding: {
+        bindingIndex: 0,
+        bindingName: 'advanced-event-mesh',
+        vpn: 'mock-aem',
+        queueName: 'saptools/aem/mock-aem/saptools-debug/mock',
+        topics: selectedTopics,
+      },
+    });
+    this.post(session, 'sapTools.aem.messages', {
+      events: [
+        {
+          seq: 1,
+          time: new Date().toISOString(),
+          bindingIndex: 0,
+          bindingName: 'advanced-event-mesh',
+          vpn: 'mock-aem',
+          queueName: 'saptools/aem/mock-aem/saptools-debug/mock',
+          topic: selectedTopics[0] ?? 'mock/topic/created',
+          contentType: 'application/json',
+          messageId: 'mock-aem-1',
+          payload: JSON.stringify({ source: 'advanced-event-mesh', ok: true }, null, 2),
+          encoding: 'json',
+          truncated: false,
+          size: 43,
+          headers: {},
+        },
+      ],
     });
   }
 }

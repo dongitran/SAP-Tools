@@ -74,6 +74,32 @@ function createOutputChannel(): vscode.OutputChannel {
   } as unknown as vscode.OutputChannel;
 }
 
+const E2E_STALE_SYNC_ENV_KEYS = [
+  'SAP_TOOLS_E2E',
+  'SAP_TOOLS_E2E_SEED_STALE_SYNC',
+  'SAP_TOOLS_TEST_MODE',
+] as const;
+
+function enableE2eStaleSyncSeedEnv(): () => void {
+  const previousEnv = Object.fromEntries(
+    E2E_STALE_SYNC_ENV_KEYS.map((key) => [key, process.env[key]])
+  ) as Record<(typeof E2E_STALE_SYNC_ENV_KEYS)[number], string | undefined>;
+  process.env['SAP_TOOLS_E2E'] = '1';
+  process.env['SAP_TOOLS_E2E_SEED_STALE_SYNC'] = '1';
+  process.env['SAP_TOOLS_TEST_MODE'] = '0';
+
+  return () => {
+    for (const key of E2E_STALE_SYNC_ENV_KEYS) {
+      const previousValue = previousEnv[key];
+      if (previousValue === undefined) {
+        Reflect.deleteProperty(process.env, key);
+      } else {
+        process.env[key] = previousValue;
+      }
+    }
+  };
+}
+
 function createTokenResponse() {
   return {
     accessToken: 'token-1',
@@ -614,5 +640,50 @@ describe('CacheSyncService', () => {
 
     expect(snapshot.syncInProgress).toBe(false);
     expect(snapshot.lastSyncError.toLowerCase()).toContain('interrupted');
+  });
+
+  it('seeds e2e stale sync state only once per service instance', async () => {
+    const restoreEnv = enableE2eStaleSyncSeedEnv();
+
+    try {
+      const context = createMockContext({
+        version: 1,
+        settings: { syncIntervalHours: 24 },
+        users: {},
+        exportRootFolders: {},
+      });
+      const cacheStore = new CacheStore(context);
+      const originalUpsertUser = cacheStore.upsertUser.bind(cacheStore);
+      const seededWrites: string[] = [];
+      vi.spyOn(cacheStore, 'upsertUser').mockImplementation(
+        (email: string, updater: Parameters<CacheStore['upsertUser']>[1]) => {
+          return originalUpsertUser(email, (currentUser) => {
+            const nextUser = updater(currentUser);
+            if (
+              nextUser.syncInProgress &&
+              nextUser.lastSyncCompletedAt !== null &&
+              nextUser.lastSyncError.length === 0
+            ) {
+              seededWrites.push(nextUser.lastSyncStartedAt ?? '');
+            }
+            return nextUser;
+          });
+        }
+      );
+      const service = new CacheSyncService(cacheStore, context, createOutputChannel());
+      const credentials = {
+        email: 'dev@example.com',
+        password: 'secret',
+      };
+
+      const firstSnapshot = await service.initialize(credentials);
+      const secondSnapshot = await service.setCredentials(credentials);
+
+      expect(firstSnapshot.syncInProgress).toBe(false);
+      expect(secondSnapshot.syncInProgress).toBe(false);
+      expect(seededWrites).toHaveLength(1);
+    } finally {
+      restoreEnv();
+    }
   });
 });

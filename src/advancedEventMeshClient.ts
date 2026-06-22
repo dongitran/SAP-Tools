@@ -9,6 +9,16 @@ const MAX_SEMP_PAGES = 100;
 
 export type AdvancedEventMeshFetchFn = typeof fetch;
 
+export const DEFAULT_ADVANCED_EVENT_MESH_DEBUG_QUEUE_CONFIG = {
+  accessType: 'exclusive',
+  permission: 'consume',
+  ingressEnabled: true,
+  egressEnabled: true,
+  maxMsgSpoolUsage: 10,
+  maxMsgSize: 10485760,
+  respectTtlEnabled: true,
+} as const;
+
 export interface AdvancedEventMeshQueueSummary {
   readonly queueName: string;
   readonly permission?: string;
@@ -168,6 +178,16 @@ async function runWithConcurrency<T>(
   await Promise.all(workers);
 }
 
+function applyQueueSubscriptionCounts(
+  queues: readonly AdvancedEventMeshQueueSummary[],
+  countsByQueueName: ReadonlyMap<string, number>
+): AdvancedEventMeshQueueSummary[] {
+  return queues.map((queue) => {
+    const subscriptionCount = countsByQueueName.get(queue.queueName);
+    return subscriptionCount === undefined ? queue : { ...queue, subscriptionCount };
+  });
+}
+
 async function withTimeout<T>(
   label: string,
   timeoutMs: number,
@@ -200,7 +220,7 @@ async function withTimeout<T>(
   }
 }
 
-async function requestOAuthToken(
+export async function requestAdvancedEventMeshOAuthToken(
   authentication: AdvancedEventMeshOAuth,
   fetchImpl: AdvancedEventMeshFetchFn,
   signal?: AbortSignal
@@ -265,13 +285,52 @@ export class AdvancedEventMeshSempClient {
       .sort((left, right) => left.localeCompare(right));
   }
 
+  async createQueue(queueName: string, signal?: AbortSignal): Promise<void> {
+    const path = `/msgVpns/${encodeSegment(this.binding.vpn)}/queues`;
+    await this.sempJsonRequest(
+      'POST',
+      path,
+      {
+        msgVpnName: this.binding.vpn,
+        queueName,
+        ...DEFAULT_ADVANCED_EVENT_MESH_DEBUG_QUEUE_CONFIG,
+      },
+      new Set([200, 201, 202, 204, 409]),
+      signal
+    );
+  }
+
+  async addSubscription(queueName: string, topic: string, signal?: AbortSignal): Promise<void> {
+    const path =
+      `/msgVpns/${encodeSegment(this.binding.vpn)}` +
+      `/queues/${encodeSegment(queueName)}/subscriptions`;
+    await this.sempJsonRequest(
+      'POST',
+      path,
+      {
+        msgVpnName: this.binding.vpn,
+        queueName,
+        subscriptionTopic: topic,
+      },
+      new Set([200, 201, 202, 204, 409]),
+      signal
+    );
+  }
+
+  async deleteQueue(queueName: string, signal?: AbortSignal): Promise<void> {
+    const path = `/msgVpns/${encodeSegment(this.binding.vpn)}/queues/${encodeSegment(queueName)}`;
+    await this.sempJsonRequest('DELETE', path, null, new Set([200, 202, 204, 404]), signal);
+  }
+
   async discoverQueueSubscriptions(signal?: AbortSignal): Promise<AdvancedEventMeshQueueDiscovery> {
     const queues = await this.listQueues(signal);
     const topicsByName = new Map<string, Set<string>>();
+    const countsByQueueName = new Map<string, number>();
     let unreadableQueueCount = 0;
     await runWithConcurrency(queues, DEFAULT_SUBSCRIPTION_DISCOVERY_CONCURRENCY, async (queue) => {
       try {
         const topics = await this.listQueueSubscriptions(queue.queueName, signal);
+        countsByQueueName.set(queue.queueName, topics.length);
         for (const topic of topics) {
           const queueNames = topicsByName.get(topic) ?? new Set<string>();
           queueNames.add(queue.queueName);
@@ -285,7 +344,11 @@ export class AdvancedEventMeshSempClient {
         unreadableQueueCount += 1;
       }
     });
-    return { queues, topics: this.toTopicSummaries(topicsByName), unreadableQueueCount };
+    return {
+      queues: applyQueueSubscriptionCounts(queues, countsByQueueName),
+      topics: this.toTopicSummaries(topicsByName),
+      unreadableQueueCount,
+    };
   }
 
   private toTopicSummaries(topicsByName: Map<string, Set<string>>): AdvancedEventMeshTopicSummary[] {
@@ -341,6 +404,33 @@ export class AdvancedEventMeshSempClient {
     });
   }
 
+  private async sempJsonRequest(
+    method: 'POST' | 'DELETE',
+    path: string,
+    body: Record<string, unknown> | null,
+    expectedStatuses: ReadonlySet<number>,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const url = this.buildSempUrl(path);
+    await withTimeout(`${method} Advanced Event Mesh SEMP request`, this.requestTimeoutMs, signal, async (requestSignal) => {
+      const token = await this.getToken(requestSignal);
+      const response = await this.fetchImpl(url, {
+        method,
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: 'application/json',
+          ...(body === null ? {} : { 'content-type': 'application/json' }),
+        },
+        ...(body === null ? {} : { body: JSON.stringify(body) }),
+        signal: requestSignal,
+      });
+      await response.text();
+      if (!expectedStatuses.has(response.status)) {
+        throw new AdvancedEventMeshSempError(method, url, response.status);
+      }
+    });
+  }
+
   private buildSempUrl(path: string): string {
     const base = new URL(this.binding.managementUri);
     if (/^https?:\/\//u.test(path)) {
@@ -361,7 +451,7 @@ export class AdvancedEventMeshSempClient {
     if (current !== null && current.expiresAt - 60000 > this.now()) {
       return current.accessToken;
     }
-    const { accessToken, expiresInSeconds } = await requestOAuthToken(
+    const { accessToken, expiresInSeconds } = await requestAdvancedEventMeshOAuthToken(
       this.binding.authentication,
       this.fetchImpl,
       signal

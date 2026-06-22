@@ -2,7 +2,7 @@
   "name": "sap-tools",
   "displayName": "SAP Tools",
   "description": "All-in-one toolbox for SAP BTP development workflows",
-  "version": "0.10.153",
+  "version": "0.10.154",
   "publisher": "dongtran",
   "icon": "resources/icon.png",
   "license": "MIT",
@@ -277,7 +277,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:prototype": "node ./scripts/build-prototype.mjs",
-    "postbuild": "node ./scripts/vendor-hdb.mjs && node ./scripts/vendor-table-name-formatters.mjs && node ./scripts/vendor-cf-sync.mjs && node ./scripts/vendor-xb-msg-amqp.mjs && npm run build:prototype",
+    "postbuild": "node ./scripts/vendor-hdb.mjs && node ./scripts/vendor-table-name-formatters.mjs && node ./scripts/vendor-cf-sync.mjs && node ./scripts/vendor-xb-msg-amqp.mjs && node ./scripts/vendor-solclientjs.mjs && npm run build:prototype",
     "watch": "tsc -watch -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
@@ -297,6 +297,7 @@
     "@saptools/cf-sync": "^0.4.10",
     "change-case": "^5.4.4",
     "hdb": "^2.27.1",
+    "solclientjs": "^10.18.3",
     "wordsninja": "^1.1.0"
   },
   "devDependencies": {

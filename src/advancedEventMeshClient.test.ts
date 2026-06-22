@@ -3,14 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { AdvancedEventMeshSempClient, type AdvancedEventMeshFetchFn } from './advancedEventMeshClient';
 import type { AdvancedEventMeshBinding } from './advancedEventMeshBindings';
 
-// cspell:ignore SEMP Semp msgVpns simplemdg
+// cspell:ignore SEMP Semp msgVpns demoapp
 
 function makeBinding(): AdvancedEventMeshBinding {
   return {
     index: 0,
     name: 'advanced-event-mesh',
     instanceName: 'advanced-event-mesh',
-    vpn: 'simplemdg-aem',
+    vpn: 'demo-aem',
     managementUri: 'https://broker.example.com:943',
     smfUri: 'wss://broker.example.com:443',
     authentication: {
@@ -44,14 +44,12 @@ describe('AdvancedEventMeshSempClient', () => {
                 permission: 'consume',
                 ingressEnabled: true,
                 egressEnabled: false,
-                subscriptionCount: 1,
               },
               {
                 queueName: 'q-one',
                 permission: 'consume',
                 ingressEnabled: true,
                 egressEnabled: true,
-                subscriptionCount: 2,
               },
             ],
           })
@@ -80,7 +78,22 @@ describe('AdvancedEventMeshSempClient', () => {
 
     const discovery = await client.discoverQueueSubscriptions();
 
-    expect(discovery.queues.map((queue) => queue.queueName)).toEqual(['q-one', 'q/two']);
+    expect(discovery.queues).toEqual([
+      {
+        queueName: 'q-one',
+        permission: 'consume',
+        ingressEnabled: true,
+        egressEnabled: true,
+        subscriptionCount: 2,
+      },
+      {
+        queueName: 'q/two',
+        permission: 'consume',
+        ingressEnabled: true,
+        egressEnabled: false,
+        subscriptionCount: 1,
+      },
+    ]);
     expect(discovery.topics).toEqual([
       { topic: 'topic/a', queues: ['q-one'] },
       { topic: 'topic/shared', queues: ['q-one', 'q/two'] },
@@ -90,7 +103,7 @@ describe('AdvancedEventMeshSempClient', () => {
     const methods = fetchFn.mock.calls.map((call) => (call[1] as RequestInit | undefined)?.method ?? 'GET');
     expect(methods).toEqual(['POST', 'GET', 'GET', 'GET']);
     expect(fetchFn.mock.calls[1]?.[0]).toBe(
-      'https://broker.example.com:943/SEMP/v2/config/msgVpns/simplemdg-aem/queues?count=100'
+      'https://broker.example.com:943/SEMP/v2/config/msgVpns/demo-aem/queues?count=100'
     );
     expect(String(fetchFn.mock.calls[3]?.[0])).toContain(
       `/queues/${encodeURIComponent('q/two')}/subscriptions`
@@ -132,7 +145,7 @@ describe('AdvancedEventMeshSempClient', () => {
         return Promise.resolve(
           jsonResponse(200, {
             data: [{ queueName: 'q1' }],
-            meta: { pagination: { nextPageUri: '/SEMP/v2/config/msgVpns/simplemdg-aem/queues?cursor=abc' } },
+            meta: { pagination: { nextPageUri: '/SEMP/v2/config/msgVpns/demo-aem/queues?cursor=abc' } },
           })
         );
       }
@@ -183,7 +196,7 @@ describe('AdvancedEventMeshSempClient', () => {
       return Promise.resolve(
         jsonResponse(200, {
           data: [{ queueName: 'q1' }],
-          meta: { pagination: { nextPageUri: '/SEMP/v2/config/msgVpns/simplemdg-aem/queues?count=100' } },
+          meta: { pagination: { nextPageUri: '/SEMP/v2/config/msgVpns/demo-aem/queues?count=100' } },
         })
       );
     });
@@ -216,7 +229,7 @@ describe('AdvancedEventMeshSempClient', () => {
     );
 
     await expect(client.discoverQueueSubscriptions()).resolves.toEqual({
-      queues: [{ queueName: 'q1' }, { queueName: 'q2' }],
+      queues: [{ queueName: 'q1' }, { queueName: 'q2', subscriptionCount: 1 }],
       topics: [{ topic: 'topic/ok', queues: ['q2'] }],
       unreadableQueueCount: 1,
     });
@@ -275,5 +288,76 @@ describe('AdvancedEventMeshSempClient', () => {
 
     await expect(client.listQueues()).rejects.toThrow(/HTTP 401/);
     await expect(client.listQueues()).rejects.not.toThrow(/client-secret/);
+  });
+
+  it('creates a bounded debug queue and subscription with SEMP write requests', async () => {
+    const fetchFn = vi.fn((url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return Promise.resolve(jsonResponse(200, { access_token: 'tok', expires_in: 600 }));
+      }
+      return Promise.resolve(jsonResponse(200, { data: [] }));
+    });
+    const client = new AdvancedEventMeshSempClient(
+      makeBinding(),
+      fetchFn as unknown as AdvancedEventMeshFetchFn
+    );
+
+    await client.createQueue('saptools-debug/run-1');
+    await client.addSubscription('saptools-debug/run-1', 'topic/one/>');
+
+    expect(fetchFn.mock.calls[1]?.[0]).toBe(
+      'https://broker.example.com:943/SEMP/v2/config/msgVpns/demo-aem/queues'
+    );
+    expect(fetchFn.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          msgVpnName: 'demo-aem',
+          queueName: 'saptools-debug/run-1',
+          accessType: 'exclusive',
+          permission: 'consume',
+          ingressEnabled: true,
+          egressEnabled: true,
+          maxMsgSpoolUsage: 10,
+          maxMsgSize: 10485760,
+          respectTtlEnabled: true,
+        }),
+      })
+    );
+    expect(fetchFn.mock.calls[2]?.[0]).toBe(
+      `https://broker.example.com:943/SEMP/v2/config/msgVpns/demo-aem/queues/${encodeURIComponent('saptools-debug/run-1')}/subscriptions`
+    );
+    expect(fetchFn.mock.calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          msgVpnName: 'demo-aem',
+          queueName: 'saptools-debug/run-1',
+          subscriptionTopic: 'topic/one/>',
+        }),
+      })
+    );
+  });
+
+  it('deletes debug queues idempotently through SEMP', async () => {
+    const fetchFn = vi.fn((url: string) => {
+      if (url.includes('/oauth2/token')) {
+        return Promise.resolve(jsonResponse(200, { access_token: 'tok', expires_in: 600 }));
+      }
+      return Promise.resolve(jsonResponse(404, 'missing'));
+    });
+    const client = new AdvancedEventMeshSempClient(
+      makeBinding(),
+      fetchFn as unknown as AdvancedEventMeshFetchFn
+    );
+
+    await expect(client.deleteQueue('saptools-debug/run-1')).resolves.toBeUndefined();
+
+    expect(fetchFn.mock.calls[1]?.[0]).toBe(
+      `https://broker.example.com:943/SEMP/v2/config/msgVpns/demo-aem/queues/${encodeURIComponent('saptools-debug/run-1')}`
+    );
+    expect(fetchFn.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({ method: 'DELETE' })
+    );
   });
 });

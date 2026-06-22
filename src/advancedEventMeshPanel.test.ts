@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cspell:ignore Semp simplemdg
+// cspell:ignore Semp demoapp
 
 const {
   createWebviewPanelMock,
@@ -94,7 +94,10 @@ function makeTargetParams(spaceName: string): EventMeshTargetParams {
 }
 
 describe('AdvancedEventMeshPanelManager webview security', () => {
+  const originalTestMode = process.env['SAP_TOOLS_TEST_MODE'];
+
   beforeEach(() => {
+    process.env['SAP_TOOLS_TEST_MODE'] = originalTestMode;
     createWebviewPanelMock.mockReset();
     discoverQueueSubscriptionsMock.mockReset();
     fetchDefaultEnvJsonFromTargetMock.mockReset();
@@ -174,7 +177,7 @@ describe('AdvancedEventMeshPanelManager webview security', () => {
                     smf_uri: 'wss://broker.example.com:443',
                   },
                 },
-                vpn: 'simplemdg-aem',
+                vpn: 'demo-aem',
               },
             },
           ],
@@ -196,6 +199,35 @@ describe('AdvancedEventMeshPanelManager webview security', () => {
         queues: [{ queueName: 'q1' }],
         topics: [{ topic: 'topic/one', queues: ['q1'] }],
       })
+    );
+  });
+
+  it('handles Advanced Event Mesh start and stop messages in the editor webview flow', async () => {
+    process.env['SAP_TOOLS_TEST_MODE'] = '1';
+    const panel = createMockPanel();
+    createWebviewPanelMock.mockReturnValue(panel);
+    const manager = new AdvancedEventMeshPanelManager({} as never, { appendLine: vi.fn() } as never);
+
+    manager.openAdvancedEventMeshViewer('demo-app', makeTargetParams('space-a'), {
+      classicAvailable: false,
+    });
+
+    const handler = panel.webview.onDidReceiveMessage.mock.calls[0]?.[0] as
+      | ((raw: unknown) => void)
+      | undefined;
+    handler?.({ type: 'sapTools.aem.webviewReady' });
+    handler?.({ type: 'sapTools.aem.startListening', topics: ['mock/topic/created'] });
+    await vi.waitFor(() =>
+      expect(panel.webview.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'sapTools.aem.listening' })
+      )
+    );
+
+    handler?.({ type: 'sapTools.aem.stopListening' });
+    await vi.waitFor(() =>
+      expect(panel.webview.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'sapTools.aem.stopped', reason: 'user' })
+      )
     );
   });
 });

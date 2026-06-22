@@ -1,6 +1,6 @@
 # E2E Shard Timings
 
-Source: GitHub Actions run 27763277570 on 2026-06-18. Durations are Playwright list reporter timings from Ubuntu CI, with newly added tests estimated from local full-suite timings until the next CI refresh.
+Source: GitHub Actions run 27763277570 on 2026-06-18. Durations are Playwright list reporter timings from Ubuntu CI, with newly added or changed tests estimated from local full-suite timings until the next CI refresh.
 
 The CI workflow reads this table through `scripts/run-e2e-lane.mjs`. When tests are added, moved, renamed, or materially changed, update the seconds and rebalance all 12 lanes.
 
@@ -14,7 +14,7 @@ The CI workflow reads this table through `scripts/run-e2e-lane.mjs`. When tests 
 | 04 | 82.6 | 9 |
 | 05 | 82.0 | 11 |
 | 06 | 86.3 | 12 |
-| 07 | 85.9 | 12 |
+| 07 | 83.4 | 12 |
 | 08 | 85.7 | 12 |
 | 09 | 85.4 | 12 |
 | 10 | 84.8 | 12 |
@@ -53,7 +53,7 @@ The CI workflow reads this table through `scripts/run-e2e-lane.mjs`. When tests 
 | 05 | 6.4 | tests/region-selector-ui.e2e.spec.ts:1237 | User can see smooth region hover without notch clipping artifacts |
 | 05 | 6.3 | tests/region-selector-ui.e2e.spec.ts:803 | User can complete selection flow and reset via Change buttons only |
 | 05 | 6.2 | tests/region-selector-ui.e2e.spec.ts:1934 | User can open settings, update sync interval, and return to selection screen |
-| 05 | 7.5 | tests/apis-tab.e2e.spec.ts:213 | User can start Live Trace and inspect raw request and response details |
+| 05 | 7.5 | tests/apis-tab.e2e.spec.ts:147 | User can wait for API discovery without demo endpoints and keep scroll after selecting an endpoint |
 | 06 | 11.9 | tests/sql-workbench.e2e.spec.ts:1015 | User can search selected app tables and run a quick SELECT |
 | 06 | 8.0 | tests/sql-workbench.e2e.spec.ts:1605 | User can select a lower SQL app while preserving the app list position |
 | 06 | 7.5 | tests/cf-logs-panel.e2e.spec.ts:364 | User can inspect and copy raw JSON metadata from CF log messages |
@@ -68,7 +68,7 @@ The CI workflow reads this table through `scripts/run-e2e-lane.mjs`. When tests 
 | 06 | 6.0 | tests/region-selector-ui.e2e.spec.ts:2307 | User can continue immediately when Quick Org Search finds one space |
 | 07 | 11.6 | tests/login-gate.e2e.spec.ts:14 | User can see login gate when credentials are not set |
 | 07 | 8.1 | tests/sql-workbench.e2e.spec.ts:831 | User can view readable JSON text returned from SQL results |
-| 07 | 7.5 | tests/apis-tab.e2e.spec.ts:147 | User can wait for API discovery without demo endpoints and keep scroll after selecting an endpoint |
+| 07 | 5.0 | tests/apis-tab.e2e.spec.ts:213 | User can start Live Trace and inspect raw request and response details |
 | 07 | 7.3 | tests/cf-logs-panel.e2e.spec.ts:474 | User can keep text and continuation messages faithful in CF logs |
 | 07 | 7.2 | tests/region-selector-ui.e2e.spec.ts:1723 | User can confirm same scope after Change Region and keep mapped services |
 | 07 | 6.9 | tests/cf-logs-panel.e2e.spec.ts:844 | User can see RTR access logs classified by HTTP status code |

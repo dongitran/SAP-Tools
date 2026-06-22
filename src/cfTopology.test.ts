@@ -111,9 +111,9 @@ describe('CF topology snapshot parsing', () => {
                 {
                   name: 'app',
                   apps: [
-                    { name: 'srv-running', requestedState: 'started', runningInstances: 2 },
-                    { name: 'srv-empty', requestedState: 'started', runningInstances: 0 },
-                    { name: 'srv-stopped', requestedState: 'stopped', runningInstances: 0 },
+                    { name: 'app-running', requestedState: 'started', runningInstances: 2 },
+                    { name: 'app-empty', requestedState: 'started', runningInstances: 0 },
+                    { name: 'app-stopped', requestedState: 'stopped', runningInstances: 0 },
                   ],
                 },
               ],
@@ -127,9 +127,9 @@ describe('CF topology snapshot parsing', () => {
     expect(
       getAppsFromTopologySync('https://API.CF.ap10.hana.ondemand.com/', 'dev-org', 'app')
     ).toEqual([
-      { id: 'srv-running', name: 'srv-running', runningInstances: 2 },
-      { id: 'srv-empty', name: 'srv-empty', runningInstances: 0 },
-      { id: 'srv-stopped', name: 'srv-stopped', runningInstances: 0 },
+      { id: 'app-running', name: 'app-running', runningInstances: 2 },
+      { id: 'app-empty', name: 'app-empty', runningInstances: 0 },
+      { id: 'app-stopped', name: 'app-stopped', runningInstances: 0 },
     ]);
   });
 

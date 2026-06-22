@@ -869,6 +869,37 @@ body.vscode-high-contrast .api-raw-json.is-json {
   color: #56d364;
 }
 
+.api-trace-state-badge.is-progress {
+  border-color: color-mix(in srgb, var(--vscode-progressBar-background, #0e70c0) 58%, transparent);
+  background: color-mix(in srgb, var(--vscode-progressBar-background, #0e70c0) 14%, transparent);
+  color: var(--vscode-textLink-foreground, #4daafc);
+}
+
+.api-trace-state-spinner {
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  margin-right: 5px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: api-trace-state-spin 700ms linear infinite;
+}
+
+@keyframes api-trace-state-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .api-trace-state-spinner {
+    border-right-color: currentColor;
+    animation: none;
+    opacity: 0.65;
+  }
+}
+
 .api-trace-state-badge.is-error {
   border-color: rgba(248, 81, 73, 0.42);
   background: rgba(248, 81, 73, 0.12);

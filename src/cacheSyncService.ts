@@ -72,6 +72,7 @@ export class CacheSyncService implements vscode.Disposable {
   private readonly latestSyncRunByUser = new Map<string, number>();
   private readonly listeners = new Set<SnapshotListener>();
   private disposed = false;
+  private hasSeededE2eStaleSync = false;
   private readonly testMode = process.env['SAP_TOOLS_TEST_MODE'] === '1';
 
   constructor(
@@ -328,22 +329,29 @@ export class CacheSyncService implements vscode.Disposable {
     if (
       credentials === null ||
       process.env['SAP_TOOLS_E2E'] !== '1' ||
-      process.env['SAP_TOOLS_E2E_SEED_STALE_SYNC'] !== '1'
+      process.env['SAP_TOOLS_E2E_SEED_STALE_SYNC'] !== '1' ||
+      this.hasSeededE2eStaleSync
     ) {
       return;
     }
 
+    this.hasSeededE2eStaleSync = true;
     const now = Date.now();
-    await this.cacheStore.upsertUser(credentials.email, (currentUser) => {
-      return {
-        email: credentials.email,
-        syncInProgress: true,
-        lastSyncStartedAt: new Date(now - 60_000).toISOString(),
-        lastSyncCompletedAt: new Date(now).toISOString(),
-        lastSyncError: '',
-        regions: currentUser?.regions ?? [],
-      };
-    });
+    try {
+      await this.cacheStore.upsertUser(credentials.email, (currentUser) => {
+        return {
+          email: credentials.email,
+          syncInProgress: true,
+          lastSyncStartedAt: new Date(now - 60_000).toISOString(),
+          lastSyncCompletedAt: new Date(now).toISOString(),
+          lastSyncError: '',
+          regions: currentUser?.regions ?? [],
+        };
+      });
+    } catch (error) {
+      this.hasSeededE2eStaleSync = false;
+      throw error;
+    }
   }
 
   private async rescheduleForActiveUser(

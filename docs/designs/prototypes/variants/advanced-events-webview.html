@@ -26,41 +26,89 @@
   <body class="vscode-dark">
     <div id="advanced-event-mesh-app"></div>
     <script>
-      // cspell:ignore ehog kgtkfy PRDQUEUE simplemdg Refetch Testrun
-      window.advancedEventMeshAppId = 'simplemdg-srv-config-main';
+      // cspell:ignore ehog kgtkfy PRDQUEUE demoapp Refetch Testrun
+      window.advancedEventMeshAppId = 'demo-service-main';
       window.advancedEventMeshProviderTabs = { classicAvailable: true };
 
       const demoQueues = [
-        { queueName: 'messaging_core_1/EVENTPROCESSQUEUE', permission: 'consume', ingressEnabled: true, egressEnabled: true, subscriptionCount: 37 },
-        { queueName: 'messaging_core_1/SYSTEMCONFIGQUEUE', permission: 'consume', ingressEnabled: true, egressEnabled: true, subscriptionCount: 62 },
-        { queueName: 'messaging_object_type_1/PRDQUEUE', permission: 'consume', ingressEnabled: true, egressEnabled: true, subscriptionCount: 11 }
+        { queueName: 'messaging_core_1/EVENTPROCESSQUEUE', permission: 'consume', ingressEnabled: true, egressEnabled: true },
+        { queueName: 'messaging_core_1/SYSTEMCONFIGQUEUE', permission: 'consume', ingressEnabled: true, egressEnabled: true },
+        { queueName: 'messaging_object_type_1/PRDQUEUE', permission: 'consume', ingressEnabled: true, egressEnabled: true }
       ];
       const demoTopics = [
         { topic: 'messaging_core_1_CRSubmitted', queues: ['messaging_core_1/EVENTPROCESSQUEUE'] },
         { topic: 'messaging_core_1_RefetchModelMetaDataCaching', queues: ['messaging_core_1/APPROVERPROCESSQUEUE', 'messaging_core_1/REQUESTORPROCESSQUEUE', 'messaging_core_1/SYSTEMCONFIGQUEUE'] },
         { topic: 'messaging_object_type_1_PRDStartTestrun', queues: ['messaging_object_type_1/PRDQUEUE'] }
       ];
+      let demoSeq = 0;
+
+      function postToWebview(data, delay = 180) {
+        window.setTimeout(() => {
+          window.dispatchEvent(new MessageEvent('message', { data }));
+        }, delay);
+      }
+
+      function mockMessage(topic, delay) {
+        demoSeq += 1;
+        postToWebview({
+          type: 'sapTools.aem.messages',
+          events: [{
+            seq: demoSeq,
+            time: new Date().toISOString(),
+            bindingIndex: 0,
+            bindingName: 'advanced-event-mesh',
+            vpn: 'demo-aem',
+            queueName: 'saptools/aem/demo-aem/saptools-debug/mock',
+            topic,
+            contentType: 'application/json',
+            messageId: `mock-${demoSeq}`,
+            payload: JSON.stringify({ topic, sample: true, sequence: demoSeq }, null, 2),
+            encoding: 'json',
+            truncated: false,
+            size: 72,
+            headers: {}
+          }]
+        }, delay);
+      }
 
       window.acquireVsCodeApi = function acquireVsCodeApi() {
         return {
           postMessage(message) {
-            window.setTimeout(() => {
-              if (message.type === 'sapTools.aem.webviewReady' || message.type === 'sapTools.aem.refresh') {
-                window.dispatchEvent(new MessageEvent('message', {
-                  data: {
-                    type: 'sapTools.aem.ready',
-                    binding: {
-                      name: 'advanced-event-mesh',
-                      vpn: 'simplemdg-aem',
-                      managementHost: 'mr-connection-kgtkfy6ehog.messaging.solace.cloud'
-                    },
-                    providerTabs: { classicAvailable: true },
-                    queues: demoQueues,
-                    topics: demoTopics
-                  }
-                }));
-              }
-            }, 180);
+            if (message.type === 'sapTools.aem.webviewReady' || message.type === 'sapTools.aem.refresh') {
+              postToWebview({
+                type: 'sapTools.aem.ready',
+                binding: {
+                  name: 'advanced-event-mesh',
+                  vpn: 'demo-aem',
+                  managementHost: 'mr-connection-kgtkfy6ehog.messaging.solace.cloud'
+                },
+                providerTabs: { classicAvailable: true },
+                queues: demoQueues,
+                topics: demoTopics
+              });
+            }
+            if (message.type === 'sapTools.aem.startListening') {
+              const selectedTopics = Array.isArray(message.topics) ? message.topics : [];
+              postToWebview({
+                type: 'sapTools.aem.listening',
+                binding: {
+                  bindingIndex: 0,
+                  bindingName: 'advanced-event-mesh',
+                  vpn: 'demo-aem',
+                  queueName: 'saptools/aem/demo-aem/saptools-debug/mock',
+                  topics: selectedTopics
+                }
+              });
+              mockMessage(selectedTopics[0] || demoTopics[0].topic, 360);
+            }
+            if (message.type === 'sapTools.aem.addTopics') {
+              const addedTopics = Array.isArray(message.topics) ? message.topics : [];
+              postToWebview({ type: 'sapTools.aem.topicsAdded', topics: addedTopics });
+              mockMessage(addedTopics[0] || demoTopics[1].topic, 320);
+            }
+            if (message.type === 'sapTools.aem.stopListening') {
+              postToWebview({ type: 'sapTools.aem.stopped', reason: 'user' }, 160);
+            }
           }
         };
       };

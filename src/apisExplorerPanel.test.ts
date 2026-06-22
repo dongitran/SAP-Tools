@@ -99,6 +99,30 @@ function createManager(): ApisExplorerPanelManager {
   );
 }
 
+function createManagerWithCacheStore(cacheStore: object): ApisExplorerPanelManager {
+  return new ApisExplorerPanelManager(
+    {} as never,
+    { appendLine: vi.fn() } as never,
+    cacheStore as never
+  );
+}
+
+function createDeferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolvePromise: ((value: T) => void) | undefined;
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return {
+    promise,
+    resolve: (value: T): void => {
+      resolvePromise?.(value);
+    },
+  };
+}
+
 function createManagerWithGlobalState(globalState: {
   readonly get: ReturnType<typeof vi.fn>;
   readonly update: ReturnType<typeof vi.fn>;
@@ -117,11 +141,17 @@ function createManagerWithGlobalState(globalState: {
 describe('ApisExplorerPanelManager', () => {
   beforeEach(() => {
     createWebviewPanelMock.mockReset();
+    cfClientMocks.fetchAppRouteUrlFromTarget.mockReset();
+    cfClientMocks.fetchAppRouteUrlFromTarget.mockResolvedValue('default.example.com');
+    cfClientMocks.fetchRemoteCdsServicesFromTarget.mockReset();
+    cfClientMocks.fetchRemoteCdsServicesFromTarget.mockResolvedValue(null);
+    cfClientMocks.fetchXsuaaTokenFromTarget.mockReset();
     cfClientMocks.fetchXsuaaTokenFromTarget.mockResolvedValue('Bearer fresh-token');
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
       status: 200,
       statusText: 'OK',
+      json: vi.fn(async () => ({ value: [] })),
       text: vi.fn(async () => '{"value":[]}'),
     })));
     delete process.env['SAP_TOOLS_TEST_MODE'];
@@ -243,6 +273,93 @@ describe('ApisExplorerPanelManager', () => {
         cfHomeDir: '/tmp/cf-space-b',
       })
     );
+  });
+
+  it('isolates API catalog cache entries by CF target when app names are shared', async () => {
+    const panel = createMockPanel();
+    const cacheStore = {
+      getApiCatalog: vi.fn(async () => null),
+      setApiCatalog: vi.fn(async () => undefined),
+    };
+    createWebviewPanelMock.mockReturnValue(panel);
+    const manager = createManagerWithCacheStore(cacheStore);
+
+    manager.openApisExplorer('demo-app', makeTarget('space-a'));
+    await panel.messageHandler?.({ type: 'sapTools.apis.webviewReady' });
+    await vi.waitFor(() => {
+      expect(cacheStore.getApiCatalog).toHaveBeenCalledTimes(1);
+    });
+
+    manager.openApisExplorer('demo-app', makeTarget('space-b'));
+    await vi.waitFor(() => {
+      expect(cacheStore.getApiCatalog).toHaveBeenCalledTimes(2);
+    });
+
+    const firstKey = cacheStore.getApiCatalog.mock.calls[0]?.[0];
+    const secondKey = cacheStore.getApiCatalog.mock.calls[1]?.[0];
+    expect(firstKey).toBe('["https://api.example.com","demo-org","space-a","demo-app"]');
+    expect(secondKey).toBe('["https://api.example.com","demo-org","space-b","demo-app"]');
+  });
+
+  it('clears the reused panel catalog immediately when its CF target changes', () => {
+    const panel = createMockPanel();
+    createWebviewPanelMock.mockReturnValue(panel);
+    const manager = createManager();
+
+    manager.openApisExplorer('demo-app', makeTarget('space-a'));
+    panel.webview.postMessage.mockClear();
+    manager.openApisExplorer('demo-app', makeTarget('space-b'));
+
+    expect(panel.webview.postMessage).toHaveBeenCalledWith({
+      type: 'sapTools.apis.catalogLoading',
+    });
+  });
+
+  it('ignores a catalog load that completes after the panel moved to a newer target', async () => {
+    const oldRoute = createDeferred<string | null>();
+    const newRoute = createDeferred<string | null>();
+    cfClientMocks.fetchAppRouteUrlFromTarget
+      .mockReset()
+      .mockReturnValueOnce(oldRoute.promise)
+      .mockReturnValueOnce(newRoute.promise);
+    const panel = createMockPanel();
+    const cacheStore = {
+      getApiCatalog: vi.fn(async () => null),
+      setApiCatalog: vi.fn(async () => undefined),
+    };
+    createWebviewPanelMock.mockReturnValue(panel);
+    const manager = createManagerWithCacheStore(cacheStore);
+
+    manager.openApisExplorer('demo-app', makeTarget('space-a'));
+    await panel.messageHandler?.({ type: 'sapTools.apis.webviewReady' });
+    await vi.waitFor(() => {
+      expect(cfClientMocks.fetchAppRouteUrlFromTarget).toHaveBeenCalledTimes(1);
+    });
+    manager.openApisExplorer('demo-app', makeTarget('space-b'));
+    await vi.waitFor(() => {
+      expect(cfClientMocks.fetchAppRouteUrlFromTarget).toHaveBeenCalledTimes(2);
+    });
+
+    newRoute.resolve('new-space.example.com');
+    await vi.waitFor(() => {
+      expect(panel.webview.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'sapTools.apis.catalogLoaded',
+          payload: expect.objectContaining({ baseUrl: 'https://new-space.example.com' }),
+        })
+      );
+    });
+    oldRoute.resolve('old-space.example.com');
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+
+    const loadedBaseUrls = panel.webview.postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message?.type === 'sapTools.apis.catalogLoaded')
+      .map((message) => message.payload?.baseUrl);
+    expect(loadedBaseUrls).toEqual(['https://new-space.example.com']);
+    expect(cacheStore.setApiCatalog).toHaveBeenCalledTimes(1);
   });
 
   it('stops active traces without closing panels when scope changes', async () => {

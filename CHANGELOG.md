@@ -1,5 +1,10 @@
 # SAP Tools Extension Changelog
 
+## 0.10.154 (stable)
+- Feature: Advanced Event Mesh now supports live queue and topic listening through the Solace Web Messaging client, with bounded message sessions and lifecycle cleanup.
+- Fix: APIs Explorer isolates catalog caching by CF API, org, space, and app, resets reused panels immediately, and ignores stale discovery results after a scope switch.
+- UI: Live Trace now changes from Idle to an animated startup state immediately while the CF CLI, Inspector tunnel, and runtime hook are being prepared.
+
 ## 0.10.153 (stable)
 - Hardening: Advanced Event Mesh discovery now reuses the already-read app environment, aborts stale refreshes, and guards management pagination against loops or cross-origin links.
 - Performance: Advanced Event Mesh topic discovery now reads queue subscriptions with bounded concurrency and reports partial queue read failures without blocking the whole view.

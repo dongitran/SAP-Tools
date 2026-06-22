@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { extractAdvancedEventMeshDiscovery } from './advancedEventMeshBindings';
 
-// cspell:ignore clientid clientsecret simplemdg smdg tokenendpoint
+// cspell:ignore clientid clientsecret demoapp smdg tokenendpoint
 
 function advancedService(name = 'advanced-event-mesh'): Record<string, unknown> {
   return {
@@ -20,7 +20,7 @@ function advancedService(name = 'advanced-event-mesh'): Record<string, unknown> 
           smf_uri: 'wss://broker.example.com:443/',
         },
       },
-      vpn: 'simplemdg-aem',
+      vpn: 'demo-aem',
     },
   };
 }
@@ -62,7 +62,7 @@ describe('extractAdvancedEventMeshDiscovery', () => {
       index: 0,
       name: 'advanced-event-mesh',
       instanceName: 'advanced-event-mesh',
-      vpn: 'simplemdg-aem',
+      vpn: 'demo-aem',
       managementUri: 'https://broker.example.com:943',
       smfUri: 'wss://broker.example.com:443',
       authentication: {

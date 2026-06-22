@@ -1,8 +1,11 @@
 import { defineConfig } from '@playwright/test';
 
+const isCi = process.env['CI'] === 'true';
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
+  failOnFlakyTests: isCi,
   forbidOnly: true,
   retries: 1,
   workers: 1,

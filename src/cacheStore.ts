@@ -268,8 +268,8 @@ export class CacheStore {
     return removed;
   }
 
-  async getApiCatalog(appId: string): Promise<ApiCatalogCacheEntry | null> {
-    const trimmedId = appId.trim();
+  async getApiCatalog(cacheKey: string): Promise<ApiCatalogCacheEntry | null> {
+    const trimmedId = cacheKey.trim();
     if (trimmedId.length === 0) {
       return null;
     }
@@ -277,10 +277,10 @@ export class CacheStore {
     return state.apiCatalogs[trimmedId] ?? null;
   }
 
-  async setApiCatalog(appId: string, entry: ApiCatalogCacheEntry): Promise<void> {
-    const trimmedId = appId.trim();
+  async setApiCatalog(cacheKey: string, entry: ApiCatalogCacheEntry): Promise<void> {
+    const trimmedId = cacheKey.trim();
     if (trimmedId.length === 0) {
-      throw new Error('Cannot cache ApiCatalog with an empty appId.');
+      throw new Error('Cannot cache ApiCatalog with an empty cache key.');
     }
     await this.updateState((state) => {
       return {
