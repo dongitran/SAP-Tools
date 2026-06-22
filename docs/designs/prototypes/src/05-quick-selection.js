@@ -427,6 +427,7 @@ function handleLogsControlAction(action, actionElement) {
   if (action === 'open-app-events') {
     const appId = actionElement.dataset.appId || 'demo-app';
     if (appId) {
+      setEventMeshOpening(appId);
       if (vscodeApi !== null) {
         vscodeApi.postMessage({ type: 'saptools.openEventMesh', appId });
       } else if (typeof window !== 'undefined' && window.parent) {
@@ -434,6 +435,9 @@ function handleLogsControlAction(action, actionElement) {
           type: 'saptools.prototype.openCenterPanel',
           url: `./variants/events-webview.html?appId=${encodeURIComponent(appId)}`
         }, '*');
+        window.setTimeout(() => {
+          clearEventMeshOpening(appId);
+        }, 900);
       }
     }
     return true;

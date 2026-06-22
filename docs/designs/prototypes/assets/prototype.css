@@ -1107,6 +1107,10 @@ body.vscode-high-contrast-light.prototype-page .confirm-button {
   align-items: center;
 }
 
+.workspace-header h1 {
+  font-size: 0.75rem;
+}
+
 .workspace-header-actions {
   display: inline-flex;
   align-items: center;
@@ -1115,7 +1119,7 @@ body.vscode-high-contrast-light.prototype-page .confirm-button {
 
 .workspace-context {
   margin: 0;
-  font-size: 0.71rem;
+  font-size: 0.568rem;
   color: var(--muted-color);
   line-height: 1.3;
 }
@@ -1365,7 +1369,7 @@ body.vscode-high-contrast-light.prototype-page .confirm-button {
 .workspace-change-region {
   min-height: 30px;
   padding-inline: 12px;
-  font-size: 0.8rem;
+  font-size: 0.6rem;
 }
 /* --- END 02-components.css --- */
 
@@ -1436,8 +1440,35 @@ body.vscode-high-contrast-light.prototype-page .confirm-button {
   opacity: 1;
 }
 
-.app-log-item:hover .app-log-apis-btn {
+.app-log-item:is(:hover, .is-event-opening) .app-log-apis-btn {
   display: inline-flex;
+}
+
+.app-log-events-btn.is-opening {
+  cursor: progress;
+  opacity: 1;
+}
+
+.app-log-event-spinner {
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border: 1.5px solid rgb(255 255 255 / 42%);
+  border-top-color: #fff;
+  border-radius: 999px;
+  animation: app-log-event-spin 700ms linear infinite;
+}
+
+@keyframes app-log-event-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-log-event-spinner {
+    animation: none;
+  }
 }
 
 .app-log-item:last-child {

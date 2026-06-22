@@ -110,6 +110,63 @@ describe('EventMeshListeningSession', () => {
     expect(listeners[1]?.start).toHaveBeenCalledTimes(1);
   });
 
+  it('starts many bindings with bounded concurrency and reports progress', async () => {
+    const bindings = Array.from({ length: 8 }, (_, index) =>
+      makeBinding(index, `demo/service/app/${String(index)}`)
+    );
+    const clients = new Map(bindings.map((binding) => [binding.index, createClient()]));
+    const gates = new Map(bindings.map((binding) => [binding.index, createDeferred()]));
+    const startedIndexes: number[] = [];
+    const progress: { completed: number; total: number; percent: number }[] = [];
+    let activeStarts = 0;
+    let maxActiveStarts = 0;
+    const session = new EventMeshListeningSession({
+      debugQueueSegment: 'saptools-debug',
+      buildRunId: (binding) => `run-${String(binding.index)}`,
+      getClient: (binding) => clients.get(binding.index) ?? createClient(),
+      createListener: (binding) => {
+        const listener = createListener();
+        listener.start = vi.fn(async () => {
+          activeStarts += 1;
+          maxActiveStarts = Math.max(maxActiveStarts, activeStarts);
+          startedIndexes.push(binding.index);
+          const gate = gates.get(binding.index);
+          if (gate === undefined) {
+            throw new Error(`missing gate ${String(binding.index)}`);
+          }
+          await gate.promise;
+          activeStarts -= 1;
+        });
+        return listener;
+      },
+    });
+
+    const startPromise = session.startMany(
+      bindings.map((binding) => ({ binding, topics: [`${binding.namespace}/*`] })),
+      { onMessage: vi.fn(), onStatus: vi.fn(), onConnected: vi.fn() },
+      { onProgress: (entry) => progress.push(entry) }
+    );
+
+    await expect.poll(() => startedIndexes).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(maxActiveStarts).toBe(6);
+
+    gates.get(0)?.resolve();
+    await expect.poll(() => startedIndexes).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    gates.get(1)?.resolve();
+    await expect.poll(() => startedIndexes).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+
+    for (const index of [2, 3, 4, 5, 6, 7]) {
+      gates.get(index)?.resolve();
+    }
+
+    const summaries = await startPromise;
+
+    expect(summaries.map((summary) => summary.bindingIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(progress.at(0)).toMatchObject({ completed: 1, total: 8, percent: 13 });
+    expect(progress.at(-1)).toMatchObject({ completed: 8, total: 8, percent: 100 });
+    expect(maxActiveStarts).toBeLessThanOrEqual(6);
+  });
+
   it('rolls back already-started bindings if a later binding fails', async () => {
     const bindings = [makeBinding(0, 'demo/service/app'), makeBinding(1, 'demo/audit/app')];
     const clients = new Map(bindings.map((binding) => [binding.index, createClient()]));

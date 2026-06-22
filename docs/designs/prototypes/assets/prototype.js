@@ -895,6 +895,12 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (msg.type === 'sapTools.eventMeshOpenSettled') {
+    const appId = typeof msg.appId === 'string' ? msg.appId : '';
+    clearEventMeshOpening(appId);
+    return;
+  }
+
   if (msg.type === 'sapTools.appsError') {
     liveAppOptions = [];
     appsLoadingState = 'error';
@@ -1276,6 +1282,7 @@ let logsData = cloneSeedLogs();
 let selectedAppLogIds = [];
 let activeAppLogIds = [];
 let pausedAppLogIds = [];
+let eventOpeningAppId = '';
 let pendingSelectionMotion = null;
 const DESIGN_PATTERN_CLASS_PREFIX = 'pattern-';
 const DESIGN_THEME_CLASS_PREFIX = 'theme-';
@@ -1297,6 +1304,27 @@ window.addEventListener('keydown', (event) => {
   hanaSqlResultContextMenuState = null;
   refreshSqlResultPreviewPanel();
 });
+
+function refreshEventMeshOpeningState() {
+  if (isWorkspaceLogsMounted()) {
+    refreshWorkspaceLogsView();
+    return;
+  }
+  renderPrototype();
+}
+
+function setEventMeshOpening(appId) {
+  eventOpeningAppId = appId;
+  refreshEventMeshOpeningState();
+}
+
+function clearEventMeshOpening(appId) {
+  if (appId.length > 0 && eventOpeningAppId !== appId) {
+    return;
+  }
+  eventOpeningAppId = '';
+  refreshEventMeshOpeningState();
+}
 
 if (typeof window.ResizeObserver === 'function') {
   sqlTableNameResizeObserver = new window.ResizeObserver(() => {
@@ -3088,6 +3116,7 @@ function handleLogsControlAction(action, actionElement) {
   if (action === 'open-app-events') {
     const appId = actionElement.dataset.appId || 'demo-app';
     if (appId) {
+      setEventMeshOpening(appId);
       if (vscodeApi !== null) {
         vscodeApi.postMessage({ type: 'saptools.openEventMesh', appId });
       } else if (typeof window !== 'undefined' && window.parent) {
@@ -3095,6 +3124,9 @@ function handleLogsControlAction(action, actionElement) {
           type: 'saptools.prototype.openCenterPanel',
           url: `./variants/events-webview.html?appId=${encodeURIComponent(appId)}`
         }, '*');
+        window.setTimeout(() => {
+          clearEventMeshOpening(appId);
+        }, 900);
       }
     }
     return true;
@@ -5717,9 +5749,10 @@ function renderAppLogCatalogMarkup(availableApps, selectedApps, activeApps) {
     .map((app) => {
       const isLogging = activeApps.has(app.id);
       const isChecked = isLogging || selectedApps.has(app.id);
+      const isEventOpening = eventOpeningAppId === app.id;
 
       return `
-        <div class="app-log-item${isLogging ? ' is-logging is-locked' : ''}">
+        <div class="app-log-item${isLogging ? ' is-logging is-locked' : ''}${isEventOpening ? ' is-event-opening' : ''}">
           <input
             type="checkbox"
             data-role="log-app-checkbox"
@@ -5731,7 +5764,15 @@ function renderAppLogCatalogMarkup(availableApps, selectedApps, activeApps) {
           <span class="app-log-name">${escapeHtml(app.name)}</span>
           <div class="app-log-actions">
             <button type="button" class="app-log-apis-btn" data-action="open-app-apis" data-app-id="${app.id}" aria-label="Open APIs for ${escapeHtml(app.name)}">APIs</button>
-            <button type="button" class="app-log-apis-btn app-log-events-btn" data-action="open-app-events" data-app-id="${app.id}" aria-label="Open Events for ${escapeHtml(app.name)}">Event</button>
+            <button
+              type="button"
+              class="app-log-apis-btn app-log-events-btn${isEventOpening ? ' is-opening' : ''}"
+              data-action="open-app-events"
+              data-app-id="${app.id}"
+              aria-label="Open Events for ${escapeHtml(app.name)}"
+              aria-busy="${isEventOpening}"
+              ${isEventOpening ? 'disabled' : ''}
+            >${isEventOpening ? '<span class="app-log-event-spinner" aria-hidden="true"></span>' : ''}<span>Event</span></button>
           </div>
         </div>
       `;
@@ -7379,6 +7420,7 @@ function resetActiveAppLoggingState() {
   selectedAppLogIds = [];
   activeAppLogIds = [];
   pausedAppLogIds = [];
+  eventOpeningAppId = '';
   statusMessage = '';
   if (hadActiveApps) {
     postActiveAppsChanged([]);
@@ -7418,6 +7460,5 @@ function escapeHtml(value) {
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-
 // --- END 08-cf-logs.js ---
 

@@ -171,6 +171,17 @@ export class EventMeshPanelManager implements vscode.Disposable {
     }
   }
 
+  closeEventMeshViewer(appId: string): void {
+    const existing = this.sessions.get(appId);
+    if (existing === undefined) {
+      return;
+    }
+    existing.panel.dispose();
+    if (this.sessions.get(appId) === existing) {
+      this.sessions.delete(appId);
+    }
+  }
+
   openEventMeshViewer(appId: string, targetParams?: EventMeshTargetParams): void {
     const existing = this.sessions.get(appId);
     if (existing !== undefined) {
@@ -473,7 +484,21 @@ export class EventMeshPanelManager implements vscode.Disposable {
     }
     session.starting = true;
     try {
-      const summaries = await session.listenSession.startMany(requests, this.makeListenCallbacks(session));
+      const summaries = await session.listenSession.startMany(
+        requests,
+        this.makeListenCallbacks(session),
+        {
+          onProgress: (progress): void => {
+            this.post(session, 'sapTools.events.startProgress', {
+              completed: progress.completed,
+              total: progress.total,
+              percent: progress.percent,
+              bindingIndex: progress.bindingIndex,
+              bindingName: progress.bindingName,
+            });
+          },
+        }
+      );
       this.post(session, 'sapTools.events.listening', { bindings: summaries });
       this.log(`Listening on ${String(summaries.length)} binding(s)`);
     } catch (error) {

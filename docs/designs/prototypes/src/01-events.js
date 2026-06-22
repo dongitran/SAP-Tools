@@ -150,6 +150,12 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (msg.type === 'sapTools.eventMeshOpenSettled') {
+    const appId = typeof msg.appId === 'string' ? msg.appId : '';
+    clearEventMeshOpening(appId);
+    return;
+  }
+
   if (msg.type === 'sapTools.appsError') {
     liveAppOptions = [];
     appsLoadingState = 'error';
@@ -531,6 +537,7 @@ let logsData = cloneSeedLogs();
 let selectedAppLogIds = [];
 let activeAppLogIds = [];
 let pausedAppLogIds = [];
+let eventOpeningAppId = '';
 let pendingSelectionMotion = null;
 const DESIGN_PATTERN_CLASS_PREFIX = 'pattern-';
 const DESIGN_THEME_CLASS_PREFIX = 'theme-';
@@ -552,6 +559,27 @@ window.addEventListener('keydown', (event) => {
   hanaSqlResultContextMenuState = null;
   refreshSqlResultPreviewPanel();
 });
+
+function refreshEventMeshOpeningState() {
+  if (isWorkspaceLogsMounted()) {
+    refreshWorkspaceLogsView();
+    return;
+  }
+  renderPrototype();
+}
+
+function setEventMeshOpening(appId) {
+  eventOpeningAppId = appId;
+  refreshEventMeshOpeningState();
+}
+
+function clearEventMeshOpening(appId) {
+  if (appId.length > 0 && eventOpeningAppId !== appId) {
+    return;
+  }
+  eventOpeningAppId = '';
+  refreshEventMeshOpeningState();
+}
 
 if (typeof window.ResizeObserver === 'function') {
   sqlTableNameResizeObserver = new window.ResizeObserver(() => {

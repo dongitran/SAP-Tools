@@ -616,9 +616,10 @@ function renderAppLogCatalogMarkup(availableApps, selectedApps, activeApps) {
     .map((app) => {
       const isLogging = activeApps.has(app.id);
       const isChecked = isLogging || selectedApps.has(app.id);
+      const isEventOpening = eventOpeningAppId === app.id;
 
       return `
-        <div class="app-log-item${isLogging ? ' is-logging is-locked' : ''}">
+        <div class="app-log-item${isLogging ? ' is-logging is-locked' : ''}${isEventOpening ? ' is-event-opening' : ''}">
           <input
             type="checkbox"
             data-role="log-app-checkbox"
@@ -630,7 +631,15 @@ function renderAppLogCatalogMarkup(availableApps, selectedApps, activeApps) {
           <span class="app-log-name">${escapeHtml(app.name)}</span>
           <div class="app-log-actions">
             <button type="button" class="app-log-apis-btn" data-action="open-app-apis" data-app-id="${app.id}" aria-label="Open APIs for ${escapeHtml(app.name)}">APIs</button>
-            <button type="button" class="app-log-apis-btn app-log-events-btn" data-action="open-app-events" data-app-id="${app.id}" aria-label="Open Events for ${escapeHtml(app.name)}">Event</button>
+            <button
+              type="button"
+              class="app-log-apis-btn app-log-events-btn${isEventOpening ? ' is-opening' : ''}"
+              data-action="open-app-events"
+              data-app-id="${app.id}"
+              aria-label="Open Events for ${escapeHtml(app.name)}"
+              aria-busy="${isEventOpening}"
+              ${isEventOpening ? 'disabled' : ''}
+            >${isEventOpening ? '<span class="app-log-event-spinner" aria-hidden="true"></span>' : ''}<span>Event</span></button>
           </div>
         </div>
       `;

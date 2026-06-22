@@ -101,6 +101,17 @@
         };
       }
 
+      function postPrototypeStartProgress(completed, total, binding) {
+        postToViewer({
+          type: 'sapTools.events.startProgress',
+          completed,
+          total,
+          percent: total === 0 ? 100 : Math.round((completed / total) * 100),
+          bindingIndex: binding.index,
+          bindingName: binding.name,
+        });
+      }
+
       function postPrototypeMessage(binding, topic) {
         postToViewer({
           type: 'sapTools.events.messages',
@@ -158,11 +169,24 @@
             liveTopicsByBinding.set(binding.index, topics);
             return listeningSummary(binding, topics);
           });
-          postToViewer({ type: 'sapTools.events.listening', bindings: summaries });
-          for (const summary of summaries) {
-            const binding = findPrototypeBinding(summary.bindingIndex);
-            postPrototypeMessage(binding, summary.topics[0] || `${binding.namespace}/*`);
+          if (summaries.length === 0) {
+            postToViewer({ type: 'sapTools.events.listening', bindings: [] });
+            return;
           }
+          summaries.forEach((summary, index) => {
+            window.setTimeout(() => {
+              const binding = findPrototypeBinding(summary.bindingIndex);
+              postPrototypeStartProgress(index + 1, summaries.length, binding);
+              if (index !== summaries.length - 1) {
+                return;
+              }
+              postToViewer({ type: 'sapTools.events.listening', bindings: summaries });
+              for (const entry of summaries) {
+                const entryBinding = findPrototypeBinding(entry.bindingIndex);
+                postPrototypeMessage(entryBinding, entry.topics[0] || `${entryBinding.namespace}/*`);
+              }
+            }, (index + 1) * 35);
+          });
           return;
         }
 

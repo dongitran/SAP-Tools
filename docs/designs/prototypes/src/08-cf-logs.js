@@ -275,6 +275,7 @@ function resetActiveAppLoggingState() {
   selectedAppLogIds = [];
   activeAppLogIds = [];
   pausedAppLogIds = [];
+  eventOpeningAppId = '';
   statusMessage = '';
   if (hadActiveApps) {
     postActiveAppsChanged([]);
@@ -314,4 +315,3 @@ function escapeHtml(value) {
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-

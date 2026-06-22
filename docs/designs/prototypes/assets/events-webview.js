@@ -49,6 +49,7 @@ let publishResult = null; // { ok, status, destinationKind, destination, message
 let publishSending = false;
 let publishCandidateDropdown = null;
 let stoppingAll = false;
+let startProgress = null;
 
 let messages = [];
 let totalReceived = 0;
@@ -400,6 +401,25 @@ function btnSpinner() {
   return '<span class="event-btn-spinner" aria-hidden="true"></span>';
 }
 
+function resetStartProgress() {
+  startProgress = null;
+}
+
+function createInitialStartProgress(total) {
+  startProgress = {
+    completed: 0,
+    total,
+    percent: 0,
+  };
+}
+
+function formatStartProgressLabel() {
+  if (startProgress === null) {
+    return '0%';
+  }
+  return `${Math.max(0, Math.min(100, Math.round(startProgress.percent)))}%`;
+}
+
 function renderHeader() {
   return `
     <header class="event-header">
@@ -563,7 +583,7 @@ function renderSimpleActions() {
     : '';
   return `
     <div class="event-config-actions">
-      <button type="button" class="event-btn event-btn-primary" data-action="em-start-simple" ${requests.length === 0 || anyStarting || stoppingAll ? 'disabled' : ''}>${anyStarting ? `${btnSpinner()} Starting…` : `Start Listening To ${requests.length}${labelSuffix} ${label}`}</button>
+      <button type="button" class="event-btn event-btn-primary" data-action="em-start-simple" ${requests.length === 0 || anyStarting || stoppingAll ? 'disabled' : ''}>${anyStarting ? `${btnSpinner()} Start Listening To ${requests.length}${labelSuffix} ${label} - ${formatStartProgressLabel()}` : `Start Listening To ${requests.length}${labelSuffix} ${label}`}</button>
       ${stopButton}
       <span class="event-hint">${escapeHtml(hint)}</span>
     </div>`;
@@ -1034,14 +1054,14 @@ function renderSetupActions() {
       </div>`;
   }
   const anyStarting = selectedBindings().some((b) => topicStateFor(b.index).status === 'starting');
+  const requests = collectStartRequests();
   if (anyStarting) {
     return `
       <div class="event-config-actions">
-        <button type="button" class="event-btn event-btn-primary" disabled>${btnSpinner()} Starting…</button>
+        <button type="button" class="event-btn event-btn-primary" disabled>${btnSpinner()} Start Listening To ${requests.length} ${requests.length === 1 ? 'Binding' : 'Bindings'} - ${formatStartProgressLabel()}</button>
         <span class="event-hint">Creating queues and subscribing to topics…</span>
       </div>`;
   }
-  const requests = collectStartRequests();
   const disabled = requests.length === 0 || requests.length !== selectedBindingIndexes.size;
   return `
     <div class="event-config-actions">
@@ -1058,7 +1078,7 @@ function collectStartRequests() {
 
 function collectSimpleStartRequests() {
   return selectedBindings()
-    .filter((binding) => !isSimpleBindingLocked(binding))
+    .filter((binding) => topicStateFor(binding.index).status !== 'listening')
     .map((binding) => ({ bindingIndex: binding.index, topics: [simpleWildcardFor(binding)] }));
 }
 
@@ -1210,6 +1230,8 @@ window.addEventListener('message', (event) => {
     handleListening(data);
   } else if (data.type === 'sapTools.events.bindingListening') {
     handleBindingListening(data);
+  } else if (data.type === 'sapTools.events.startProgress') {
+    handleStartProgress(data);
   } else if (data.type === 'sapTools.events.topicsAdded') {
     handleTopicsAdded(data);
   } else if (data.type === 'sapTools.events.messages') {
@@ -1247,6 +1269,7 @@ function handleReady(data) {
   publishSending = false;
   publishCandidateDropdown = null;
   stoppingAll = false;
+  resetStartProgress();
   activeTab = 'subscribe-simple';
   phase = 'ready';
   if (bindings.length === 1) addSelectedBinding(bindings[0].index);
@@ -1293,6 +1316,7 @@ function handleListening(data) {
   paused = false;
   stoppedReason = '';
   statusLine = '';
+  resetStartProgress();
   expandedBindingIndex = null;
   const summaries = Array.isArray(data.bindings) ? data.bindings : [data];
   for (const summary of summaries) applyListeningSummary(summary);
@@ -1302,8 +1326,22 @@ function handleListening(data) {
 function handleBindingListening(data) {
   streaming = true;
   expandedBindingIndex = null;
+  resetStartProgress();
   applyListeningSummary(data);
   render();
+}
+
+function handleStartProgress(data) {
+  const total = typeof data.total === 'number' && Number.isFinite(data.total) ? data.total : 0;
+  const completed =
+    typeof data.completed === 'number' && Number.isFinite(data.completed) ? data.completed : 0;
+  const percent = typeof data.percent === 'number' && Number.isFinite(data.percent)
+    ? data.percent
+    : total > 0
+      ? Math.round((completed / total) * 100)
+      : 0;
+  startProgress = { completed, total, percent };
+  if (phase === 'ready') render();
 }
 
 function applyListeningSummary(summary) {
@@ -1356,6 +1394,7 @@ function handleStopped(data) {
   streaming = false;
   paused = false;
   stoppingAll = false;
+  resetStartProgress();
   stoppedReason = data.reason || 'user';
   for (const binding of selectedBindings()) {
     const state = topicStateFor(binding.index);
@@ -1369,8 +1408,13 @@ function handleStopped(data) {
 function handleError(data) {
   const index = typeof data.bindingIndex === 'number' ? data.bindingIndex : null;
   if (data.scope === 'start' || data.scope === 'topics') {
+    resetStartProgress();
     if (index === null) {
       startError = data.message || 'Failed to start listening.';
+      for (const binding of selectedBindings()) {
+        const state = topicStateFor(binding.index);
+        if (state.status === 'starting') state.status = 'ready';
+      }
     } else {
       const state = topicStateFor(index);
       state.status = 'error';
@@ -1390,6 +1434,7 @@ function postStartSimple() {
   const requests = collectSimpleStartRequests();
   if (!vscodeApi || requests.length === 0) return;
   startError = '';
+  createInitialStartProgress(requests.length);
   for (const request of requests) {
     const state = topicStateFor(request.bindingIndex);
     state.status = 'starting';
@@ -1462,6 +1507,7 @@ function postStartAll() {
   const requests = collectStartRequests();
   if (!vscodeApi || requests.length === 0 || requests.length !== selectedBindingIndexes.size) return;
   startError = '';
+  createInitialStartProgress(requests.length);
   for (const request of requests) topicStateFor(request.bindingIndex).status = 'starting';
   expandedBindingIndex = null;
   render();

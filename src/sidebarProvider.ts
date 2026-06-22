@@ -148,6 +148,7 @@ const MSG_BUILD_PUBLISH_PROGRESS = 'sapTools.buildPublishProgress';
 const MSG_BUILD_PUBLISH_RESULT = 'sapTools.buildPublishResult';
 const MSG_MICROSOFT_GRAPH_TOOL_PROGRESS = 'sapTools.microsoftGraphToolProgress';
 const MSG_MICROSOFT_GRAPH_TOOL_RESULT = 'sapTools.microsoftGraphToolResult';
+const MSG_EVENT_MESH_OPEN_SETTLED = 'sapTools.eventMeshOpenSettled';
 
 // ── Payload interfaces ───────────────────────────────────────────────────────
 
@@ -537,22 +538,29 @@ export class RegionSidebarProvider
       if (appId === '') {
         return;
       }
-      if (this.currentConfirmedScope !== undefined) {
-        const credentials = await getEffectiveCredentials(this.context);
-        if (credentials !== null) {
-          const cfHomeDir = await ensureCfHomeDir(this.context);
-          await this.eventMeshPanelManager.openEventMeshViewer(appId, {
-            apiEndpoint: getCfApiEndpoint(this.currentConfirmedScope.regionCode),
-            email: credentials.email,
-            password: credentials.password,
-            orgName: this.currentConfirmedScope.orgName,
-            spaceName: this.currentConfirmedScope.spaceName,
-            cfHomeDir,
-          });
-          return;
+      try {
+        if (this.currentConfirmedScope !== undefined) {
+          const credentials = await getEffectiveCredentials(this.context);
+          if (credentials !== null) {
+            const cfHomeDir = await ensureCfHomeDir(this.context);
+            await this.eventMeshPanelManager.openEventMeshViewer(appId, {
+              apiEndpoint: getCfApiEndpoint(this.currentConfirmedScope.regionCode),
+              email: credentials.email,
+              password: credentials.password,
+              orgName: this.currentConfirmedScope.orgName,
+              spaceName: this.currentConfirmedScope.spaceName,
+              cfHomeDir,
+            });
+            return;
+          }
         }
+        await this.eventMeshPanelManager.openEventMeshViewer(appId);
+      } finally {
+        this.postMessage({
+          type: MSG_EVENT_MESH_OPEN_SETTLED,
+          appId,
+        });
       }
-      await this.eventMeshPanelManager.openEventMeshViewer(appId);
       return;
     }
 

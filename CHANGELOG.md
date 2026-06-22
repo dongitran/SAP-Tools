@@ -1,5 +1,10 @@
 # SAP Tools Extension Changelog
 
+## 0.10.159 (stable)
+- UI/UX: Reduced the BTP Workspace title, Change Region action, and selected scope summary typography to the requested 75%, 75%, and 80% sizes.
+- UI/UX: Event actions now open the Event Mesh editor immediately while keeping the app-row APIs and Event actions visible with an Event loading indicator until provider discovery settles.
+- Performance: Event Mesh starts up to six bindings concurrently and reports aggregate completion progress in the Start Listening button, while preserving rollback behavior if any binding fails.
+
 ## 0.10.158 (stable)
 - UI/UX: Apps service mapping hover actions now overlay mapped rows without reserving hidden width, so service names keep the full available row space until actions are shown.
 - UI/UX: SQL Workbench service lists now keep enough internal breathing room for first-row hover borders and shadows.

@@ -98,9 +98,23 @@ function mergedEnv(left: Record<string, unknown>, right: Record<string, unknown>
   };
 }
 
+function createDeferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve: ((value: T) => void) | undefined;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  if (resolve === undefined) {
+    throw new Error('Deferred promise initializer did not run.');
+  }
+  return { promise, resolve };
+}
+
 describe('EventMeshProviderRouter', () => {
   it('preserves the legacy Event Mesh panel when no target params are available', () => {
-    const classic = { openEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
+    const classic = { openEventMeshViewer: vi.fn(), closeEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const advanced = { openAdvancedEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const router = new EventMeshProviderRouter(classic, advanced);
 
@@ -110,8 +124,30 @@ describe('EventMeshProviderRouter', () => {
     expect(advanced.openAdvancedEventMeshViewer).not.toHaveBeenCalled();
   });
 
+  it('opens the classic Event Mesh panel before provider detection finishes', async () => {
+    const classic = { openEventMeshViewer: vi.fn(), closeEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
+    const advanced = { openAdvancedEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
+    const params = makeTargetParams();
+    const envGate = createDeferred<string>();
+    const router = new EventMeshProviderRouter(classic, advanced, {
+      prepareCfCliSession: vi.fn(async () => undefined),
+      fetchDefaultEnvJsonFromTarget: vi.fn(() => envGate.promise),
+    });
+
+    const openPromise = router.openEventMeshViewer('demo-app', params);
+    await Promise.resolve();
+
+    expect(classic.openEventMeshViewer).toHaveBeenCalledWith('demo-app', params);
+    expect(advanced.openAdvancedEventMeshViewer).not.toHaveBeenCalled();
+
+    envGate.resolve(JSON.stringify(regularEventEnv()));
+    await openPromise;
+
+    expect(classic.closeEventMeshViewer).not.toHaveBeenCalled();
+  });
+
   it('opens the regular Event Mesh panel when only enterprise-messaging is bound', async () => {
-    const classic = { openEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
+    const classic = { openEventMeshViewer: vi.fn(), closeEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const advanced = { openAdvancedEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const params = makeTargetParams();
     const router = new EventMeshProviderRouter(classic, advanced, {
@@ -122,11 +158,12 @@ describe('EventMeshProviderRouter', () => {
     await router.openEventMeshViewer('demo-app', params);
 
     expect(classic.openEventMeshViewer).toHaveBeenCalledWith('demo-app', params);
+    expect(classic.closeEventMeshViewer).not.toHaveBeenCalled();
     expect(advanced.openAdvancedEventMeshViewer).not.toHaveBeenCalled();
   });
 
   it('opens the Advanced Event Mesh panel when only advanced-event-mesh is bound', async () => {
-    const classic = { openEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
+    const classic = { openEventMeshViewer: vi.fn(), closeEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const advanced = { openAdvancedEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const params = makeTargetParams();
     const env = advancedEventEnv();
@@ -137,7 +174,8 @@ describe('EventMeshProviderRouter', () => {
 
     await router.openEventMeshViewer('demo-app', params);
 
-    expect(classic.openEventMeshViewer).not.toHaveBeenCalled();
+    expect(classic.openEventMeshViewer).toHaveBeenCalledWith('demo-app', params);
+    expect(classic.closeEventMeshViewer).toHaveBeenCalledWith('demo-app');
     expect(advanced.openAdvancedEventMeshViewer).toHaveBeenCalledWith('demo-app', params, {
       classicAvailable: false,
       defaultEnv: env,
@@ -145,7 +183,7 @@ describe('EventMeshProviderRouter', () => {
   });
 
   it('opens the Advanced Event Mesh panel with a classic provider tab when both bindings exist', async () => {
-    const classic = { openEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
+    const classic = { openEventMeshViewer: vi.fn(), closeEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const advanced = { openAdvancedEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const params = makeTargetParams();
     const env = mergedEnv(regularEventEnv(), advancedEventEnv());
@@ -156,7 +194,8 @@ describe('EventMeshProviderRouter', () => {
 
     await router.openEventMeshViewer('demo-app', params);
 
-    expect(classic.openEventMeshViewer).not.toHaveBeenCalled();
+    expect(classic.openEventMeshViewer).toHaveBeenCalledWith('demo-app', params);
+    expect(classic.closeEventMeshViewer).toHaveBeenCalledWith('demo-app');
     expect(advanced.openAdvancedEventMeshViewer).toHaveBeenCalledWith('demo-app', params, {
       classicAvailable: true,
       defaultEnv: env,
@@ -164,7 +203,7 @@ describe('EventMeshProviderRouter', () => {
   });
 
   it('falls back to the legacy panel so existing no-binding errors stay unchanged', async () => {
-    const classic = { openEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
+    const classic = { openEventMeshViewer: vi.fn(), closeEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const advanced = { openAdvancedEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const params = makeTargetParams();
     const router = new EventMeshProviderRouter(classic, advanced, {
@@ -175,11 +214,12 @@ describe('EventMeshProviderRouter', () => {
     await router.openEventMeshViewer('demo-app', params);
 
     expect(classic.openEventMeshViewer).toHaveBeenCalledWith('demo-app', params);
+    expect(classic.closeEventMeshViewer).not.toHaveBeenCalled();
     expect(advanced.openAdvancedEventMeshViewer).not.toHaveBeenCalled();
   });
 
   it('falls back to the legacy panel when provider detection cannot read the app env', async () => {
-    const classic = { openEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
+    const classic = { openEventMeshViewer: vi.fn(), closeEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const advanced = { openAdvancedEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const params = makeTargetParams();
     const router = new EventMeshProviderRouter(classic, advanced, {
@@ -192,11 +232,12 @@ describe('EventMeshProviderRouter', () => {
     await router.openEventMeshViewer('demo-app', params);
 
     expect(classic.openEventMeshViewer).toHaveBeenCalledWith('demo-app', params);
+    expect(classic.closeEventMeshViewer).not.toHaveBeenCalled();
     expect(advanced.openAdvancedEventMeshViewer).not.toHaveBeenCalled();
   });
 
   it('stops listeners on every underlying provider', () => {
-    const classic = { openEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
+    const classic = { openEventMeshViewer: vi.fn(), closeEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const advanced = { openAdvancedEventMeshViewer: vi.fn(), stopAllListeners: vi.fn() };
     const router = new EventMeshProviderRouter(classic, advanced);
 

@@ -7,6 +7,7 @@ export type EventMeshStopReason = 'user' | 'panel-closed' | 'scope-changed' | 's
 
 export interface ClassicEventMeshViewer {
   openEventMeshViewer(appId: string, targetParams?: EventMeshTargetParams): void | Promise<void>;
+  closeEventMeshViewer(appId: string): void;
   stopAllListeners(reason: EventMeshStopReason): void;
 }
 
@@ -52,21 +53,21 @@ export class EventMeshProviderRouter {
       return;
     }
 
+    await this.classicViewer.openEventMeshViewer(appId, targetParams);
     const defaultEnv = await this.tryReadDefaultEnv(appId, targetParams);
     if (defaultEnv === null) {
-      await this.classicViewer.openEventMeshViewer(appId, targetParams);
       return;
     }
     const classicBindings = extractEventMeshBindings(defaultEnv);
     const advancedBindings = extractAdvancedEventMeshDiscovery(defaultEnv).brokerBindings;
     if (advancedBindings.length > 0) {
+      this.classicViewer.closeEventMeshViewer(appId);
       await this.advancedViewer.openAdvancedEventMeshViewer(appId, targetParams, {
         classicAvailable: classicBindings.length > 0,
         defaultEnv,
       });
       return;
     }
-    await this.classicViewer.openEventMeshViewer(appId, targetParams);
   }
 
   stopAllListeners(reason: EventMeshStopReason): void {

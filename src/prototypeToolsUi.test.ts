@@ -65,6 +65,13 @@ async function readLogsStylesSource(): Promise<string> {
   );
 }
 
+async function readComponentStylesSource(): Promise<string> {
+  return readFile(
+    new URL('../docs/designs/prototypes/src/styles/02-components.css', import.meta.url),
+    'utf8'
+  );
+}
+
 async function readServiceExportStylesSource(): Promise<string> {
   return readFile(
     new URL('../docs/designs/prototypes/src/styles/04-service-export.css', import.meta.url),
@@ -179,6 +186,33 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source).toMatch(/\.app-log-apis-btn\s*\{[\s\S]*?box-sizing:\s*border-box;/);
   });
 
+  it('reduces workspace header, scope summary, and Change Region text sizes', async () => {
+    const source = await readComponentStylesSource();
+
+    expect(source).toMatch(/\.workspace-header h1\s*\{[\s\S]*?font-size:\s*0\.75rem;/);
+    expect(source).toMatch(/\.workspace-context\s*\{[\s\S]*?font-size:\s*0\.568rem;/);
+    expect(source).toMatch(/\.workspace-change-region\s*\{[\s\S]*?font-size:\s*0\.6rem;/);
+  });
+
+  it('keeps Log-API-Event actions visible with an Event spinner while Event opens', async () => {
+    const renderSource = await readWorkspaceRenderSource();
+    const eventsSource = await readEventsSource();
+    const styles = await readLogsStylesSource();
+
+    expect(renderSource).toContain('eventOpeningAppId === app.id');
+    expect(renderSource).toContain('is-event-opening');
+    expect(renderSource).toContain('aria-busy="${isEventOpening}"');
+    expect(renderSource).toContain("${isEventOpening ? 'disabled' : ''}");
+    expect(renderSource).toContain('app-log-event-spinner');
+    expect(eventsSource).toContain("eventOpeningAppId = appId;");
+    expect(eventsSource).toContain("'sapTools.eventMeshOpenSettled'");
+    expect(styles).toMatch(
+      /\.app-log-item:is\(:hover,\s*\.is-event-opening\) \.app-log-apis-btn\s*\{[\s\S]*?display:\s*inline-flex;/
+    );
+    expect(styles).toContain('.app-log-event-spinner');
+    expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
+  });
+
   it('uses multi-binding state for the Event viewer (Add Binding workflow)', async () => {
     const source = await readEventWebviewSource();
 
@@ -193,6 +227,21 @@ describe('prototype Log-API-Event workspace', () => {
 
     expect(source).toContain("'sapTools.events.startListening'");
     expect(source).toContain('bindings: requests');
+  });
+
+  it('shows aggregate Event Mesh start-listening progress in start buttons', async () => {
+    const source = await readEventWebviewSource();
+    const fixture = await readEventVariantSource();
+
+    expect(source).toContain("data.type === 'sapTools.events.startProgress'");
+    expect(source).toContain('handleStartProgress');
+    expect(source).toContain('formatStartProgressLabel');
+    expect(source).toContain('Start Listening To ${requests.length}${labelSuffix} ${label} - ${formatStartProgressLabel()}');
+    expect(source).toContain(
+      "Start Listening To ${requests.length} ${requests.length === 1 ? 'Binding' : 'Bindings'} - ${formatStartProgressLabel()}"
+    );
+    expect(source).toContain("if (state.status === 'starting') state.status = 'ready';");
+    expect(fixture).toContain("'sapTools.events.startProgress'");
   });
 
   it('renders results inline below setup instead of replacing the screen', async () => {

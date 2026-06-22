@@ -137,6 +137,7 @@ interface ProviderFixture {
   readonly cacheStoreGetExportRootFolderMock: ReturnType<typeof vi.fn>;
   readonly cacheSyncGetCachedSpacesMock: ReturnType<typeof vi.fn>;
   readonly cfLogsPanelUpdateAppsMock: ReturnType<typeof vi.fn>;
+  readonly eventMeshOpenViewerMock: ReturnType<typeof vi.fn>;
   readonly globalStateUpdateMock: ReturnType<typeof vi.fn>;
   readonly hanaInvalidateAllAppContextsMock: ReturnType<typeof vi.fn>;
   readonly outputAppendLineMock: ReturnType<typeof vi.fn>;
@@ -253,6 +254,7 @@ function createProviderFixture(): ProviderFixture {
     cacheSyncGetCachedSpacesMock:
       cacheSyncService.getCachedSpaces as ReturnType<typeof vi.fn>,
     cfLogsPanelUpdateAppsMock: cfLogsPanel.updateApps as ReturnType<typeof vi.fn>,
+    eventMeshOpenViewerMock: eventMeshPanelManager.openEventMeshViewer as ReturnType<typeof vi.fn>,
     globalStateUpdateMock,
     hanaInvalidateAllAppContextsMock:
       hanaSqlWorkbench.invalidateAllAppContexts as ReturnType<typeof vi.fn>,
@@ -589,6 +591,34 @@ describe('RegionSidebarProvider shared CF scope sync', () => {
         spaceName: 'uat',
       })
     );
+  });
+
+  it('notifies the sidebar when Event Mesh opening settles', async () => {
+    const { access, eventMeshOpenViewerMock } = createProviderFixture();
+    const postMessageSpy = vi.spyOn(access, 'postMessage');
+    access.currentConfirmedScope = {
+      regionCode: 'us10',
+      orgName: 'finance-services-prod',
+      spaceName: 'uat',
+    };
+
+    await access.handleWebviewMessage({
+      type: 'saptools.openEventMesh',
+      appId: 'finance-uat-api',
+    });
+
+    expect(eventMeshOpenViewerMock).toHaveBeenCalledWith(
+      'finance-uat-api',
+      expect.objectContaining({
+        cfHomeDir: '/tmp/cf-home',
+        orgName: 'finance-services-prod',
+        spaceName: 'uat',
+      })
+    );
+    expect(postMessageSpy).toHaveBeenCalledWith({
+      type: 'sapTools.eventMeshOpenSettled',
+      appId: 'finance-uat-api',
+    });
   });
 
   it('confirms quick scope selection with org GUID resolved from test mode topology', async () => {

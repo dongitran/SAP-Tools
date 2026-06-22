@@ -25,6 +25,19 @@ export interface EventMeshBindingSummary {
   readonly topics: readonly string[];
 }
 
+export interface EventMeshStartProgress {
+  readonly completed: number;
+  readonly total: number;
+  readonly percent: number;
+  readonly bindingIndex: number;
+  readonly bindingName: string;
+}
+
+export interface EventMeshStartManyOptions {
+  readonly concurrency?: number;
+  readonly onProgress?: (progress: EventMeshStartProgress) => void | Promise<void>;
+}
+
 export interface EventMeshListenCallbacks {
   readonly onMessage: (
     binding: EventMeshBinding,
@@ -114,6 +127,16 @@ function summarizeActive(active: ActiveEventMeshListen): EventMeshBindingSummary
   };
 }
 
+function startConcurrencyLimit(requestCount: number, requested?: number): number {
+  if (requestCount <= 0) {
+    return 0;
+  }
+  if (requested === undefined || !Number.isFinite(requested)) {
+    return Math.min(requestCount, 6);
+  }
+  return Math.min(requestCount, Math.max(1, Math.floor(requested)));
+}
+
 export class EventMeshListeningSession {
   private readonly activeByBinding = new Map<number, ActiveEventMeshListen>();
   private readonly pendingByBinding = new Map<number, PendingEventMeshListen>();
@@ -130,17 +153,44 @@ export class EventMeshListeningSession {
 
   async startMany(
     requests: readonly EventMeshListenRequest[],
-    callbacks: EventMeshListenCallbacks
+    callbacks: EventMeshListenCallbacks,
+    options: EventMeshStartManyOptions = {}
   ): Promise<EventMeshBindingSummary[]> {
+    const summaries = new Array<EventMeshBindingSummary | undefined>(requests.length);
     const startedIndexes: number[] = [];
-    try {
-      const summaries: EventMeshBindingSummary[] = [];
-      for (const request of requests) {
+    let nextIndex = 0;
+    let completed = 0;
+    let firstError: unknown;
+
+    const worker = async (): Promise<void> => {
+      while (firstError === undefined) {
+        const requestIndex = nextIndex;
+        nextIndex += 1;
+        const request = requests[requestIndex];
+        if (request === undefined) return;
         const summary = await this.startBinding(request, callbacks);
-        summaries.push(summary);
+        summaries[requestIndex] = summary;
         startedIndexes.push(request.binding.index);
+        completed += 1;
+        await this.postStartProgress(options, summary, completed, requests.length);
       }
-      return summaries;
+    };
+
+    try {
+      const workerCount = startConcurrencyLimit(requests.length, options.concurrency);
+      await Promise.all(Array.from({ length: workerCount }, () => worker()).map(async (task) => {
+        try {
+          await task;
+        } catch (error) {
+          firstError ??= error;
+        }
+      }));
+      if (firstError !== undefined) {
+        throw firstError instanceof Error
+          ? firstError
+          : new Error('Event Mesh listener startup failed.');
+      }
+      return summaries.filter((summary): summary is EventMeshBindingSummary => summary !== undefined);
     } catch (error) {
       await this.stopStartedBindings(startedIndexes);
       throw error;
@@ -209,6 +259,25 @@ export class EventMeshListeningSession {
     const indexes = [...this.activeByBinding.keys()];
     for (const index of indexes) {
       await this.stopBindingByIndex(index);
+    }
+  }
+
+  private async postStartProgress(
+    options: EventMeshStartManyOptions,
+    summary: EventMeshBindingSummary,
+    completed: number,
+    total: number
+  ): Promise<void> {
+    try {
+      await options.onProgress?.({
+        completed,
+        total,
+        percent: total === 0 ? 100 : Math.round((completed / total) * 100),
+        bindingIndex: summary.bindingIndex,
+        bindingName: summary.bindingName,
+      });
+    } catch (error) {
+      this.options.onCleanupError?.(`Event Mesh start progress callback failed: ${describeError(error)}`);
     }
   }
 
