@@ -1,5 +1,8 @@
 # SAP Tools Extension Changelog
 
+## 0.10.167 (stable)
+- Fix: Live Trace `Search trace` now filters request rows and updates the detail pane without replacing the search input, so focus and typing continue across multiple characters.
+
 ## 0.10.166 (stable)
 - Fix: Live Trace request selection now updates the active row and detail pane without rebuilding the request stream, preserving scroll position in long traces.
 

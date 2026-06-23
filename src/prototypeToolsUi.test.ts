@@ -900,6 +900,19 @@ describe('prototype Log-API-Event workspace', () => {
     expect(selectEventBlock).not.toContain('renderLiveTracePanel();');
   });
 
+  it('updates Live Trace search results without replacing the search input', async () => {
+    const source = await readApiWebviewSource();
+    const searchInputBlock =
+      /if \(target\.dataset\.action === 'api-trace-filter-search'\) \{([\s\S]*?)\n  \}/.exec(source)?.[1] ?? '';
+
+    expect(source).toContain('function updateTraceFilterResults()');
+    expect(source).toContain("const list = document.querySelector('.api-trace-list');");
+    expect(source).toContain('list.innerHTML = renderTraceEventRows(events);');
+    expect(source).toContain('detail.outerHTML = renderTraceDetail(selected);');
+    expect(searchInputBlock).toContain('updateTraceFilterResults();');
+    expect(searchInputBlock).not.toContain('renderLiveTracePanel();');
+  });
+
   it('marks Live Trace with an idle orange and active red record indicator', async () => {
     const source = await readApiWebviewSource();
     const styles = await readApiStylesSource();

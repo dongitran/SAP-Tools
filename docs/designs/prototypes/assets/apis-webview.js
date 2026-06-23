@@ -1089,6 +1089,20 @@ function updateTraceSelectionDetails() {
   detail.outerHTML = renderTraceDetail(selected);
 }
 
+function updateTraceFilterResults() {
+  const events = filteredTraceEvents();
+  const selected = selectedTraceEvent();
+  const list = document.querySelector('.api-trace-list');
+  const detail = document.querySelector('.api-trace-detail');
+  if (!list || !detail) {
+    renderLiveTracePanel();
+    return;
+  }
+
+  list.innerHTML = renderTraceEventRows(events);
+  detail.outerHTML = renderTraceDetail(selected);
+}
+
 function isTraceActiveState(state) {
   return ['preparingCli', 'enablingSsh', 'checkingRuntime', 'openingTunnel', 'injecting', 'streaming', 'paused', 'stopping'].includes(state);
 }
@@ -1711,7 +1725,7 @@ appElement.addEventListener('input', (event) => {
 
   if (target.dataset.action === 'api-trace-filter-search') {
     apiTraceSearchText = target.value;
-    renderLiveTracePanel();
+    updateTraceFilterResults();
     return;
   }
 
