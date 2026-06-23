@@ -100,7 +100,10 @@ function renderLogsTab() {
   return `
     <section class="group-card logs-panel app-logs-panel">
       <section class="active-apps-log" aria-label="Active apps log">
-        <h3>Active Apps Log</h3>
+        <div class="active-apps-log-head">
+          <h3>Active Apps Log</h3>
+          ${renderAppListReloadButton()}
+        </div>
         <div data-role="active-app-log-list">${activeAppsMarkup}</div>
       </section>
       <h2>Apps & APIs</h2>
@@ -147,6 +150,7 @@ function renderServiceExportTab() {
           Services & Packages
           ${renderRegistryBadge()}
         </h2>
+        ${renderAppListReloadButton()}
       </header>
 
       <section class="service-export-root-row">
@@ -198,6 +202,40 @@ function renderServiceExportTab() {
 
       ${renderServiceExportStatus()}
     </section>
+  `;
+}
+
+function renderAppListReloadButton() {
+  const disabled =
+    appsReloadInProgress || selectedSpaceId.length === 0 || appsLoadingState === 'loading';
+  const buttonClass = `app-list-reload-button${appsReloadInProgress ? ' is-loading' : ''}`;
+  const iconMarkup = appsReloadInProgress
+    ? '<span class="app-list-reload-spinner" aria-hidden="true"></span>'
+    : renderAppListReloadIcon();
+
+  return `
+    <button
+      type="button"
+      class="${buttonClass}"
+      data-action="reload-app-list"
+      aria-label="Reload app list"
+      aria-busy="${appsReloadInProgress ? 'true' : 'false'}"
+      title="Reload app list"
+      ${disabled ? 'disabled' : ''}
+    >
+      ${iconMarkup}
+    </button>
+  `;
+}
+
+function renderAppListReloadIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M21 12a9 9 0 0 1-15.2 6.5"></path>
+      <path d="M3 12A9 9 0 0 1 18.2 5.5"></path>
+      <path d="M3 18h6v-6"></path>
+      <path d="M21 6h-6v6"></path>
+    </svg>
   `;
 }
 
@@ -885,6 +923,7 @@ function refreshMountedSqlWorkbench() {
   }
   updateHanaQueryStatusElement();
   refreshSqlResultPreviewPanel();
+  refreshAppListReloadButtons(appElement);
   queueSqlTableNameTruncation();
 }
 

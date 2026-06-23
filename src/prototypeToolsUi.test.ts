@@ -23,6 +23,13 @@ async function readSqlRenderSource(): Promise<string> {
   );
 }
 
+async function readCoreRenderSource(): Promise<string> {
+  return readFile(
+    new URL('../docs/designs/prototypes/src/07a-render-core.js', import.meta.url),
+    'utf8'
+  );
+}
+
 async function readStateSource(): Promise<string> {
   return readFile(
     new URL('../docs/designs/prototypes/src/00-state.js', import.meta.url),
@@ -33,6 +40,13 @@ async function readStateSource(): Promise<string> {
 async function readQuickSelectionSource(): Promise<string> {
   return readFile(
     new URL('../docs/designs/prototypes/src/05-quick-selection.js', import.meta.url),
+    'utf8'
+  );
+}
+
+async function readTopologySource(): Promise<string> {
+  return readFile(
+    new URL('../docs/designs/prototypes/src/02-topology.js', import.meta.url),
     'utf8'
   );
 }
@@ -192,6 +206,39 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source).toMatch(/\.workspace-header h1\s*\{[\s\S]*?font-size:\s*0\.75rem;/);
     expect(source).toMatch(/\.workspace-context\s*\{[\s\S]*?font-size:\s*0\.568rem;/);
     expect(source).toMatch(/\.workspace-change-region\s*\{[\s\S]*?font-size:\s*0\.6rem;/);
+  });
+
+  it('adds reload app-list icon buttons to Logs, Apps, and SQL headers', async () => {
+    const stateSource = await readStateSource();
+    const workspaceSource = await readWorkspaceRenderSource();
+    const coreSource = await readCoreRenderSource();
+    const quickSelectionSource = await readQuickSelectionSource();
+    const topologySource = await readTopologySource();
+    const eventsSource = await readEventsSource();
+    const logsStyles = await readLogsStylesSource();
+    const serviceStyles = await readServiceExportStylesSource();
+    const sqlStyles = await readSqlStylesSource();
+
+    expect(stateSource).toContain("const RELOAD_APP_LIST_MESSAGE_TYPE = 'sapTools.reloadAppList'");
+    expect(stateSource).toContain('let appsReloadInProgress = false;');
+    expect(workspaceSource).toContain('function renderAppListReloadButton');
+    expect(workspaceSource).toContain('data-action="reload-app-list"');
+    expect(workspaceSource).toContain('aria-label="Reload app list"');
+    expect(workspaceSource).toContain('<h3>Active Apps Log</h3>');
+    expect(workspaceSource).toContain('Services & Packages');
+    expect(coreSource).toContain('postReloadAppList()');
+    expect(quickSelectionSource).toContain("if (action === 'reload-app-list')");
+    expect(topologySource.match(/action === 'reload-app-list'/g)).toHaveLength(3);
+    expect(topologySource).toContain('function refreshAppListReloadButtons');
+    expect(topologySource).toContain('refreshAppListReloadButtons(logsPanel)');
+    expect(topologySource).toContain('refreshAppListReloadButtons(exportTab)');
+    expect(eventsSource).toContain("msg.type === 'sapTools.appsReloadError'");
+    expect(eventsSource).toContain("if (action === 'reload-app-list')");
+    expect(logsStyles).toContain('.active-apps-log-head');
+    expect(logsStyles).toContain('.app-list-reload-button');
+    expect(logsStyles).toContain('.app-list-reload-spinner');
+    expect(serviceStyles).toContain('.service-export-header');
+    expect(sqlStyles).toContain('.sql-workbench-title-actions');
   });
 
   it('keeps Log-API-Event actions visible with an Event spinner while Event opens', async () => {
@@ -723,8 +770,9 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source).toContain('data-action="${traceToggleAction}"');
     expect(source).toContain('data-action="api-trace-toggle-settings"');
     expect(source).toContain('class="api-trace-settings-popover${apiTraceSettingsOpen');
-    expect(source).toContain('class="api-trace-stream-toggle secondary-action"');
-    expect(source).toContain('if (apiTracePaused) return;');
+    expect(source).not.toContain('data-action="api-trace-toggle-pause"');
+    expect(source).not.toContain('class="api-trace-stream-toggle secondary-action"');
+    expect(source).not.toContain('if (apiTracePaused) return;');
     expect(source).toContain("apiTraceState = 'preparingCli'");
     expect(source).toContain('function renderTraceActionCluster()');
     expect(source).toContain('function updateTraceTopActions()');
@@ -790,7 +838,7 @@ describe('prototype Log-API-Event workspace', () => {
     expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
     expect(styles).toContain('.api-trace-settings-container');
     expect(styles).toContain('.api-trace-settings-popover');
-    expect(styles).toContain('.api-trace-stream-toggle');
+    expect(styles).not.toContain('.api-trace-stream-toggle');
     expect(styles).not.toContain('.api-trace-stats');
     expect(styles).not.toContain('.api-trace-detail-columns');
   });
@@ -812,7 +860,11 @@ describe('prototype Log-API-Event workspace', () => {
     );
     expect(source).toContain('url: resolveTraceCurlUrl(event)');
     expect(source).toContain('method: event.method');
-    expect(source).toContain("auth: 'xsuaa-auto'");
+    expect(source).toContain("auth: 'none'");
+    expect(source).toContain('headers: buildTraceReplayHeaders(event)');
+    expect(source).toContain('function buildTraceReplayHeaders(event)');
+    expect(source).toContain('TRACE_REPLAY_OMITTED_HEADERS');
+    expect(source).not.toContain("auth: 'xsuaa-auto'");
     expect(source).toContain('body: event.requestBodyPreview || undefined');
     expect(source).toContain("source: 'traceReplay'");
     expect(source).toContain('requestId: apiTraceReplayRequestId');
@@ -823,7 +875,22 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source).toContain("apiTraceReplayInFlightEventId = ''");
 
     expect(styles).toContain('.api-trace-replay-btn');
-    expect(styles).toContain('.api-trace-replay-btn .api-spinner');
+    expect(styles).toContain('.api-trace-replay-spinner');
+    expect(styles).toMatch(/\.api-trace-replay-spinner\s*\{[\s\S]*?border-top-color:\s*currentColor;/);
+  });
+
+  it('marks Live Trace with a red record indicator in the main tab', async () => {
+    const source = await readApiWebviewSource();
+    const styles = await readApiStylesSource();
+    const liveTraceTabLabelIndex = source.indexOf('<span>Live Trace</span>');
+
+    expect(source).toContain('class="api-main-tab-record"');
+    expect(liveTraceTabLabelIndex).toBeGreaterThanOrEqual(0);
+    expect(source.indexOf('class="api-main-tab-record"')).toBeLessThan(
+      liveTraceTabLabelIndex
+    );
+    expect(styles).toContain('.api-main-tab-record');
+    expect(styles).toMatch(/\.api-main-tab-record\s*\{[\s\S]*?background:\s*#f85149;/);
   });
 
   it('persists Live Trace capture preferences with rich conditional body rendering', async () => {

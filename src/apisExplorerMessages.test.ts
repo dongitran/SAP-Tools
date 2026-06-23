@@ -40,19 +40,66 @@ describe('APIs Explorer webview message parsing', () => {
       readExecuteRequestPayload({
         url: 'https://app.example.com/odata/v4/orders',
         method: 'POST',
-        auth: 'xsuaa-auto',
+        auth: 'none',
         body: '{"amount":1200}',
         source: 'traceReplay',
         requestId: 'trace-replay-trace-002-123',
+        headers: {
+          Authorization: 'Bearer replay-token',
+          'Content-Type': 'application/json',
+          Host: 'app.example.com',
+          'Content-Length': '15',
+          'X-Trace-ID': 'abc-123',
+        },
       })
     ).toEqual({
       url: 'https://app.example.com/odata/v4/orders',
       method: 'POST',
-      auth: 'xsuaa-auto',
+      auth: 'none',
       body: '{"amount":1200}',
       source: 'traceReplay',
       requestId: 'trace-replay-trace-002-123',
+      headers: {
+        authorization: 'Bearer replay-token',
+        'content-type': 'application/json',
+        'x-trace-id': 'abc-123',
+      },
     });
+  });
+
+  it('rejects replay headers outside trace replay payloads', () => {
+    expect(
+      readExecuteRequestPayload({
+        url: 'https://app.example.com/odata/v4/orders',
+        method: 'GET',
+        auth: 'none',
+        headers: { Authorization: 'Bearer replay-token' },
+      })
+    ).toBeNull();
+  });
+
+  it('rejects trace replay headers with unsafe names or values', () => {
+    expect(
+      readExecuteRequestPayload({
+        url: 'https://app.example.com/odata/v4/orders',
+        method: 'GET',
+        auth: 'none',
+        source: 'traceReplay',
+        requestId: 'trace-replay-trace-002-123',
+        headers: { 'Bad Header': 'value' },
+      })
+    ).toBeNull();
+
+    expect(
+      readExecuteRequestPayload({
+        url: 'https://app.example.com/odata/v4/orders',
+        method: 'GET',
+        auth: 'none',
+        source: 'traceReplay',
+        requestId: 'trace-replay-trace-002-123',
+        headers: { Authorization: 'Bearer replay-token\nInjected: yes' },
+      })
+    ).toBeNull();
   });
 
   it('rejects execute payloads with unsafe URLs, methods, or auth modes', () => {

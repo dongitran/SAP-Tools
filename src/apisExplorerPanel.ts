@@ -505,9 +505,10 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
         return;
       }
 
-      const headers: Record<string, string> = {
-        'Accept': 'application/json'
-      };
+      const headers: Record<string, string> = { ...(payload.headers ?? {}) };
+      if (!hasHeader(headers, 'accept')) {
+        headers['Accept'] = 'application/json';
+      }
       const targetParams = session.targetParams;
 
       if (payload.auth === 'CF Token' && targetParams !== undefined) {
@@ -526,7 +527,11 @@ export class ApisExplorerPanelManager implements vscode.Disposable {
         headers['x-saptools-trace-id'] = randomBytes(12).toString('hex');
       }
 
-      if (payload.body !== undefined && payload.body.trim().length > 0) {
+      if (
+        payload.body !== undefined &&
+        payload.body.trim().length > 0 &&
+        !hasHeader(headers, 'content-type')
+      ) {
         headers['Content-Type'] = 'application/json';
       }
 
@@ -650,6 +655,11 @@ function formatUrlForLog(rawUrl: string): string {
   } catch {
     return '<invalid-url>';
   }
+}
+
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  const normalized = name.toLowerCase();
+  return Object.keys(headers).some((headerName) => headerName.toLowerCase() === normalized);
 }
 
 function executeResponseMetadata(

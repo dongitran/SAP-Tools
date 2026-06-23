@@ -242,6 +242,16 @@ function requestAppsForSelectedScope(spaceName) {
   postSpaceSelection(normalizedSpaceName, selectedOrgId, orgName);
 }
 
+function postReloadAppList() {
+  if (vscodeApi === null) {
+    return;
+  }
+
+  vscodeApi.postMessage({
+    type: RELOAD_APP_LIST_MESSAGE_TYPE,
+  });
+}
+
 function postOpenCfLogsPanel() {
   if (vscodeApi === null) {
     return;

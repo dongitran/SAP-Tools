@@ -1600,10 +1600,82 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   gap: 7px;
 }
 
+.active-apps-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
 .active-apps-log h3 {
   margin: 0;
   font-size: 0.86rem;
   font-family: var(--title-font);
+  min-width: 0;
+}
+
+.app-list-reload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  padding: 0;
+  border: 1px solid color-mix(in oklab, var(--border-color) 82%, var(--mix-base));
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--surface-bg) 88%, var(--frame-bg));
+  color: var(--chip-text);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.app-list-reload-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.app-list-reload-button:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--accent-color) 45%, var(--border-color));
+  background: color-mix(in oklab, var(--accent-soft) 48%, var(--frame-bg));
+  color: var(--text-color);
+}
+
+.app-list-reload-button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.app-list-reload-button.is-loading {
+  cursor: progress;
+  opacity: 1;
+}
+
+.app-list-reload-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid color-mix(in oklab, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  border-radius: 999px;
+  animation: app-list-reload-spin 780ms linear infinite;
+}
+
+@keyframes app-list-reload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-list-reload-spinner {
+    animation: none;
+  }
 }
 
 .active-app-list {
@@ -3790,6 +3862,10 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
 
 .api-main-tab-btn {
   height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   padding: 0 14px;
   border: 0;
   border-right: 1px solid var(--vscode-panel-border, #3c3c3c);
@@ -3810,6 +3886,14 @@ body.vscode-high-contrast-light.prototype-page .app-log-start {
   color: var(--vscode-tab-activeForeground, #ffffff);
   background: var(--vscode-tab-activeBackground, var(--vscode-editor-background, #1e1e1e));
   border-bottom-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.api-main-tab-record {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #f85149;
+  box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.16);
 }
 
 .api-main-tab-panel {
@@ -4940,20 +5024,15 @@ body.vscode-high-contrast .api-raw-json.is-json {
   white-space: nowrap;
 }
 
-.api-trace-replay-btn .api-spinner {
+.api-trace-replay-spinner {
+  display: inline-block;
   width: 10px;
   height: 10px;
   margin-right: 5px;
-  border-width: 1.5px;
-}
-
-.api-trace-stream-toggle {
-  height: 20px;
-  min-height: 20px;
-  padding: 0 7px;
+  border: 1.5px solid color-mix(in srgb, currentColor 32%, transparent);
+  border-top-color: currentColor;
   border-radius: 999px;
-  font-size: 9px;
-  line-height: 1;
+  animation: spin 0.8s linear infinite;
 }
 
 .api-trace-list,

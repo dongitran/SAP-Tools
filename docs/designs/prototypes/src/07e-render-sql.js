@@ -178,6 +178,7 @@ function renderSqlWorkbenchTab() {
         <div class="sql-workbench-title-row">
           <h2>S/4HANA SQL Workbench</h2>
           <div class="sql-workbench-title-actions">
+            ${renderAppListReloadButton()}
             <span
               class="sql-tunnel-badge"
               data-role="hana-tunnel-indicator"

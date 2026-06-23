@@ -110,6 +110,7 @@ const MSG_LOCAL_REGISTRY_STOP = 'sapTools.localRegistryStop';
 const MSG_LOCAL_REGISTRY_STATUS = 'sapTools.localRegistryStatus';
 const MSG_OPEN_LOCAL_PACKAGES_SETTINGS = 'sapTools.openLocalPackagesSettings';
 const MSG_RUN_MICROSOFT_GRAPH_TOOL = 'sapTools.runMicrosoftGraphTool';
+const MSG_RELOAD_APP_LIST = 'sapTools.reloadAppList';
 const SQLTOOLS_EXTENSION_ID = 'mtxr.sqltools';
 const SQLTOOLS_ACTIVITY_BAR_COMMAND = 'workbench.view.extension.sqltools-activity-bar';
 const BUILTIN_EXTENSION_OPEN_COMMAND = 'extension.open';
@@ -124,6 +125,7 @@ const MSG_SPACES_LOADED = 'sapTools.spacesLoaded';
 const MSG_SPACES_ERROR = 'sapTools.spacesError';
 const MSG_APPS_LOADED = 'sapTools.appsLoaded';
 const MSG_APPS_ERROR = 'sapTools.appsError';
+const MSG_APPS_RELOAD_ERROR = 'sapTools.appsReloadError';
 const MSG_CACHE_STATE = 'sapTools.cacheState';
 const MSG_LOCAL_ROOT_FOLDER_UPDATED = 'sapTools.localRootFolderUpdated';
 const MSG_SERVICE_FOLDER_MAPPINGS_LOADED = 'sapTools.serviceFolderMappingsLoaded';
@@ -292,8 +294,15 @@ interface PersistedConfirmedScopeEntry {
 
 interface LoadedScopeState {
   readonly regionId: string;
+  readonly regionCode: string;
   readonly orgGuid: string;
+  readonly orgName: string;
   readonly spaceName: string;
+}
+
+interface AppListReloadRequest {
+  readonly scope: SharedCfScope;
+  readonly loadedScope: LoadedScopeState;
 }
 
 interface RootFolderCacheScope {
@@ -516,6 +525,11 @@ export class RegionSidebarProvider
 
     if (type === MSG_REQUEST_CF_TOPOLOGY) {
       await this.pushCfTopology();
+      return;
+    }
+
+    if (type === MSG_RELOAD_APP_LIST) {
+      await this.handleReloadAppList();
       return;
     }
 
@@ -957,6 +971,99 @@ export class RegionSidebarProvider
       type: MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
       mappings: this.serviceFolderMappings,
     });
+  }
+
+  private async handleReloadAppList(): Promise<void> {
+    const request = this.createAppListReloadRequest();
+    if (request === null) {
+      this.postAppsReloadError('No active region/org/space is loaded.');
+      return;
+    }
+
+    const credentials = await getEffectiveCredentials(this.context);
+    if (credentials === null) {
+      this.postAppsReloadError('No credentials found. Please re-open SAP Tools and log in.');
+      return;
+    }
+
+    const cfHomeDir = await ensureCfHomeDir(this.context);
+    if (!this.isCurrentAppListReloadRequest(request)) {
+      return;
+    }
+
+    const result = await refreshCfSyncSpace({
+      apiEndpoint: getCfApiEndpoint(request.scope.regionCode),
+      orgName: request.scope.orgName,
+      spaceName: request.scope.spaceName,
+      email: credentials.email,
+      password: credentials.password,
+      log: (message) => {
+        this.outputChannel.appendLine(message);
+      },
+    });
+    if (!this.isCurrentAppListReloadRequest(request)) {
+      return;
+    }
+
+    await this.applyReloadedAppListResult(request, result, credentials, cfHomeDir);
+  }
+
+  private createAppListReloadRequest(): AppListReloadRequest | null {
+    const scope = this.currentConfirmedScope;
+    const loadedScope = this.lastLoadedScope;
+    if (scope === undefined || loadedScope === null) {
+      return null;
+    }
+    if (
+      loadedScope.regionCode !== scope.regionCode ||
+      loadedScope.orgName !== scope.orgName ||
+      loadedScope.spaceName !== scope.spaceName
+    ) {
+      return null;
+    }
+    return {
+      scope: { ...scope },
+      loadedScope: { ...loadedScope },
+    };
+  }
+
+  private isCurrentAppListReloadRequest(request: AppListReloadRequest): boolean {
+    const currentLoadedScope = this.lastLoadedScope;
+    return (
+      this.currentConfirmedScope !== undefined &&
+      currentLoadedScope !== null &&
+      areSharedScopesEqual(this.currentConfirmedScope, request.scope) &&
+      currentLoadedScope.regionId === request.loadedScope.regionId &&
+      currentLoadedScope.regionCode === request.loadedScope.regionCode &&
+      currentLoadedScope.orgGuid === request.loadedScope.orgGuid &&
+      currentLoadedScope.orgName === request.loadedScope.orgName &&
+      currentLoadedScope.spaceName === request.loadedScope.spaceName
+    );
+  }
+
+  private async applyReloadedAppListResult(
+    request: AppListReloadRequest,
+    result: Awaited<ReturnType<typeof refreshCfSyncSpace>>,
+    credentials: { readonly email: string; readonly password: string },
+    cfHomeDir: string
+  ): Promise<void> {
+    if (result.status !== 'refreshed') {
+      this.postAppsReloadError(formatAppListReloadFailure(result));
+      return;
+    }
+    const apps = result.apps.map((app) => ({
+      id: app.id,
+      name: app.name,
+      runningInstances: app.runningInstances,
+    }));
+    this.outputChannel.appendLine(
+      `[apps] Reloaded ${sanitizeForLog(request.scope.orgName)}/${sanitizeForLog(request.scope.spaceName)} via ${result.source} (${String(result.appCount)} apps)`
+    );
+    await this.postAppsLoaded(apps, {
+      spaceName: request.scope.spaceName,
+      orgGuid: request.loadedScope.orgGuid,
+      orgName: request.scope.orgName,
+    }, credentials, cfHomeDir, request.scope.regionCode);
   }
 
   private async refreshTopologyForConfirmedScope(
@@ -3375,7 +3482,9 @@ export class RegionSidebarProvider
     this.currentLogSessionSeed = null;
     this.lastLoadedScope = {
       regionId: this.selectedRegionId,
+      regionCode: this.selectedRegionCode,
       orgGuid: payload.orgGuid,
+      orgName: payload.orgName,
       spaceName: payload.spaceName,
     };
     this.exportInProgress = false;
@@ -3490,7 +3599,9 @@ export class RegionSidebarProvider
     this.currentApps = apps;
     this.lastLoadedScope = {
       regionId: this.selectedRegionId,
+      regionCode,
       orgGuid: payload.orgGuid,
+      orgName: payload.orgName,
       spaceName: payload.spaceName,
     };
     this.exportInProgress = false;
@@ -3575,6 +3686,13 @@ export class RegionSidebarProvider
       type: MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
       mappings: this.serviceFolderMappings,
     });
+  }
+
+  private postAppsReloadError(message: string): void {
+    this.outputChannel.appendLine(
+      `[apps] Reload failed: ${sanitizeErrorForLog(message)}`
+    );
+    this.postMessage({ type: MSG_APPS_RELOAD_ERROR, message });
   }
 
   private bumpRegionSelectionRequestId(): number {
@@ -3817,6 +3935,19 @@ function appListsEqual(
     `${app.id} ${app.name} ${String(app.runningInstances)}`;
   const leftKeys = new Set(left.map(toKey));
   return right.every((app) => leftKeys.has(toKey(app)));
+}
+
+function formatAppListReloadFailure(
+  result: Exclude<Awaited<ReturnType<typeof refreshCfSyncSpace>>, { readonly status: 'refreshed' }>
+): string {
+  if (result.status === 'failed') {
+    return result.error instanceof Error
+      ? result.error.message
+      : 'Failed to reload apps from Cloud Foundry.';
+  }
+  return result.reason === 'missing-credentials'
+    ? 'No credentials found. Please re-open SAP Tools and log in.'
+    : 'Could not resolve the Cloud Foundry region for this scope.';
 }
 
 function resolveE2eTestModeAppsDelayMs(): number {

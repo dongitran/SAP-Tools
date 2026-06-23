@@ -143,6 +143,8 @@ describe('ApisExplorerPanelManager', () => {
     createWebviewPanelMock.mockReset();
     cfClientMocks.fetchAppRouteUrlFromTarget.mockReset();
     cfClientMocks.fetchAppRouteUrlFromTarget.mockResolvedValue('default.example.com');
+    cfClientMocks.fetchCfOauthTokenFromTarget.mockReset();
+    cfClientMocks.fetchCfOauthTokenFromTarget.mockResolvedValue('Bearer cf-token');
     cfClientMocks.fetchRemoteCdsServicesFromTarget.mockReset();
     cfClientMocks.fetchRemoteCdsServicesFromTarget.mockResolvedValue(null);
     cfClientMocks.fetchXsuaaTokenFromTarget.mockReset();
@@ -338,18 +340,45 @@ describe('ApisExplorerPanelManager', () => {
     const manager = createManager();
 
     manager.openApisExplorer('finance-uat-api', makeTarget('space-a'));
+    cfClientMocks.fetchCfOauthTokenFromTarget.mockClear();
+    cfClientMocks.fetchXsuaaTokenFromTarget.mockClear();
     await panel.messageHandler?.({
       type: 'sapTools.apis.executeRequest',
       payload: {
         url: 'https://app.example.com/odata/v4/orders',
         method: 'POST',
-        auth: 'xsuaa-auto',
+        auth: 'none',
         body: '{"amount":1200}',
         source: 'traceReplay',
         requestId: 'trace-replay-trace-002-123',
+        headers: {
+          Authorization: 'Bearer captured-token',
+          'Content-Type': 'application/json',
+          'Content-Length': '15',
+          Connection: 'keep-alive',
+          'X-Trace-ID': 'trace-002',
+        },
       },
     });
 
+    expect(cfClientMocks.fetchCfOauthTokenFromTarget).not.toHaveBeenCalled();
+    expect(cfClientMocks.fetchXsuaaTokenFromTarget).not.toHaveBeenCalled();
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://app.example.com/odata/v4/orders',
+      expect.objectContaining({
+        method: 'POST',
+        body: '{"amount":1200}',
+        headers: expect.objectContaining({
+          authorization: 'Bearer captured-token',
+          'content-type': 'application/json',
+          'x-trace-id': 'trace-002',
+        }),
+      })
+    );
+    const fetchOptions = fetchMock.mock.calls[0]?.[1] as { readonly headers?: Record<string, string> };
+    expect(fetchOptions.headers).not.toHaveProperty('content-length');
+    expect(fetchOptions.headers).not.toHaveProperty('connection');
     expect(panel.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'sapTools.apis.executeResponse',

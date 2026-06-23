@@ -155,6 +155,7 @@ const EXPORT_SQLTOOLS_CONFIG_MESSAGE_TYPE = 'sapTools.exportSqlToolsConfig';
 const OPEN_HANA_SQL_FILE_MESSAGE_TYPE = 'sapTools.openHanaSqlFile';
 const RUN_HANA_TABLE_SELECT_MESSAGE_TYPE = 'sapTools.runHanaTableSelect';
 const RUN_MICROSOFT_GRAPH_TOOL_MESSAGE_TYPE = 'sapTools.runMicrosoftGraphTool';
+const RELOAD_APP_LIST_MESSAGE_TYPE = 'sapTools.reloadAppList';
 const RESTORE_CONFIRMED_SCOPE_MESSAGE_TYPE = 'sapTools.restoreConfirmedScope';
 const HANA_SQL_FILE_OPEN_RESULT_MESSAGE_TYPE = 'sapTools.hanaSqlFileOpenResult';
 const HANA_TABLES_LOADED_MESSAGE_TYPE = 'sapTools.hanaTablesLoaded';
@@ -188,6 +189,7 @@ let appsLoadingState = 'idle';    // 'idle' | 'loading' | 'loaded' | 'error'
 let orgsErrorMessage = '';
 let spacesErrorMessage = '';
 let appsErrorMessage = '';
+let appsReloadInProgress = false;
 let syncIntervalHours = 24;
 let syncInProgress = false;
 let lastSyncStartedAt = null;
@@ -834,6 +836,7 @@ window.addEventListener('message', (event) => {
     if (!Array.isArray(rawApps)) {
       return;
     }
+    const wasAppListReloadInProgress = appsReloadInProgress;
 
     // When the active scope changes, drop per-service SQL state. serviceId is the
     // app name, which can collide across spaces, so stale table lists / tunnel
@@ -860,7 +863,18 @@ window.addEventListener('message', (event) => {
       }));
 
     appsLoadingState = 'loaded';
+    appsReloadInProgress = false;
     appsErrorMessage = '';
+    if (statusMessage === 'Reloading app list...') {
+      statusMessage = 'App list reloaded.';
+    }
+    if (serviceExportStatusMessage === 'Reloading services from Cloud Foundry...') {
+      serviceExportStatusTone = 'success';
+      serviceExportStatusMessage = 'Service list reloaded.';
+    }
+    if (hanaQueryStatusMessage === 'Reloading apps...') {
+      hanaQueryStatusMessage = '';
+    }
     pruneSelectedAppIds();
     syncSqlAppTargetsFromCurrentApps();
     if (localServiceRootFolderPath.length > 0) {
@@ -878,6 +892,10 @@ window.addEventListener('message', (event) => {
       return;
     }
     if (isWorkspaceSqlMounted()) {
+      if (wasAppListReloadInProgress) {
+        refreshWorkspaceSqlView();
+        return;
+      }
       refreshMountedSqlWorkbench();
       return;
     }
@@ -912,6 +930,7 @@ window.addEventListener('message', (event) => {
   if (msg.type === 'sapTools.appsError') {
     liveAppOptions = [];
     appsLoadingState = 'error';
+    appsReloadInProgress = false;
     appsErrorMessage = typeof msg.message === 'string' ? msg.message : 'Failed to load apps.';
     pruneSelectedAppIds();
     syncSqlAppTargetsFromCurrentApps();
@@ -930,6 +949,34 @@ window.addEventListener('message', (event) => {
       return;
     }
     if (mode === 'selection') {
+      return;
+    }
+    renderPrototype();
+    return;
+  }
+
+  if (msg.type === 'sapTools.appsReloadError') {
+    const message =
+      typeof msg.message === 'string' && msg.message.length > 0
+        ? msg.message
+        : 'Failed to reload apps.';
+    appsReloadInProgress = false;
+    statusMessage = message;
+    serviceExportStatusTone = 'error';
+    serviceExportStatusMessage = message;
+    hanaQueryStatusTone = 'error';
+    hanaQueryStatusMessage = message;
+
+    if (isWorkspaceLogsMounted()) {
+      refreshWorkspaceLogsView();
+      return;
+    }
+    if (isWorkspaceAppsMounted()) {
+      refreshWorkspaceAppsView();
+      return;
+    }
+    if (isWorkspaceSqlMounted()) {
+      refreshMountedSqlWorkbench();
       return;
     }
     renderPrototype();
@@ -1515,6 +1562,10 @@ appElement.addEventListener('click', (event) => {
   }
 
   if (shouldRefreshWorkspaceSqlOnly(action, modeBeforeAction, tabBeforeAction)) {
+    if (action === 'reload-app-list') {
+      refreshWorkspaceSqlView();
+      return;
+    }
     if (action === 'select-hana-service' || action === 'refresh-hana-tables') {
       // Update the tables panel + selection in place. This must NOT re-render the
       // whole workbench (renderPrototype), which would rebuild the service list
@@ -1895,6 +1946,7 @@ appElement.addEventListener('change', (event) => {
 
 function shouldRefreshWorkspaceLogsOnly(action, modeBeforeAction, tabBeforeAction) {
   const isLogsAction =
+    action === 'reload-app-list' ||
     action === 'start-app-logging' ||
     action === 'stop-app-logging' ||
     action === 'pause-app-logging' ||
@@ -1913,6 +1965,7 @@ function shouldRefreshWorkspaceLogsOnly(action, modeBeforeAction, tabBeforeActio
 
 function shouldRefreshWorkspaceAppsOnly(action, modeBeforeAction, tabBeforeAction) {
   const isAppsAction =
+    action === 'reload-app-list' ||
     action === 'select-local-root-folder' ||
     action === 'export-service-now' ||
     action === 'replace-service-package-placeholder' ||
@@ -1931,6 +1984,7 @@ function shouldRefreshWorkspaceAppsOnly(action, modeBeforeAction, tabBeforeActio
 
 function shouldRefreshWorkspaceSqlOnly(action, modeBeforeAction, tabBeforeAction) {
   const isSqlOnlyAction =
+    action === 'reload-app-list' ||
     action === 'select-hana-service' ||
     action === 'refresh-hana-tables' ||
     action === 'run-hana-table-select' ||
@@ -2055,6 +2109,7 @@ function refreshWorkspaceLogsView() {
     statusElement.textContent = statusMessage;
   }
 
+  refreshAppListReloadButtons(logsPanel);
 }
 
 function refreshWorkspaceAppsView() {
@@ -2146,6 +2201,16 @@ function refreshWorkspaceAppsView() {
     return;
   }
   applyServiceExportStatusElement(statusElement);
+  refreshAppListReloadButtons(exportTab);
+}
+
+function refreshAppListReloadButtons(rootElement) {
+  const buttons = rootElement.querySelectorAll('button[data-action="reload-app-list"]');
+  for (const button of buttons) {
+    if (button instanceof HTMLElement) {
+      button.outerHTML = renderAppListReloadButton();
+    }
+  }
 }
 
 function refreshUiAfterServiceExportStateChange() {
@@ -3121,6 +3186,10 @@ function handleLogsSelectionAction(action, actionElement) {
 }
 
 function handleLogsControlAction(action, actionElement) {
+  if (action === 'reload-app-list') {
+    return triggerAppListReload();
+  }
+
   if (action === 'open-app-apis') {
     const appId = actionElement.dataset.appId || 'demo-app';
     if (appId) {
@@ -3306,6 +3375,69 @@ function handleLogsControlAction(action, actionElement) {
   }
 
   return null;
+}
+
+function triggerAppListReload() {
+  if (appsReloadInProgress) {
+    return true;
+  }
+  if (selectedSpaceId.length === 0) {
+    statusMessage = 'Choose a space before reloading apps.';
+    serviceExportStatusTone = 'error';
+    serviceExportStatusMessage = 'Choose a space before reloading services.';
+    hanaQueryStatusTone = 'error';
+    hanaQueryStatusMessage = 'Choose a space before reloading apps.';
+    return true;
+  }
+
+  appsReloadInProgress = true;
+  appsErrorMessage = '';
+  statusMessage = 'Reloading app list...';
+  serviceExportStatusTone = 'info';
+  serviceExportStatusMessage = 'Reloading services from Cloud Foundry...';
+  hanaQueryStatusTone = 'info';
+  hanaQueryStatusMessage = 'Reloading apps...';
+
+  if (vscodeApi !== null) {
+    postReloadAppList();
+    return true;
+  }
+
+  window.setTimeout(() => {
+    const fallbackApps = buildFallbackAppNames(selectedSpaceId).map((name) => ({
+      id: name,
+      name,
+      runningInstances: 1,
+    }));
+    liveAppOptions = fallbackApps;
+    appsLoadingState = 'loaded';
+    appsReloadInProgress = false;
+    statusMessage = 'App list reloaded.';
+    serviceExportStatusTone = 'success';
+    serviceExportStatusMessage = 'Service list reloaded.';
+    hanaQueryStatusTone = 'info';
+    hanaQueryStatusMessage = '';
+    pruneSelectedAppIds();
+    syncSqlAppTargetsFromCurrentApps();
+    refreshUiAfterAppListReload();
+  }, 600);
+  return true;
+}
+
+function refreshUiAfterAppListReload() {
+  if (isWorkspaceLogsMounted()) {
+    refreshWorkspaceLogsView();
+    return;
+  }
+  if (isWorkspaceAppsMounted()) {
+    refreshWorkspaceAppsView();
+    return;
+  }
+  if (isWorkspaceSqlMounted()) {
+    refreshMountedSqlWorkbench();
+    return;
+  }
+  renderPrototype();
 }
 
 function applyCacheStateSnapshot(snapshot) {
@@ -3840,6 +3972,16 @@ function requestAppsForSelectedScope(spaceName) {
 
   const orgName = resolveSelectedOrgName() || selectedOrgId;
   postSpaceSelection(normalizedSpaceName, selectedOrgId, orgName);
+}
+
+function postReloadAppList() {
+  if (vscodeApi === null) {
+    return;
+  }
+
+  vscodeApi.postMessage({
+    type: RELOAD_APP_LIST_MESSAGE_TYPE,
+  });
 }
 
 function postOpenCfLogsPanel() {
@@ -5263,7 +5405,10 @@ function renderLogsTab() {
   return `
     <section class="group-card logs-panel app-logs-panel">
       <section class="active-apps-log" aria-label="Active apps log">
-        <h3>Active Apps Log</h3>
+        <div class="active-apps-log-head">
+          <h3>Active Apps Log</h3>
+          ${renderAppListReloadButton()}
+        </div>
         <div data-role="active-app-log-list">${activeAppsMarkup}</div>
       </section>
       <h2>Apps & APIs</h2>
@@ -5310,6 +5455,7 @@ function renderServiceExportTab() {
           Services & Packages
           ${renderRegistryBadge()}
         </h2>
+        ${renderAppListReloadButton()}
       </header>
 
       <section class="service-export-root-row">
@@ -5361,6 +5507,40 @@ function renderServiceExportTab() {
 
       ${renderServiceExportStatus()}
     </section>
+  `;
+}
+
+function renderAppListReloadButton() {
+  const disabled =
+    appsReloadInProgress || selectedSpaceId.length === 0 || appsLoadingState === 'loading';
+  const buttonClass = `app-list-reload-button${appsReloadInProgress ? ' is-loading' : ''}`;
+  const iconMarkup = appsReloadInProgress
+    ? '<span class="app-list-reload-spinner" aria-hidden="true"></span>'
+    : renderAppListReloadIcon();
+
+  return `
+    <button
+      type="button"
+      class="${buttonClass}"
+      data-action="reload-app-list"
+      aria-label="Reload app list"
+      aria-busy="${appsReloadInProgress ? 'true' : 'false'}"
+      title="Reload app list"
+      ${disabled ? 'disabled' : ''}
+    >
+      ${iconMarkup}
+    </button>
+  `;
+}
+
+function renderAppListReloadIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M21 12a9 9 0 0 1-15.2 6.5"></path>
+      <path d="M3 12A9 9 0 0 1 18.2 5.5"></path>
+      <path d="M3 18h6v-6"></path>
+      <path d="M21 6h-6v6"></path>
+    </svg>
   `;
 }
 
@@ -6048,6 +6228,7 @@ function refreshMountedSqlWorkbench() {
   }
   updateHanaQueryStatusElement();
   refreshSqlResultPreviewPanel();
+  refreshAppListReloadButtons(appElement);
   queueSqlTableNameTruncation();
 }
 
@@ -6272,6 +6453,7 @@ function renderSqlWorkbenchTab() {
         <div class="sql-workbench-title-row">
           <h2>S/4HANA SQL Workbench</h2>
           <div class="sql-workbench-title-actions">
+            ${renderAppListReloadButton()}
             <span
               class="sql-tunnel-badge"
               data-role="hana-tunnel-indicator"

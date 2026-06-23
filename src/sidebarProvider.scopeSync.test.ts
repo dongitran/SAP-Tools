@@ -16,10 +16,11 @@ import type { ApisExplorerPanelManager } from './apisExplorerPanel';
 import type { EventMeshPanelManager } from './eventMeshPanel';
 import type { SharedCfScope } from './scopeSync';
 
-const { getConfigurationMock, getEffectiveCredentialsMock, updateMock, state } =
+const { getConfigurationMock, getEffectiveCredentialsMock, refreshCfSyncSpaceMock, updateMock, state } =
   vi.hoisted(() => ({
     getConfigurationMock: vi.fn(),
     getEffectiveCredentialsMock: vi.fn(),
+    refreshCfSyncSpaceMock: vi.fn(),
     updateMock: vi.fn(),
     state: {
       currentScope: undefined as unknown,
@@ -56,6 +57,10 @@ vi.mock('./credentialStore', () => ({
 
 vi.mock('./cfHome', () => ({
   ensureCfHomeDir: vi.fn(async () => '/tmp/cf-home'),
+}));
+
+vi.mock('./cfSpaceRefresh', () => ({
+  refreshCfSyncSpace: refreshCfSyncSpaceMock,
 }));
 
 import { RegionSidebarProvider } from './sidebarProvider';
@@ -127,6 +132,13 @@ interface SidebarProviderTestAccess {
   handleExternalScopeChange(scope: SharedCfScope): Promise<void>;
   hydrateQuickConfirmedScope(payload: ConfirmScopePayloadForTest): Promise<void>;
   hydrateRestoredScope(scope: unknown): Promise<void>;
+  lastLoadedScope: {
+    regionId: string;
+    regionCode: string;
+    orgGuid: string;
+    orgName: string;
+    spaceName: string;
+  } | null;
   lastWrittenScope: SharedCfScope | undefined;
   postMessage(message: Record<string, unknown>): void;
   postSpacesError(message: string): void;
@@ -280,6 +292,7 @@ describe('RegionSidebarProvider shared CF scope sync', () => {
   beforeEach(() => {
     getConfigurationMock.mockReset();
     getEffectiveCredentialsMock.mockReset();
+    refreshCfSyncSpaceMock.mockReset();
     updateMock.mockReset();
     vi.unstubAllGlobals();
     configureWorkspaceScope(undefined);
@@ -1065,6 +1078,121 @@ describe('RegionSidebarProvider shared CF scope sync', () => {
     expect(access.selectedRegionId).toBe('us10');
     expect(access.selectedRegionCode).toBe('us-10');
     expect(access.selectedOrgGuid).toBe('org-finance-prod');
+  });
+
+  describe('reloads the active app list from cf-sync', () => {
+    const CONFIRMED_SCOPE: SharedCfScope = {
+      regionCode: 'us-10',
+      orgName: 'demo-services',
+      spaceName: 'test',
+    };
+    const LOADED_SCOPE = {
+      regionId: 'us10',
+      regionCode: 'us-10',
+      orgGuid: 'org-demo-services',
+      orgName: 'demo-services',
+      spaceName: 'test',
+    };
+
+    it('refreshes the current region/org/space and posts refreshed apps', async () => {
+      const { access } = createProviderFixture();
+      const postAppsLoadedSpy = vi
+        .spyOn(access, 'postAppsLoaded')
+        .mockResolvedValue();
+      access.currentConfirmedScope = CONFIRMED_SCOPE;
+      access.lastLoadedScope = LOADED_SCOPE;
+      refreshCfSyncSpaceMock.mockResolvedValue({
+        status: 'refreshed',
+        regionKey: 'us10',
+        appCount: 2,
+        source: 'shared',
+        apps: [
+          { id: 'app-a', name: 'app-a', runningInstances: 1 },
+          { id: 'app-b', name: 'app-b', runningInstances: 0 },
+        ],
+      });
+
+      await access.handleWebviewMessage({ type: 'sapTools.reloadAppList' });
+
+      expect(refreshCfSyncSpaceMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiEndpoint: 'https://api.cf.us10.hana.ondemand.com',
+          orgName: 'demo-services',
+          spaceName: 'test',
+          email: 'test@example.com',
+          password: 'test-password',
+        })
+      );
+      expect(postAppsLoadedSpy).toHaveBeenCalledWith(
+        [
+          { id: 'app-a', name: 'app-a', runningInstances: 1 },
+          { id: 'app-b', name: 'app-b', runningInstances: 0 },
+        ],
+        { spaceName: 'test', orgGuid: 'org-demo-services', orgName: 'demo-services' },
+        { email: 'test@example.com', password: 'test-password' },
+        '/tmp/cf-home',
+        'us-10'
+      );
+    });
+
+    it('does not overwrite apps when the confirmed scope changes during reload', async () => {
+      const { access } = createProviderFixture();
+      const postAppsLoadedSpy = vi
+        .spyOn(access, 'postAppsLoaded')
+        .mockResolvedValue();
+      let resolveRefresh: (value: unknown) => void = () => undefined;
+      refreshCfSyncSpaceMock.mockReturnValue(
+        new Promise<unknown>((resolve) => {
+          resolveRefresh = resolve;
+        })
+      );
+      access.currentConfirmedScope = CONFIRMED_SCOPE;
+      access.lastLoadedScope = LOADED_SCOPE;
+
+      const reloadPromise = access.handleWebviewMessage({ type: 'sapTools.reloadAppList' });
+      await vi.waitFor(() => expect(refreshCfSyncSpaceMock).toHaveBeenCalledOnce());
+      access.currentConfirmedScope = {
+        regionCode: 'br10',
+        orgName: 'other-org',
+        spaceName: 'other-space',
+      };
+      resolveRefresh({
+        status: 'refreshed',
+        regionKey: 'us10',
+        appCount: 1,
+        source: 'shared',
+        apps: [{ id: 'app-a', name: 'app-a', runningInstances: 1 }],
+      });
+      await reloadPromise;
+
+      expect(postAppsLoadedSpy).not.toHaveBeenCalled();
+    });
+
+    it('reports reload failures without clearing the current app list', async () => {
+      const { access } = createProviderFixture();
+      const postMessageSpy = vi.spyOn(access, 'postMessage');
+      const postAppsLoadedSpy = vi
+        .spyOn(access, 'postAppsLoaded')
+        .mockResolvedValue();
+      access.currentConfirmedScope = CONFIRMED_SCOPE;
+      access.lastLoadedScope = LOADED_SCOPE;
+      refreshCfSyncSpaceMock.mockResolvedValue({
+        status: 'failed',
+        regionKey: 'us10',
+        error: new Error('cf sync unavailable'),
+      });
+
+      await access.handleWebviewMessage({ type: 'sapTools.reloadAppList' });
+
+      expect(postAppsLoadedSpy).not.toHaveBeenCalled();
+      expect(postMessageSpy).toHaveBeenCalledWith({
+        type: 'sapTools.appsReloadError',
+        message: 'cf sync unavailable',
+      });
+      expect(postMessageSpy).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'sapTools.appsError' })
+      );
+    });
   });
 
   describe('re-posts apps discovered by a confirmed-scope topology refresh', () => {

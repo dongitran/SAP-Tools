@@ -409,6 +409,10 @@ function handleLogsSelectionAction(action, actionElement) {
 }
 
 function handleLogsControlAction(action, actionElement) {
+  if (action === 'reload-app-list') {
+    return triggerAppListReload();
+  }
+
   if (action === 'open-app-apis') {
     const appId = actionElement.dataset.appId || 'demo-app';
     if (appId) {
@@ -594,6 +598,69 @@ function handleLogsControlAction(action, actionElement) {
   }
 
   return null;
+}
+
+function triggerAppListReload() {
+  if (appsReloadInProgress) {
+    return true;
+  }
+  if (selectedSpaceId.length === 0) {
+    statusMessage = 'Choose a space before reloading apps.';
+    serviceExportStatusTone = 'error';
+    serviceExportStatusMessage = 'Choose a space before reloading services.';
+    hanaQueryStatusTone = 'error';
+    hanaQueryStatusMessage = 'Choose a space before reloading apps.';
+    return true;
+  }
+
+  appsReloadInProgress = true;
+  appsErrorMessage = '';
+  statusMessage = 'Reloading app list...';
+  serviceExportStatusTone = 'info';
+  serviceExportStatusMessage = 'Reloading services from Cloud Foundry...';
+  hanaQueryStatusTone = 'info';
+  hanaQueryStatusMessage = 'Reloading apps...';
+
+  if (vscodeApi !== null) {
+    postReloadAppList();
+    return true;
+  }
+
+  window.setTimeout(() => {
+    const fallbackApps = buildFallbackAppNames(selectedSpaceId).map((name) => ({
+      id: name,
+      name,
+      runningInstances: 1,
+    }));
+    liveAppOptions = fallbackApps;
+    appsLoadingState = 'loaded';
+    appsReloadInProgress = false;
+    statusMessage = 'App list reloaded.';
+    serviceExportStatusTone = 'success';
+    serviceExportStatusMessage = 'Service list reloaded.';
+    hanaQueryStatusTone = 'info';
+    hanaQueryStatusMessage = '';
+    pruneSelectedAppIds();
+    syncSqlAppTargetsFromCurrentApps();
+    refreshUiAfterAppListReload();
+  }, 600);
+  return true;
+}
+
+function refreshUiAfterAppListReload() {
+  if (isWorkspaceLogsMounted()) {
+    refreshWorkspaceLogsView();
+    return;
+  }
+  if (isWorkspaceAppsMounted()) {
+    refreshWorkspaceAppsView();
+    return;
+  }
+  if (isWorkspaceSqlMounted()) {
+    refreshMountedSqlWorkbench();
+    return;
+  }
+  renderPrototype();
 }
 
 function applyCacheStateSnapshot(snapshot) {

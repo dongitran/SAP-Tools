@@ -87,6 +87,7 @@ window.addEventListener('message', (event) => {
     if (!Array.isArray(rawApps)) {
       return;
     }
+    const wasAppListReloadInProgress = appsReloadInProgress;
 
     // When the active scope changes, drop per-service SQL state. serviceId is the
     // app name, which can collide across spaces, so stale table lists / tunnel
@@ -113,7 +114,18 @@ window.addEventListener('message', (event) => {
       }));
 
     appsLoadingState = 'loaded';
+    appsReloadInProgress = false;
     appsErrorMessage = '';
+    if (statusMessage === 'Reloading app list...') {
+      statusMessage = 'App list reloaded.';
+    }
+    if (serviceExportStatusMessage === 'Reloading services from Cloud Foundry...') {
+      serviceExportStatusTone = 'success';
+      serviceExportStatusMessage = 'Service list reloaded.';
+    }
+    if (hanaQueryStatusMessage === 'Reloading apps...') {
+      hanaQueryStatusMessage = '';
+    }
     pruneSelectedAppIds();
     syncSqlAppTargetsFromCurrentApps();
     if (localServiceRootFolderPath.length > 0) {
@@ -131,6 +143,10 @@ window.addEventListener('message', (event) => {
       return;
     }
     if (isWorkspaceSqlMounted()) {
+      if (wasAppListReloadInProgress) {
+        refreshWorkspaceSqlView();
+        return;
+      }
       refreshMountedSqlWorkbench();
       return;
     }
@@ -165,6 +181,7 @@ window.addEventListener('message', (event) => {
   if (msg.type === 'sapTools.appsError') {
     liveAppOptions = [];
     appsLoadingState = 'error';
+    appsReloadInProgress = false;
     appsErrorMessage = typeof msg.message === 'string' ? msg.message : 'Failed to load apps.';
     pruneSelectedAppIds();
     syncSqlAppTargetsFromCurrentApps();
@@ -183,6 +200,34 @@ window.addEventListener('message', (event) => {
       return;
     }
     if (mode === 'selection') {
+      return;
+    }
+    renderPrototype();
+    return;
+  }
+
+  if (msg.type === 'sapTools.appsReloadError') {
+    const message =
+      typeof msg.message === 'string' && msg.message.length > 0
+        ? msg.message
+        : 'Failed to reload apps.';
+    appsReloadInProgress = false;
+    statusMessage = message;
+    serviceExportStatusTone = 'error';
+    serviceExportStatusMessage = message;
+    hanaQueryStatusTone = 'error';
+    hanaQueryStatusMessage = message;
+
+    if (isWorkspaceLogsMounted()) {
+      refreshWorkspaceLogsView();
+      return;
+    }
+    if (isWorkspaceAppsMounted()) {
+      refreshWorkspaceAppsView();
+      return;
+    }
+    if (isWorkspaceSqlMounted()) {
+      refreshMountedSqlWorkbench();
       return;
     }
     renderPrototype();
@@ -768,6 +813,10 @@ appElement.addEventListener('click', (event) => {
   }
 
   if (shouldRefreshWorkspaceSqlOnly(action, modeBeforeAction, tabBeforeAction)) {
+    if (action === 'reload-app-list') {
+      refreshWorkspaceSqlView();
+      return;
+    }
     if (action === 'select-hana-service' || action === 'refresh-hana-tables') {
       // Update the tables panel + selection in place. This must NOT re-render the
       // whole workbench (renderPrototype), which would rebuild the service list

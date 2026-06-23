@@ -1,5 +1,10 @@
 # SAP Tools Extension Changelog
 
+## 0.10.162 (stable)
+- UI: Live Trace now removes the Trace request stream Pause/Resume control and marks the Live Trace tab with a red record indicator.
+- Fix: Replay Request now replays from the captured trace URL, method, body, and safe request headers without re-fetching CF/XSUAA auth, and its loading spinner stays visible in light and dark themes.
+- Feature: Log-API-Event, Apps, and SQL now expose a reload icon in their app-list headers to force a cf-sync space refresh, with loading feedback and scope guards for compact/hyphenated region codes.
+
 ## 0.10.161 (stable)
 - UI/UX: Log-API-Event app-row Event loading now stays visible until the Event Mesh editor finishes its initial data load.
 - UI/UX: Log-API-Event app-row APIS actions now show their own loading indicator until APIs Explorer finishes its initial catalog load.

@@ -10,6 +10,7 @@ export interface ExecuteRequestPayload {
   readonly body?: string;
   readonly source?: 'traceReplay';
   readonly requestId?: string;
+  readonly headers?: Record<string, string>;
 }
 
 export interface ApiTracePreferencesPayload {
@@ -42,11 +43,19 @@ export function readExecuteRequestPayload(payload: unknown): ExecuteRequestPaylo
   if (replayMetadata === null) {
     return null;
   }
+  if (replayMetadata !== undefined && raw['auth'] !== 'none') {
+    return null;
+  }
+  const headers = readExecuteHeaders(raw, replayMetadata);
+  if (headers === null) {
+    return null;
+  }
   const body = typeof raw['body'] === 'string' ? raw['body'] : undefined;
   const base = body === undefined
     ? { url: raw['url'], method: raw['method'], auth: raw['auth'] }
     : { url: raw['url'], method: raw['method'], auth: raw['auth'], body };
-  return replayMetadata === undefined ? base : { ...base, ...replayMetadata };
+  const withReplay = replayMetadata === undefined ? base : { ...base, ...replayMetadata };
+  return headers === undefined ? withReplay : { ...withReplay, headers };
 }
 
 export function readTraceStartOptions(payload: unknown): ApiTraceStartOptions | null {
@@ -135,6 +144,45 @@ function readExecuteReplayMetadata(
   return { source: 'traceReplay', requestId: raw['requestId'] };
 }
 
+const OMITTED_REPLAY_HEADERS = new Set([
+  'connection',
+  'content-length',
+  'expect',
+  'host',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+]);
+
+function readExecuteHeaders(
+  raw: Record<string, unknown>,
+  replayMetadata: { readonly source: 'traceReplay'; readonly requestId: string } | undefined
+): Record<string, string> | undefined | null {
+  if (raw['headers'] === undefined) {
+    return undefined;
+  }
+  if (replayMetadata === undefined || !isRecord(raw['headers'])) {
+    return null;
+  }
+
+  const headers: Record<string, string> = {};
+  for (const [rawName, rawValue] of Object.entries(raw['headers'])) {
+    const name = rawName.trim().toLowerCase();
+    if (!isSafeHeaderName(name) || typeof rawValue !== 'string' || !isSafeHeaderValue(rawValue)) {
+      return null;
+    }
+    if (OMITTED_REPLAY_HEADERS.has(name)) {
+      continue;
+    }
+    headers[name] = rawValue;
+  }
+  return headers;
+}
+
 function isSafeRequestId(value: string): boolean {
   return value.length > 0 && value.length <= 160 && /^[A-Za-z0-9._:-]+$/.test(value);
 }
@@ -160,4 +208,16 @@ function isHttpUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isSafeHeaderName(value: string): boolean {
+  return value.length > 0 && value.length <= 128 && /^[!#$%&'*+\-.^_`|~0-9a-z]+$/.test(value);
+}
+
+function isSafeHeaderValue(value: string): boolean {
+  return value.length <= 8192 && !/[\r\n]/.test(value);
 }

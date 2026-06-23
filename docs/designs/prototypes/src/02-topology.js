@@ -153,6 +153,7 @@ appElement.addEventListener('change', (event) => {
 
 function shouldRefreshWorkspaceLogsOnly(action, modeBeforeAction, tabBeforeAction) {
   const isLogsAction =
+    action === 'reload-app-list' ||
     action === 'start-app-logging' ||
     action === 'stop-app-logging' ||
     action === 'pause-app-logging' ||
@@ -171,6 +172,7 @@ function shouldRefreshWorkspaceLogsOnly(action, modeBeforeAction, tabBeforeActio
 
 function shouldRefreshWorkspaceAppsOnly(action, modeBeforeAction, tabBeforeAction) {
   const isAppsAction =
+    action === 'reload-app-list' ||
     action === 'select-local-root-folder' ||
     action === 'export-service-now' ||
     action === 'replace-service-package-placeholder' ||
@@ -189,6 +191,7 @@ function shouldRefreshWorkspaceAppsOnly(action, modeBeforeAction, tabBeforeActio
 
 function shouldRefreshWorkspaceSqlOnly(action, modeBeforeAction, tabBeforeAction) {
   const isSqlOnlyAction =
+    action === 'reload-app-list' ||
     action === 'select-hana-service' ||
     action === 'refresh-hana-tables' ||
     action === 'run-hana-table-select' ||
@@ -313,6 +316,7 @@ function refreshWorkspaceLogsView() {
     statusElement.textContent = statusMessage;
   }
 
+  refreshAppListReloadButtons(logsPanel);
 }
 
 function refreshWorkspaceAppsView() {
@@ -404,6 +408,16 @@ function refreshWorkspaceAppsView() {
     return;
   }
   applyServiceExportStatusElement(statusElement);
+  refreshAppListReloadButtons(exportTab);
+}
+
+function refreshAppListReloadButtons(rootElement) {
+  const buttons = rootElement.querySelectorAll('button[data-action="reload-app-list"]');
+  for (const button of buttons) {
+    if (button instanceof HTMLElement) {
+      button.outerHTML = renderAppListReloadButton();
+    }
+  }
 }
 
 function refreshUiAfterServiceExportStateChange() {

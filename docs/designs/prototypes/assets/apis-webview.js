@@ -31,7 +31,6 @@ let apiTraceSelectedUrl = 'all';
 let apiTraceMethodFilter = 'all';
 let apiTraceStatusFilter = 'all';
 let apiTraceSearchText = '';
-let apiTracePaused = false;
 let apiTraceCaptureHeaders = true;
 let apiTraceCaptureRequestBody = true;
 let apiTraceCaptureResponseBody = true;
@@ -42,6 +41,19 @@ let apiTraceReplayRequestId = '';
 
 const API_TRACE_EVENT_LIMIT = 1000;
 const API_TRACE_PREFERENCES_KEY = 'saptools.apis.trace.preferences';
+const TRACE_REPLAY_OMITTED_HEADERS = new Set([
+  'connection',
+  'content-length',
+  'expect',
+  'host',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade'
+]);
 
 const endpointSessions = new Map();
 
@@ -584,7 +596,6 @@ function appendTraceEvents(events) {
   if (!apiTraceSelectedEventId && apiTraceEvents.length > 0) {
     apiTraceSelectedEventId = apiTraceEvents[apiTraceEvents.length - 1].id;
   }
-  if (apiTracePaused) return;
   renderLiveTracePanel();
 }
 
@@ -741,6 +752,21 @@ function copyTraceCurl(button) {
   }).catch(() => undefined);
 }
 
+function buildTraceReplayHeaders(event) {
+  const headers = {};
+  if (!event.requestHeaders || typeof event.requestHeaders !== 'object') {
+    return headers;
+  }
+  for (const [rawName, rawValue] of Object.entries(event.requestHeaders)) {
+    const name = rawName.trim().toLowerCase();
+    if (TRACE_REPLAY_OMITTED_HEADERS.has(name) || rawValue === undefined || rawValue === null) {
+      continue;
+    }
+    headers[name] = String(rawValue);
+  }
+  return headers;
+}
+
 function replayTraceRequest(button) {
   const event = selectedTraceEvent();
   if (event === null || apiTraceReplayInFlightEventId !== '') return;
@@ -748,7 +774,7 @@ function replayTraceRequest(button) {
   apiTraceReplayRequestId = `trace-replay-${event.id}-${Date.now()}`;
   if (button) {
     button.disabled = true;
-    button.innerHTML = '<span class="api-spinner"></span> Replaying...';
+    button.innerHTML = '<span class="api-trace-replay-spinner"></span> Replaying...';
   }
   if (vscodeApi) {
     vscodeApi.postMessage({
@@ -756,7 +782,8 @@ function replayTraceRequest(button) {
       payload: {
         url: resolveTraceCurlUrl(event),
         method: event.method,
-        auth: 'xsuaa-auto',
+        auth: 'none',
+        headers: buildTraceReplayHeaders(event),
         body: event.requestBodyPreview || undefined,
         source: 'traceReplay',
         requestId: apiTraceReplayRequestId
@@ -893,7 +920,7 @@ function renderTraceDetailTabs() {
 function renderTraceReplayButton(event) {
   const isReplaying = apiTraceReplayInFlightEventId === event.id;
   const content = isReplaying
-    ? '<span class="api-spinner"></span> Replaying...'
+    ? '<span class="api-trace-replay-spinner"></span> Replaying...'
     : 'Replay Request';
   return `
     <button type="button" class="secondary-action api-trace-replay-btn" data-action="api-trace-replay-request" ${isReplaying ? 'disabled' : ''}>
@@ -1017,7 +1044,6 @@ function renderLiveTracePanel() {
         <section class="api-trace-stream" aria-label="Trace request stream">
           <div class="api-trace-stream-head">
             <h3>Trace request stream</h3>
-            <button type="button" class="api-trace-stream-toggle secondary-action" data-action="api-trace-toggle-pause">${apiTracePaused ? 'Resume' : 'Pause'}</button>
           </div>
           <div class="api-trace-list" role="list">
             ${renderTraceEventRows(events)}
@@ -1366,7 +1392,8 @@ function initLayout() {
               Request Runner
             </button>
             <button type="button" class="api-main-tab-btn" data-action="api-switch-main-tab" data-tab-id="live-trace" role="tab" aria-controls="api-live-trace-panel">
-              Live Trace
+              <span class="api-main-tab-record" aria-hidden="true"></span>
+              <span>Live Trace</span>
             </button>
           </div>
           <div class="api-main-trace-actions" data-role="api-main-trace-actions" hidden></div>
@@ -1580,12 +1607,6 @@ appElement.addEventListener('click', (event) => {
     if (vscodeApi) {
       vscodeApi.postMessage({ type: 'sapTools.apis.trace.clear' });
     }
-    renderLiveTracePanel();
-    return;
-  }
-
-  if (action === 'api-trace-toggle-pause') {
-    apiTracePaused = !apiTracePaused;
     renderLiveTracePanel();
     return;
   }
@@ -1928,7 +1949,6 @@ window.addEventListener('message', (event) => {
     apiTraceMethodFilter = 'all';
     apiTraceStatusFilter = 'all';
     apiTraceSearchText = '';
-    apiTracePaused = false;
     apiTraceSettingsOpen = false;
     apiTraceDetailTab = 'overview';
     apiParams = {
