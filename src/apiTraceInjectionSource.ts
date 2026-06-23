@@ -1,5 +1,5 @@
 export const API_TRACE_GLOBAL_NAME = '__SAP_TOOLS_HTTP_TRACE__';
-export const API_TRACE_RUNTIME_VERSION = 3;
+export const API_TRACE_RUNTIME_VERSION = 4;
 
 export interface ApiTraceRuntimeInstallOptions {
   readonly appId: string;
@@ -151,6 +151,22 @@ export const API_TRACE_RUNTIME_SOURCE = `
     serverPrototype.emit = patched;
     return original;
   };
+  const toTransportLimit = (value) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : 0;
+  };
+  const limitEventPreviewForDrain = (event, previewKey, truncatedKey, maxChars) => {
+    const preview = event[previewKey];
+    if (maxChars <= 0 || typeof preview !== 'string' || preview.length <= maxChars) return event;
+    return { ...event, [previewKey]: preview.slice(0, maxChars), [truncatedKey]: true };
+  };
+  const eventForDrain = (event, maxChars) => {
+    if (!event || typeof event !== 'object') return event;
+    let output = { ...event };
+    output = limitEventPreviewForDrain(output, 'requestBodyPreview', 'requestBodyTruncated', maxChars);
+    output = limitEventPreviewForDrain(output, 'responseBodyPreview', 'responseBodyTruncated', maxChars);
+    return output;
+  };
   const api = {
     version: runtimeVersion,
     install(options) {
@@ -171,9 +187,10 @@ export const API_TRACE_RUNTIME_SOURCE = `
       state.enabled = false;
       return api.status();
     },
-    drainEvents(maxCount) {
+    drainEvents(maxCount, maxTransportBodyBytes) {
       const count = Math.max(0, Math.min(Number(maxCount) || 0, state.queue.length));
-      const events = state.queue.splice(0, count);
+      const transportLimit = toTransportLimit(maxTransportBodyBytes);
+      const events = state.queue.splice(0, count).map((event) => eventForDrain(event, transportLimit));
       return { events, droppedCount: state.droppedCount, queueSize: state.queue.length };
     },
     status() {
@@ -201,8 +218,8 @@ export function buildApiTraceInstallExpression(options: ApiTraceRuntimeInstallOp
   return `${API_TRACE_RUNTIME_SOURCE}.install(${JSON.stringify(options)})`;
 }
 
-export function buildApiTraceDrainExpression(maxCount: number): string {
-  return `globalThis.${API_TRACE_GLOBAL_NAME}?.drainEvents(${String(maxCount)}) ?? { events: [], droppedCount: 0, queueSize: 0 }`;
+export function buildApiTraceDrainExpression(maxCount: number, maxTransportBodyBytes: number): string {
+  return `globalThis.${API_TRACE_GLOBAL_NAME}?.drainEvents(${String(maxCount)}, ${String(maxTransportBodyBytes)}) ?? { events: [], droppedCount: 0, queueSize: 0 }`;
 }
 
 export function buildApiTraceStopExpression(uninstallRuntimeHook: boolean): string {

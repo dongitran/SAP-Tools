@@ -64,7 +64,10 @@ export interface ApiTraceSessionDependencies {
 const TRACE_DRAIN_INTERVAL_MS = 250;
 const TRACE_DRAIN_BATCH_SIZE = 50;
 const TRACE_RUNTIME_QUEUE_SIZE = 1000;
-const TRACE_EVALUATE_TIMEOUT_MS = 5000;
+const TRACE_CONTROL_EVALUATE_TIMEOUT_MS = 5000;
+const TRACE_DRAIN_EVALUATE_TIMEOUT_MS = 10000;
+const TRACE_DRAIN_TIMEOUT_RETRY_LIMIT = 3;
+const TRACE_DRAIN_TRANSPORT_BODY_LIMIT = 20000;
 
 const defaultApiTraceSessionDependencies: ApiTraceSessionDependencies = {
   prepareCfCliSession,
@@ -82,6 +85,7 @@ export class ApiTraceSession {
   private readonly dependencies: ApiTraceSessionDependencies;
   private readonly isTestMode: boolean;
   private events: ApiTraceEvent[] = [];
+  private consecutiveDrainTimeouts = 0;
   private disposed = false;
   private drainInFlight = false;
   private inspectorClient: ApiTraceInspectorClient | undefined;
@@ -228,7 +232,7 @@ export class ApiTraceSession {
       captureResponseBody: options.captureResponseBody,
       maxBodyBytes: options.maxBodyBytes,
       maxEvents: TRACE_RUNTIME_QUEUE_SIZE,
-    }), TRACE_EVALUATE_TIMEOUT_MS);
+    }), TRACE_CONTROL_EVALUATE_TIMEOUT_MS);
     if (this.isStopRequested()) {
       await this.stopRuntimeTrace(true);
       return;
@@ -247,6 +251,7 @@ export class ApiTraceSession {
 
   private startPolling(maxBodyBytes: number): void {
     this.stopPolling();
+    this.consecutiveDrainTimeouts = 0;
     this.pollTimer = this.dependencies.setInterval(() => {
       void this.drainTraceEvents(maxBodyBytes);
     }, TRACE_DRAIN_INTERVAL_MS);
@@ -257,9 +262,13 @@ export class ApiTraceSession {
     this.drainInFlight = true;
     try {
       const payload = await this.inspectorClient.evaluate(
-        buildApiTraceDrainExpression(TRACE_DRAIN_BATCH_SIZE),
-        TRACE_EVALUATE_TIMEOUT_MS
+        buildApiTraceDrainExpression(
+          TRACE_DRAIN_BATCH_SIZE,
+          resolveDrainTransportBodyLimit(maxBodyBytes)
+        ),
+        TRACE_DRAIN_EVALUATE_TIMEOUT_MS
       );
+      this.consecutiveDrainTimeouts = 0;
       this.publishDrainedEvents(payload, maxBodyBytes);
     } catch (error) {
       await this.handleDrainFailure(error);
@@ -280,6 +289,15 @@ export class ApiTraceSession {
   }
 
   private async handleDrainFailure(error: unknown): Promise<void> {
+    if (isInspectorEvaluateTimeout(error)) {
+      this.consecutiveDrainTimeouts += 1;
+      if (this.consecutiveDrainTimeouts < TRACE_DRAIN_TIMEOUT_RETRY_LIMIT) {
+        this.callbacks.log(
+          `Live Trace drain timed out for ${this.appId}; retrying (${String(this.consecutiveDrainTimeouts)}/${String(TRACE_DRAIN_TIMEOUT_RETRY_LIMIT)}).`
+        );
+        return;
+      }
+    }
     this.logError('stream', error);
     await this.stopRuntimeTrace(false);
     this.postState('error', 'Runtime HTTP trace connection was lost.', false, true);
@@ -287,6 +305,7 @@ export class ApiTraceSession {
 
   private async stopRuntimeTrace(uninstallRuntimeHook: boolean): Promise<boolean> {
     this.stopPolling();
+    this.consecutiveDrainTimeouts = 0;
     const uninstalled = await this.stopInspectorHook(uninstallRuntimeHook);
     this.inspectorClient?.close();
     this.inspectorClient = undefined;
@@ -300,7 +319,7 @@ export class ApiTraceSession {
     try {
       await this.inspectorClient.evaluate(
         buildApiTraceStopExpression(uninstallRuntimeHook),
-        TRACE_EVALUATE_TIMEOUT_MS
+        TRACE_CONTROL_EVALUATE_TIMEOUT_MS
       );
       return uninstallRuntimeHook;
     } catch (error) {
@@ -371,6 +390,17 @@ function buildRuntimeTarget(
 
 function buildNeedsInspectorMessage(): string {
   return 'Runtime HTTP Trace needs Node Inspector on 127.0.0.1:9229 for this app. Start the app with --inspect or allow the signal-based Inspector startup, then try again.';
+}
+
+function resolveDrainTransportBodyLimit(maxBodyBytes: number): number {
+  return maxBodyBytes > 0
+    ? Math.min(maxBodyBytes, TRACE_DRAIN_TRANSPORT_BODY_LIMIT)
+    : TRACE_DRAIN_TRANSPORT_BODY_LIMIT;
+}
+
+function isInspectorEvaluateTimeout(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('Runtime.evaluate timed out');
 }
 
 function formatTraceError(error: unknown): string {

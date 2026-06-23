@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiTraceSession } from './apiTraceSession';
-import type { ApiTraceStatePayload } from './apiTraceTypes';
+import type { ApiTraceStartOptions, ApiTraceStatePayload } from './apiTraceTypes';
 import type { ApiTraceInspectorClient } from './apiTraceInspectorClient';
 import type { ApiTraceTunnelReadyResult } from './apiTraceTunnel';
 
@@ -40,6 +40,74 @@ function createSession(): {
     },
   });
   return { batches, session, states, summaries };
+}
+
+function createRuntimeTraceHarness(inspectorClient: ApiTraceInspectorClient): {
+  readonly batches: unknown[];
+  readonly log: ReturnType<typeof vi.fn>;
+  readonly poll: () => void;
+  readonly session: ApiTraceSession;
+  readonly states: ApiTraceStatePayload[];
+  readonly tunnelStop: ReturnType<typeof vi.fn>;
+} {
+  let pollCallback: (() => void) | undefined;
+  const states: ApiTraceStatePayload[] = [];
+  const batches: unknown[] = [];
+  const log = vi.fn();
+  const tunnelStop = vi.fn();
+  const session = new ApiTraceSession({
+    appId: 'finance-uat-api',
+    targetParams: {
+      apiEndpoint: 'https://api.example.com',
+      email: 'user@example.com',
+      password: 'secret',
+      orgName: 'demo-org',
+      spaceName: 'demo-space',
+    },
+    isTestMode: false,
+    callbacks: {
+      postState: (state) => states.push(state),
+      postBatch: (batch) => batches.push(batch),
+      postUrlSummary: vi.fn(),
+      log,
+    },
+    dependencies: {
+      prepareCfCliSession: vi.fn(async () => undefined),
+      ensureAppSshEnabled: vi.fn(async () => undefined),
+      tryStartNodeInspector: vi.fn(async () => true),
+      openInspectorTunnel: vi.fn(async (): Promise<ApiTraceTunnelReadyResult> => ({
+        status: 'ready',
+        handle: {
+          localPort: 51237,
+          stop: tunnelStop,
+        },
+      })),
+      createInspectorClient: vi.fn(async () => inspectorClient),
+      setInterval: vi.fn((callback: () => void) => {
+        pollCallback = callback;
+        return 10 as unknown as NodeJS.Timeout;
+      }),
+      clearInterval: vi.fn(),
+    },
+  });
+  return { batches, log, poll: () => pollCallback?.(), session, states, tunnelStop };
+}
+
+function createRuntimeTraceStartOptions(maxBodyBytes = 4096): ApiTraceStartOptions {
+  return {
+    mode: 'runtime-http',
+    instanceIndex: 0,
+    processName: 'web',
+    captureHeaders: false,
+    captureRequestBody: false,
+    captureResponseBody: true,
+    maxBodyBytes,
+    filters: { method: [], pathContains: '', statusClass: 'all' },
+  };
+}
+
+function isDrainExpression(expression: string): boolean {
+  return expression.includes('?.drainEvents');
 }
 
 describe('ApiTraceSession', () => {
@@ -409,78 +477,107 @@ describe('ApiTraceSession', () => {
   });
 
   it('logs runtime drain failures before showing the trace error state', async () => {
-    let pollCallback: (() => void) | undefined;
-    const states: ApiTraceStatePayload[] = [];
-    const log = vi.fn();
-    let evaluateCalls = 0;
     const inspectorClient: ApiTraceInspectorClient = {
-      evaluate: vi.fn(async () => {
-        evaluateCalls += 1;
-        if (evaluateCalls > 1) {
+      evaluate: vi.fn(async (expression: string) => {
+        if (isDrainExpression(expression)) {
           throw new Error('Inspector target closed');
         }
         return { installed: true };
       }),
       close: vi.fn(),
     };
-    const session = new ApiTraceSession({
-      appId: 'finance-uat-api',
-      targetParams: {
-        apiEndpoint: 'https://api.example.com',
-        email: 'user@example.com',
-        password: 'secret',
-        orgName: 'demo-org',
-        spaceName: 'demo-space',
-      },
-      isTestMode: false,
-      callbacks: {
-        postState: (state) => states.push(state),
-        postBatch: vi.fn(),
-        postUrlSummary: vi.fn(),
-        log,
-      },
-      dependencies: {
-        prepareCfCliSession: vi.fn(async () => undefined),
-        ensureAppSshEnabled: vi.fn(async () => undefined),
-        tryStartNodeInspector: vi.fn(async () => true),
-        openInspectorTunnel: vi.fn(async (): Promise<ApiTraceTunnelReadyResult> => ({
-          status: 'ready',
-          handle: {
-            localPort: 51236,
-            stop: vi.fn(),
-          },
-        })),
-        createInspectorClient: vi.fn(async () => inspectorClient),
-        setInterval: vi.fn((callback: () => void) => {
-          pollCallback = callback;
-          return 9 as unknown as NodeJS.Timeout;
-        }),
-        clearInterval: vi.fn(),
-      },
-    });
+    const { log, poll, session, states } = createRuntimeTraceHarness(inspectorClient);
 
-    await session.start({
-      mode: 'runtime-http',
-      instanceIndex: 0,
-      processName: 'web',
-      captureHeaders: false,
-      captureRequestBody: false,
-      captureResponseBody: false,
-      maxBodyBytes: 4096,
-      filters: {
-        method: [],
-        pathContains: '',
-        statusClass: 'all',
-      },
-    });
-    pollCallback?.();
-
+    await session.start(createRuntimeTraceStartOptions());
+    poll();
     await vi.waitFor(() => {
       expect(states.at(-1)?.state).toBe('error');
     });
     expect(log).toHaveBeenCalledWith(
       'Live Trace stream failed for finance-uat-api: Inspector target closed'
     );
+  });
+
+  it('keeps streaming and retries a transient Runtime.evaluate drain timeout', async () => {
+    let drainCalls = 0;
+    const inspectorClient: ApiTraceInspectorClient = {
+      evaluate: vi.fn(async (expression: string) => {
+        if (!isDrainExpression(expression)) {
+          return { installed: true };
+        }
+        drainCalls += 1;
+        if (drainCalls === 1) {
+          throw new Error('Inspector Runtime.evaluate timed out.');
+        }
+        return {
+          events: [{ id: 'runtime-retry-1', url: '/health', method: 'GET', responseBodyPreview: '{}' }],
+          droppedCount: 0,
+          queueSize: 0,
+        };
+      }),
+      close: vi.fn(),
+    };
+    const { batches, log, poll, session, states } = createRuntimeTraceHarness(inspectorClient);
+
+    await session.start(createRuntimeTraceStartOptions(0));
+    poll();
+    await vi.waitFor(() => {
+      expect(log).toHaveBeenCalledWith(
+        'Live Trace drain timed out for finance-uat-api; retrying (1/3).'
+      );
+    });
+    expect(states.at(-1)?.state).toBe('streaming');
+
+    poll();
+    await vi.waitFor(() => {
+      expect(batches).toHaveLength(1);
+    });
+
+    expect(states.at(-1)?.state).toBe('streaming');
+    expect(log).not.toHaveBeenCalledWith(
+      expect.stringContaining('Live Trace stream failed for finance-uat-api')
+    );
+    expect(inspectorClient.evaluate).toHaveBeenCalledWith(
+      expect.stringContaining('.drainEvents(50, 20000)'),
+      10000
+    );
+  });
+
+  it('fails Live Trace after repeated Runtime.evaluate drain timeouts', async () => {
+    const inspectorClient: ApiTraceInspectorClient = {
+      evaluate: vi.fn(async (expression: string) => {
+        if (isDrainExpression(expression)) {
+          throw new Error('Inspector Runtime.evaluate timed out.');
+        }
+        return { installed: true };
+      }),
+      close: vi.fn(),
+    };
+    const { log, poll, session, states, tunnelStop } = createRuntimeTraceHarness(inspectorClient);
+
+    await session.start(createRuntimeTraceStartOptions(0));
+    poll();
+    await vi.waitFor(() => {
+      expect(log).toHaveBeenCalledWith(
+        'Live Trace drain timed out for finance-uat-api; retrying (1/3).'
+      );
+    });
+    poll();
+    await vi.waitFor(() => {
+      expect(log).toHaveBeenCalledWith(
+        'Live Trace drain timed out for finance-uat-api; retrying (2/3).'
+      );
+    });
+    poll();
+
+    await vi.waitFor(() => {
+      expect(states.at(-1)?.state).toBe('error');
+    });
+    expect(log).toHaveBeenCalledWith(
+      'Live Trace stream failed for finance-uat-api: Inspector Runtime.evaluate timed out.'
+    );
+    expect(inspectorClient.close).toHaveBeenCalledTimes(1);
+    expect(tunnelStop).toHaveBeenCalledTimes(1);
   });
 
   it('cancels late tunnel startup when tracing is stopped during startup', async () => {

@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.165 (stable)
+- Hardening: Live Trace now treats transient Inspector `Runtime.evaluate` drain timeouts as retryable, keeping the stream active unless timeouts repeat.
+- Performance: Live Trace drain payloads now cap large request/response body previews before returning them through the Node Inspector tunnel, reducing timeout risk for apps with large bodies or slower CF SSH tunnels.
+
 ## 0.10.164 (stable)
 - Fix: Reload app list now recognizes compact and hyphenated region codes as the same active scope, so Log-API-Event, Apps, and SQL reload buttons no longer fail with "No active region/org/space is loaded" after normal scope restore/confirmation.
 - Fix: Reload app list can refresh from the confirmed scope while the loaded app scope is still hydrating, with guards to avoid overwriting apps after a later scope or space selection starts.

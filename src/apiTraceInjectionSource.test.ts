@@ -15,19 +15,23 @@ import {
 interface RuntimeApi {
   readonly version: number;
   install(options: unknown): unknown;
-  drainEvents(maxCount: number): { readonly events: readonly RuntimeTraceEvent[] };
+  drainEvents(maxCount: number, maxTransportBodyBytes?: number): { readonly events: readonly RuntimeTraceEvent[] };
 }
 
 interface RuntimeTraceEvent {
   readonly url: string;
   readonly normalizedUrl: string;
   readonly path: string;
+  readonly requestBodyPreview: string;
   readonly responseBodyPreview: string;
+  readonly requestBodyTruncated: boolean;
+  readonly responseBodyTruncated: boolean;
 }
 
 describe('apiTraceInjectionSource', () => {
   it('defines a bounded runtime queue with install, drain, disable, and uninstall controls', () => {
     expect(API_TRACE_GLOBAL_NAME).toBe('__SAP_TOOLS_HTTP_TRACE__');
+    expect(API_TRACE_RUNTIME_VERSION).toBe(4);
     expect(API_TRACE_RUNTIME_SOURCE).toContain('__SAP_TOOLS_HTTP_TRACE__');
     expect(API_TRACE_RUNTIME_SOURCE).toContain('drainEvents');
     expect(API_TRACE_RUNTIME_SOURCE).toContain('uninstall');
@@ -49,7 +53,7 @@ describe('apiTraceInjectionSource', () => {
         maxEvents: 1000,
       })
     ).toContain('.install({');
-    expect(buildApiTraceDrainExpression(50)).toContain('.drainEvents(50)');
+    expect(buildApiTraceDrainExpression(50, 20000)).toContain('.drainEvents(50, 20000)');
     expect(buildApiTraceStopExpression(true)).toContain('.uninstall()');
     expect(buildApiTraceStopExpression(false)).toContain('.disable()');
   });
@@ -70,6 +74,31 @@ describe('apiTraceInjectionSource', () => {
         maxEvents: 1000,
       })
     ).toContain('"maxBodyBytes":0');
+  });
+
+  it('caps unlimited runtime body previews when draining through Inspector transport', () => {
+    const { runtimeApi, httpModule } = installRuntimeSource();
+    const req = createRuntimeRequest('/service/large');
+    const res = createRuntimeResponse();
+    const longRequestBody = 'request-body-preview';
+    const longResponseBody = 'response-body-preview';
+
+    httpModule.Server.prototype.emit('request', req, res);
+    req.emit('data', longRequestBody);
+    res.end(longResponseBody);
+    res.emit('finish');
+
+    const drained = runtimeApi.drainEvents(10, 8);
+
+    expect(drained.events).toHaveLength(1);
+    expect(drained.events[0]).toEqual(
+      expect.objectContaining({
+        requestBodyPreview: 'request-',
+        responseBodyPreview: 'response',
+        requestBodyTruncated: true,
+        responseBodyTruncated: true,
+      })
+    );
   });
 
   it('replaces stale injected runtime hooks before installing unlimited body capture', () => {
