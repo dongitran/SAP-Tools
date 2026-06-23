@@ -41,6 +41,7 @@ let apiTraceReplayRequestId = '';
 
 const API_TRACE_EVENT_LIMIT = 1000;
 const API_TRACE_PREFERENCES_KEY = 'saptools.apis.trace.preferences';
+const TRACE_REPLAY_DISPATCH_DELAY_MS = 500;
 const TRACE_REPLAY_OMITTED_HEADERS = new Set([
   'connection',
   'content-length',
@@ -773,24 +774,29 @@ function replayTraceRequest(button) {
   if (event === null || apiTraceReplayInFlightEventId !== '') return;
   apiTraceReplayInFlightEventId = event.id;
   apiTraceReplayRequestId = `trace-replay-${event.id}-${Date.now()}`;
+  const replayRequestId = apiTraceReplayRequestId;
+  const replayPayload = {
+    url: resolveTraceCurlUrl(event),
+    method: event.method,
+    auth: 'none',
+    headers: buildTraceReplayHeaders(event),
+    body: event.requestBodyPreview || undefined,
+    source: 'traceReplay',
+    requestId: replayRequestId
+  };
   if (button) {
     button.disabled = true;
     button.innerHTML = '<span class="api-trace-replay-spinner"></span> Replaying...';
   }
   if (vscodeApi) {
-    vscodeApi.postMessage({
-      type: 'sapTools.apis.executeRequest',
-      payload: {
-        url: resolveTraceCurlUrl(event),
-        method: event.method,
-        auth: 'none',
-        headers: buildTraceReplayHeaders(event),
-        body: event.requestBodyPreview || undefined,
-        source: 'traceReplay',
-        requestId: apiTraceReplayRequestId
-      }
-    });
     renderLiveTracePanel();
+    window.setTimeout(() => {
+      if (apiTraceReplayRequestId !== replayRequestId) return;
+      vscodeApi.postMessage({
+        type: 'sapTools.apis.executeRequest',
+        payload: replayPayload
+      });
+    }, TRACE_REPLAY_DISPATCH_DELAY_MS);
     return;
   }
   window.setTimeout(() => {
@@ -997,6 +1003,13 @@ function updateTraceTopActions() {
   const shouldShow = apiActiveMainTab === 'live-trace' && Boolean(apiSelectedAppId);
   container.hidden = !shouldShow;
   container.innerHTML = shouldShow ? renderTraceActionCluster() : '';
+  updateTraceRecordIndicator();
+}
+
+function updateTraceRecordIndicator() {
+  const record = document.querySelector('.api-main-tab-record');
+  if (!record) return;
+  record.classList.toggle('is-recording', isTraceActiveState(apiTraceState));
 }
 
 function renderLiveTracePanel() {
@@ -1393,7 +1406,7 @@ function initLayout() {
               Request Runner
             </button>
             <button type="button" class="api-main-tab-btn" data-action="api-switch-main-tab" data-tab-id="live-trace" role="tab" aria-controls="api-live-trace-panel">
-              <span class="api-main-tab-record" aria-hidden="true"></span>
+              <span class="api-main-tab-record${isTraceActiveState(apiTraceState) ? ' is-recording' : ''}" aria-hidden="true"></span>
               <span>Live Trace</span>
             </button>
           </div>

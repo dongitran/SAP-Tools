@@ -302,7 +302,11 @@ interface LoadedScopeState {
 
 interface AppListReloadRequest {
   readonly scope: SharedCfScope;
-  readonly loadedScope: LoadedScopeState;
+  readonly loadedScope: LoadedScopeState | null;
+  readonly regionId: string;
+  readonly regionCode: string;
+  readonly orgGuid: string;
+  readonly spaceSelectionRequestId: number;
 }
 
 interface RootFolderCacheScope {
@@ -992,7 +996,7 @@ export class RegionSidebarProvider
     }
 
     const result = await refreshCfSyncSpace({
-      apiEndpoint: getCfApiEndpoint(request.scope.regionCode),
+      apiEndpoint: getCfApiEndpoint(request.regionCode),
       orgName: request.scope.orgName,
       spaceName: request.scope.spaceName,
       email: credentials.email,
@@ -1011,33 +1015,66 @@ export class RegionSidebarProvider
   private createAppListReloadRequest(): AppListReloadRequest | null {
     const scope = this.currentConfirmedScope;
     const loadedScope = this.lastLoadedScope;
-    if (scope === undefined || loadedScope === null) {
+    if (scope === undefined) {
       return null;
     }
+    if (loadedScope !== null && isLoadedScopeForConfirmedScope(loadedScope, scope)) {
+      return {
+        scope: { ...scope },
+        loadedScope: { ...loadedScope },
+        regionId: loadedScope.regionId,
+        regionCode: loadedScope.regionCode,
+        orgGuid: loadedScope.orgGuid,
+        spaceSelectionRequestId: this.spaceSelectionRequestId,
+      };
+    }
+
+    const selectedRegionMatches =
+      areRegionCodesEquivalent(this.selectedRegionId, scope.regionCode) ||
+      areRegionCodesEquivalent(this.selectedRegionCode, scope.regionCode);
     if (
-      loadedScope.regionCode !== scope.regionCode ||
-      loadedScope.orgName !== scope.orgName ||
-      loadedScope.spaceName !== scope.spaceName
+      !selectedRegionMatches ||
+      this.selectedRegionId.length === 0 ||
+      this.selectedRegionCode.length === 0 ||
+      this.selectedOrgGuid.length === 0
     ) {
       return null;
     }
     return {
       scope: { ...scope },
-      loadedScope: { ...loadedScope },
+      loadedScope: null,
+      regionId: this.selectedRegionId,
+      regionCode: this.selectedRegionCode,
+      orgGuid: this.selectedOrgGuid,
+      spaceSelectionRequestId: this.spaceSelectionRequestId,
     };
   }
 
   private isCurrentAppListReloadRequest(request: AppListReloadRequest): boolean {
     const currentLoadedScope = this.lastLoadedScope;
+    if (!areReloadScopesEqual(this.currentConfirmedScope, request.scope)) {
+      return false;
+    }
+
+    if (request.loadedScope !== null) {
+      return (
+        currentLoadedScope !== null &&
+        currentLoadedScope.regionId === request.loadedScope.regionId &&
+        areRegionCodesEquivalent(
+          currentLoadedScope.regionCode,
+          request.loadedScope.regionCode
+        ) &&
+        currentLoadedScope.orgGuid === request.loadedScope.orgGuid &&
+        currentLoadedScope.orgName === request.loadedScope.orgName &&
+        currentLoadedScope.spaceName === request.loadedScope.spaceName
+      );
+    }
+
     return (
-      this.currentConfirmedScope !== undefined &&
-      currentLoadedScope !== null &&
-      areSharedScopesEqual(this.currentConfirmedScope, request.scope) &&
-      currentLoadedScope.regionId === request.loadedScope.regionId &&
-      currentLoadedScope.regionCode === request.loadedScope.regionCode &&
-      currentLoadedScope.orgGuid === request.loadedScope.orgGuid &&
-      currentLoadedScope.orgName === request.loadedScope.orgName &&
-      currentLoadedScope.spaceName === request.loadedScope.spaceName
+      this.spaceSelectionRequestId === request.spaceSelectionRequestId &&
+      this.selectedRegionId === request.regionId &&
+      areRegionCodesEquivalent(this.selectedRegionCode, request.regionCode) &&
+      this.selectedOrgGuid === request.orgGuid
     );
   }
 
@@ -1061,9 +1098,9 @@ export class RegionSidebarProvider
     );
     await this.postAppsLoaded(apps, {
       spaceName: request.scope.spaceName,
-      orgGuid: request.loadedScope.orgGuid,
+      orgGuid: request.orgGuid,
       orgName: request.scope.orgName,
-    }, credentials, cfHomeDir, request.scope.regionCode);
+    }, credentials, cfHomeDir, request.regionCode);
   }
 
   private async refreshTopologyForConfirmedScope(
@@ -3916,6 +3953,40 @@ function areSharedScopesEqual(
     left.orgName === right.orgName &&
     left.spaceName === right.spaceName
   );
+}
+
+function areReloadScopesEqual(
+  left: SharedCfScope | undefined,
+  right: SharedCfScope | undefined
+): boolean {
+  if (left === undefined || right === undefined) {
+    return false;
+  }
+
+  return (
+    areRegionCodesEquivalent(left.regionCode, right.regionCode) &&
+    left.orgName === right.orgName &&
+    left.spaceName === right.spaceName
+  );
+}
+
+function isLoadedScopeForConfirmedScope(
+  loadedScope: LoadedScopeState,
+  confirmedScope: SharedCfScope
+): boolean {
+  return (
+    areRegionCodesEquivalent(loadedScope.regionCode, confirmedScope.regionCode) &&
+    loadedScope.orgName === confirmedScope.orgName &&
+    loadedScope.spaceName === confirmedScope.spaceName
+  );
+}
+
+function areRegionCodesEquivalent(left: string, right: string): boolean {
+  return normalizeRegionCodeForComparison(left) === normalizeRegionCodeForComparison(right);
+}
+
+function normalizeRegionCodeForComparison(value: string): string {
+  return value.trim().toLowerCase().replaceAll('-', '');
 }
 
 /**

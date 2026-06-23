@@ -88,6 +88,11 @@
   width: 8px;
   height: 8px;
   border-radius: 999px;
+  background: #c76a12;
+  box-shadow: 0 0 0 3px rgba(199, 106, 18, 0.16);
+}
+
+.api-main-tab-record.is-recording {
   background: #f85149;
   box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.16);
 }

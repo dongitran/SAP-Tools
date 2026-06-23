@@ -851,6 +851,7 @@ describe('prototype Log-API-Event workspace', () => {
 
     expect(source).toContain('let apiTraceReplayInFlightEventId');
     expect(source).toContain('let apiTraceReplayRequestId');
+    expect(source).toContain('const TRACE_REPLAY_DISPATCH_DELAY_MS = 500;');
     expect(source).toContain('function replayTraceRequest(button)');
     expect(source).toContain('data-action="api-trace-replay-request"');
     expect(source).toContain('Replay Request');
@@ -860,6 +861,8 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source.indexOf('data-action="api-trace-replay-request"')).toBeLessThan(
       source.indexOf('data-action="api-trace-copy-curl"')
     );
+    expect(source).toContain('const replayRequestId = apiTraceReplayRequestId;');
+    expect(source).toContain('const replayPayload = {');
     expect(source).toContain('url: resolveTraceCurlUrl(event)');
     expect(source).toContain('method: event.method');
     expect(source).toContain("auth: 'none'");
@@ -869,7 +872,10 @@ describe('prototype Log-API-Event workspace', () => {
     expect(source).not.toContain("auth: 'xsuaa-auto'");
     expect(source).toContain('body: event.requestBodyPreview || undefined');
     expect(source).toContain("source: 'traceReplay'");
-    expect(source).toContain('requestId: apiTraceReplayRequestId');
+    expect(source).toContain('requestId: replayRequestId');
+    expect(source).toContain('window.setTimeout(() => {');
+    expect(source).toContain('payload: replayPayload');
+    expect(source).toContain('}, TRACE_REPLAY_DISPATCH_DELAY_MS);');
     expect(source).toContain("payload.source === 'traceReplay'");
     expect(source).toContain('payload.requestId === apiTraceReplayRequestId');
     expect(source).toContain("apiTraceReplayInFlightEventId !== ''");
@@ -881,18 +887,23 @@ describe('prototype Log-API-Event workspace', () => {
     expect(styles).toMatch(/\.api-trace-replay-spinner\s*\{[\s\S]*?border-top-color:\s*currentColor;/);
   });
 
-  it('marks Live Trace with a red record indicator in the main tab', async () => {
+  it('marks Live Trace with an idle orange and active red record indicator', async () => {
     const source = await readApiWebviewSource();
     const styles = await readApiStylesSource();
     const liveTraceTabLabelIndex = source.indexOf('<span>Live Trace</span>');
 
-    expect(source).toContain('class="api-main-tab-record"');
+    expect(source).toContain(
+      'class="api-main-tab-record${isTraceActiveState(apiTraceState) ? \' is-recording\' : \'\'}"'
+    );
     expect(liveTraceTabLabelIndex).toBeGreaterThanOrEqual(0);
-    expect(source.indexOf('class="api-main-tab-record"')).toBeLessThan(
+    expect(source.indexOf('class="api-main-tab-record${')).toBeLessThan(
       liveTraceTabLabelIndex
     );
     expect(styles).toContain('.api-main-tab-record');
-    expect(styles).toMatch(/\.api-main-tab-record\s*\{[\s\S]*?background:\s*#f85149;/);
+    expect(styles).toMatch(/\.api-main-tab-record\s*\{[\s\S]*?background:\s*#c76a12;/);
+    expect(styles).toMatch(
+      /\.api-main-tab-record\.is-recording\s*\{[\s\S]*?background:\s*#f85149;/
+    );
   });
 
   it('persists Live Trace capture preferences with rich conditional body rendering', async () => {

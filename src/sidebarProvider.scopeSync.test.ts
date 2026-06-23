@@ -118,6 +118,7 @@ interface SidebarProviderTestAccess {
   selectedOrgGuid: string;
   selectedRegionCode: string;
   selectedRegionId: string;
+  spaceSelectionRequestId: number;
   ensureRegionSession(credentials: {
     readonly email: string;
     readonly password: string;
@@ -1082,7 +1083,7 @@ describe('RegionSidebarProvider shared CF scope sync', () => {
 
   describe('reloads the active app list from cf-sync', () => {
     const CONFIRMED_SCOPE: SharedCfScope = {
-      regionCode: 'us-10',
+      regionCode: 'us10',
       orgName: 'demo-services',
       spaceName: 'test',
     };
@@ -1135,6 +1136,44 @@ describe('RegionSidebarProvider shared CF scope sync', () => {
       );
     });
 
+    it('reloads from confirmed scope while the loaded scope is still hydrating', async () => {
+      const { access } = createProviderFixture();
+      const postAppsLoadedSpy = vi
+        .spyOn(access, 'postAppsLoaded')
+        .mockResolvedValue();
+      access.currentConfirmedScope = CONFIRMED_SCOPE;
+      access.lastLoadedScope = null;
+      access.selectedRegionId = 'us10';
+      access.selectedRegionCode = 'us-10';
+      access.selectedOrgGuid = 'org-demo-services';
+      refreshCfSyncSpaceMock.mockResolvedValue({
+        status: 'refreshed',
+        regionKey: 'us10',
+        appCount: 1,
+        source: 'shared',
+        apps: [{ id: 'app-c', name: 'app-c', runningInstances: 1 }],
+      });
+
+      await access.handleWebviewMessage({ type: 'sapTools.reloadAppList' });
+
+      expect(refreshCfSyncSpaceMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiEndpoint: 'https://api.cf.us10.hana.ondemand.com',
+          orgName: 'demo-services',
+          spaceName: 'test',
+          email: 'test@example.com',
+          password: 'test-password',
+        })
+      );
+      expect(postAppsLoadedSpy).toHaveBeenCalledWith(
+        [{ id: 'app-c', name: 'app-c', runningInstances: 1 }],
+        { spaceName: 'test', orgGuid: 'org-demo-services', orgName: 'demo-services' },
+        { email: 'test@example.com', password: 'test-password' },
+        '/tmp/cf-home',
+        'us-10'
+      );
+    });
+
     it('does not overwrite apps when the confirmed scope changes during reload', async () => {
       const { access } = createProviderFixture();
       const postAppsLoadedSpy = vi
@@ -1162,6 +1201,77 @@ describe('RegionSidebarProvider shared CF scope sync', () => {
         appCount: 1,
         source: 'shared',
         apps: [{ id: 'app-a', name: 'app-a', runningInstances: 1 }],
+      });
+      await reloadPromise;
+
+      expect(postAppsLoadedSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not overwrite apps when a fallback reload resolves after scope change', async () => {
+      const { access } = createProviderFixture();
+      const postAppsLoadedSpy = vi
+        .spyOn(access, 'postAppsLoaded')
+        .mockResolvedValue();
+      let resolveRefresh: (value: unknown) => void = () => undefined;
+      refreshCfSyncSpaceMock.mockReturnValue(
+        new Promise<unknown>((resolve) => {
+          resolveRefresh = resolve;
+        })
+      );
+      access.currentConfirmedScope = CONFIRMED_SCOPE;
+      access.lastLoadedScope = null;
+      access.selectedRegionId = 'us10';
+      access.selectedRegionCode = 'us-10';
+      access.selectedOrgGuid = 'org-demo-services';
+
+      const reloadPromise = access.handleWebviewMessage({ type: 'sapTools.reloadAppList' });
+      await vi.waitFor(() => expect(refreshCfSyncSpaceMock).toHaveBeenCalledOnce());
+      access.currentConfirmedScope = {
+        regionCode: 'br10',
+        orgName: 'other-org',
+        spaceName: 'other-space',
+      };
+      access.selectedRegionId = 'br10';
+      access.selectedRegionCode = 'br-10';
+      access.selectedOrgGuid = 'org-other';
+      resolveRefresh({
+        status: 'refreshed',
+        regionKey: 'us10',
+        appCount: 1,
+        source: 'shared',
+        apps: [{ id: 'app-c', name: 'app-c', runningInstances: 1 }],
+      });
+      await reloadPromise;
+
+      expect(postAppsLoadedSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not overwrite apps when another space selection starts during fallback reload', async () => {
+      const { access } = createProviderFixture();
+      const postAppsLoadedSpy = vi
+        .spyOn(access, 'postAppsLoaded')
+        .mockResolvedValue();
+      let resolveRefresh: (value: unknown) => void = () => undefined;
+      refreshCfSyncSpaceMock.mockReturnValue(
+        new Promise<unknown>((resolve) => {
+          resolveRefresh = resolve;
+        })
+      );
+      access.currentConfirmedScope = CONFIRMED_SCOPE;
+      access.lastLoadedScope = null;
+      access.selectedRegionId = 'us10';
+      access.selectedRegionCode = 'us-10';
+      access.selectedOrgGuid = 'org-demo-services';
+
+      const reloadPromise = access.handleWebviewMessage({ type: 'sapTools.reloadAppList' });
+      await vi.waitFor(() => expect(refreshCfSyncSpaceMock).toHaveBeenCalledOnce());
+      access.spaceSelectionRequestId += 1;
+      resolveRefresh({
+        status: 'refreshed',
+        regionKey: 'us10',
+        appCount: 1,
+        source: 'shared',
+        apps: [{ id: 'app-c', name: 'app-c', runningInstances: 1 }],
       });
       await reloadPromise;
 

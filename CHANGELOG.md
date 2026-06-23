@@ -1,5 +1,10 @@
 # SAP Tools Extension Changelog
 
+## 0.10.164 (stable)
+- Fix: Reload app list now recognizes compact and hyphenated region codes as the same active scope, so Log-API-Event, Apps, and SQL reload buttons no longer fail with "No active region/org/space is loaded" after normal scope restore/confirmation.
+- Fix: Reload app list can refresh from the confirmed scope while the loaded app scope is still hydrating, with guards to avoid overwriting apps after a later scope or space selection starts.
+- UI/UX: Live Trace Replay Request now waits 0.5 seconds before dispatching the replay while showing the replaying state immediately, and the Live Trace record dot is dark orange until tracing becomes active, then turns red.
+
 ## 0.10.163 (stable)
 - Fix: Live Trace now checks CF app SSH before starting runtime tracing, automatically enables SSH and restarts the app when SSH is disabled, then smoke-checks `cf ssh` before attempting the Node Inspector tunnel.
 - UI/UX: Live Trace startup now shows an `Enabling SSH` progress state while CF SSH enablement is in progress, avoiding the misleading `Needs Inspector` state for disabled app SSH.
