@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { analyzeMutatingStatement } from './hanaSqlMutationAnalyzer';
 
 describe('hanaSqlMutationAnalyzer', () => {
-  it('should return null for non-mutating statements', () => {
+  it('should return null for non-mutating statements (SELECT, CREATE, ALTER, INSERT)', () => {
     expect(analyzeMutatingStatement('SELECT * FROM "Employees"', 'schema')).toBeNull();
     expect(analyzeMutatingStatement('CREATE TABLE "Temp" ("ID" INT)', 'schema')).toBeNull();
     expect(analyzeMutatingStatement('ALTER TABLE "Users" ADD "Age" INT', 'schema')).toBeNull();
+    expect(analyzeMutatingStatement('INSERT INTO "Users" ("ID") VALUES (1)', 'schema')).toBeNull();
   });
 
   describe('UPDATE', () => {
@@ -51,6 +52,14 @@ describe('hanaSqlMutationAnalyzer', () => {
       const result = analyzeMutatingStatement(sql, 'MYSCHEMA');
       expect(result?.tableName).toBe('"Employees"');
       expect(result?.whereClause).toBe('"ID" = 10');
+    });
+
+    it('should handle unquoted table names and extremely fragmented statements', () => {
+      const sql = '\n \n UPDATE \n \n  Employees   \n \n SET \n X = 1 \n WHERE \n Y = 2 \n ';
+      const result = analyzeMutatingStatement(sql, 'SCH');
+      expect(result?.tableName).toBe('Employees');
+      expect(result?.whereClause).toBe('Y = 2');
+      expect(result?.backupSelectSql).toBe('SELECT * FROM SCH.Employees WHERE Y = 2');
     });
   });
 

@@ -119,15 +119,23 @@ test.describe('SAP Tools SQL Backup History', () => {
     const backupDir = path.join(getBackupRoot(), monthFolder, backupId);
     fs.mkdirSync(backupDir, { recursive: true });
 
-    const sql = `DELETE FROM "Logs"
-/* 
-  Block comment
-  spanning multiple lines
-*/
-WHERE "Timestamp" < '2023-01-01'
+    const sql = `
+  UPDATE 
+  
+  
+  table 
+  
+  SET 
+     "Level" = 'ERROR',
+     "Details" = '<html>\n</html>'
+  WHERE 
+  
+  "Timestamp" < '2023-01-01'
+  /* 
+    Block comment
+    spanning multiple lines
+  */
   -- Inline comment
-  AND "Level" = 'ERROR'
-  AND "Details" = '<html>\n</html>'
   AND "Code" IN (
      SELECT "C" FROM "Codes" WHERE "Cat" = 5.5
   );`;
@@ -137,7 +145,7 @@ WHERE "Timestamp" < '2023-01-01'
     fs.writeFileSync(path.join(backupDir, 'metadata.json'), JSON.stringify({
       id: backupId, timestamp: ts.toISOString(), timestampLabel: '2026-06-24 11:00 UTC',
       region: 'us10', org: 'org', space: 'space', appName: 'app',
-      statementType: 'DELETE', tableName: 'Logs', rowCount: 1, folderPath: backupDir
+      statementType: 'UPDATE', tableName: 'table', rowCount: 1, folderPath: backupDir
     }), 'utf8');
 
     const session = await launchExtensionHost();
@@ -154,7 +162,7 @@ WHERE "Timestamp" < '2023-01-01'
       
       // Verify highlights exist
       const sqlBlock = historyFrame.locator('.sql-block');
-      await expect(sqlBlock.locator('.sql-kw').first()).toContainText('DELETE');
+      await expect(sqlBlock.locator('.sql-kw').first()).toContainText('UPDATE');
       await expect(sqlBlock.locator('.sql-cmt').first()).toContainText('Block comment');
       
       await session.window.waitForTimeout(1000);

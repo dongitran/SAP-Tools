@@ -1,7 +1,7 @@
 # SAP Tools Extension Changelog
 
-## 0.10.170 (stable)
-- Test: Expanded unit and E2E test coverage for SQL Backup History, bringing total unit tests to 750+.
+## 0.10.171 (stable)
+- Test: Expanded unit and E2E test coverage for SQL Backup History, bringing total unit tests to 750+. Added exhaustive mutation tests for `INSERT` safety, extreme whitespace formatting, multi-line separation, and unquoted identifiers.
 
 ## 0.10.169 (stable)
 - Feature: S/4HANA SQL Workbench now auto-backs up affected data before executing UPDATE, DELETE, or MERGE statements that include a WHERE clause. The backup SELECT runs before the mutation and saves a `.sql` (original query) and `backup.csv` (captured rows) under `~/.saptools/sql-backups/YYYYMM/<region-org-space-app-type-table-timestamp>/`.
