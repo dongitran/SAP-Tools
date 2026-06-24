@@ -431,7 +431,7 @@ function buildHistoryPanelJs(): string {
             '<div class="detail-header">' +
               '<div>' +
                 '<div class="detail-title">' +
-                  '<span class="entry-badge ' + badgeClass + '">' + escapeHtml(entry.statementType) + '</span>' +
+                  '<span class="entry-badge ' + badgeClass + '">' + escapeHtml(entry.statementType) + '</span> ' +
                   escapeHtml(entry.tableName) +
                 '</div>' +
                 '<div class="detail-scope">' + scopeLabel + '</div>' +
