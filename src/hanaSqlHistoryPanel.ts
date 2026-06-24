@@ -157,7 +157,7 @@ function createWebviewNonce(): string {
  * Parse a CSV string into columns + rows for table display.
  * Handles RFC 4180 quoting. Limited to first 500 rows for safety.
  */
-function parseCsvForDisplay(csv: string): { columns: string[]; rows: string[][] } {
+export function parseCsvForDisplay(csv: string): { columns: string[]; rows: string[][] } {
   const lines = csv.split('\n').filter((l) => l.trim().length > 0);
   if (lines.length === 0) return { columns: [], rows: [] };
   const columns = parseCsvLine(lines[0] ?? '');
@@ -168,8 +168,7 @@ function parseCsvForDisplay(csv: string): { columns: string[]; rows: string[][] 
 function parseCsvLine(line: string): string[] {
   const cells: string[] = [];
   let i = 0;
-  while (i <= line.length) {
-    if (i === line.length) { cells.push(''); break; }
+  while (i < line.length) {
     if (line[i] === '"') {
       let cell = '';
       i += 1;
@@ -179,12 +178,16 @@ function parseCsvLine(line: string): string[] {
         cell += line[i] ?? ''; i += 1;
       }
       cells.push(cell);
-      if (line[i] === ',') i += 1;
+      if (i < line.length && line[i] === ',') {
+        i += 1;
+        if (i === line.length) cells.push('');
+      }
     } else {
       const comma = line.indexOf(',', i);
       if (comma < 0) { cells.push(line.slice(i)); break; }
       cells.push(line.slice(i, comma));
       i = comma + 1;
+      if (i === line.length) { cells.push(''); break; }
     }
   }
   return cells;

@@ -169,7 +169,7 @@ function buildAnalysis(
  * HANA system tables (DUMMY) and fully-qualified names are left as-is.
  */
 function qualifyTableName(tableName: string, schema: string): string {
-  if (tableName.includes('.') || tableName.includes('"')) {
+  if (tableName.includes('.')) {
     return tableName;
   }
   if (schema.trim().length === 0) {
@@ -239,8 +239,8 @@ function extractWhereClause(
 
   // Where clause runs to end of statement (trailing ; already stripped by splitter)
   // Strip any ORDER BY / LIMIT / FOR UPDATE / WITH HINT that follows
-  const afterWhere = sql.slice(whereStart).trimStart();
-  const trimmed = stripTrailingClauses(afterWhere, tokens, whereStart);
+  const afterWhere = sql.slice(whereStart);
+  const trimmed = stripTrailingClauses(afterWhere, tokens, whereStart).trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
@@ -314,7 +314,10 @@ function tokenizeSqlWords(sql: string): SqlWordToken[] {
     if (char === "'") {
       index = skipSingleQuotedString(sql, index);
     } else if (char === '"') {
+      const start = index;
       index = skipDoubleQuotedIdentifier(sql, index);
+      const text = sql.slice(start, index);
+      tokens.push({ upper: text, text, start, end: index, depth });
     } else if (char === '-' && next === '-') {
       index = skipLineComment(sql, index);
     } else if (char === '/' && next === '*') {

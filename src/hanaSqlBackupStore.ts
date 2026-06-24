@@ -320,7 +320,7 @@ export function extractRegionFromEndpoint(apiEndpoint: string): string {
     const url = new URL(apiEndpoint);
     const hostname = url.hostname;
     // Pattern: api.cf.<region>.hana.ondemand.com
-    const match = /^api\.cf\.([^.]+(?:\.[^.]+)?)\./i.exec(hostname);
+    const match = /^api\.cf\.([^.]+)\./i.exec(hostname);
     if (match?.[1] !== undefined) return match[1];
     // Fallback: use the third hostname segment
     const parts = hostname.split('.');
