@@ -2,11 +2,41 @@ import { describe, expect, it } from 'vitest';
 import { analyzeMutatingStatement } from './hanaSqlMutationAnalyzer';
 
 describe('hanaSqlMutationAnalyzer', () => {
-  it('should return null for non-mutating statements (SELECT, CREATE, ALTER, INSERT)', () => {
+  it('should return null for non-mutating statements (SELECT, CREATE, ALTER, INSERT, UPSERT)', () => {
     expect(analyzeMutatingStatement('SELECT * FROM "Employees"', 'schema')).toBeNull();
     expect(analyzeMutatingStatement('CREATE TABLE "Temp" ("ID" INT)', 'schema')).toBeNull();
     expect(analyzeMutatingStatement('ALTER TABLE "Users" ADD "Age" INT', 'schema')).toBeNull();
     expect(analyzeMutatingStatement('INSERT INTO "Users" ("ID") VALUES (1)', 'schema')).toBeNull();
+    expect(analyzeMutatingStatement('UPSERT "Users" ("ID") VALUES (1) WITH PRIMARY KEY', 'schema')).toBeNull();
+  });
+
+  describe('UPSERT (Ignored / Non-backupable)', () => {
+    it('should ignore basic UPSERT with VALUES and PRIMARY KEY', () => {
+      const sql = 'UPSERT "Employees" ("ID", "Name") VALUES (1, \'John\') WITH PRIMARY KEY';
+      expect(analyzeMutatingStatement(sql, 'MYSCHEMA')).toBeNull();
+    });
+
+    it('should ignore UPSERT with SELECT subquery', () => {
+      const sql = 'UPSERT "Employees" SELECT "ID", "Name" FROM "StagingEmployees"';
+      expect(analyzeMutatingStatement(sql, 'MYSCHEMA')).toBeNull();
+    });
+
+    it('should ignore UPSERT with SELECT subquery and its own WHERE clause', () => {
+      // The WHERE clause here belongs to the SELECT, but even so, the whole statement is an UPSERT
+      // and thus should not trigger a backup.
+      const sql = 'UPSERT "Employees" SELECT "ID", "Name" FROM "StagingEmployees" WHERE "Status" = \'ACTIVE\'';
+      expect(analyzeMutatingStatement(sql, 'MYSCHEMA')).toBeNull();
+    });
+
+    it('should ignore extreme whitespace and unquoted UPSERT', () => {
+      const sql = '\n \n UPSERT \n \n  Employees   \n \n SELECT \n X FROM \n Y \n WHERE \n Z = 1 \n ';
+      expect(analyzeMutatingStatement(sql, 'MYSCHEMA')).toBeNull();
+    });
+
+    it('should ignore UPSERT with fully qualified table names and subqueries', () => {
+      const sql = 'UPSERT MYSCHEMA."Target" ("A", "B") SELECT "A", "B" FROM OTHERSCHEMA."Source" WHERE "Date" > \'2023\' GROUP BY "A", "B"';
+      expect(analyzeMutatingStatement(sql, 'MYSCHEMA')).toBeNull();
+    });
   });
 
   describe('UPDATE', () => {

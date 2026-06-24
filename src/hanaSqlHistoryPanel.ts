@@ -508,7 +508,7 @@ function buildHistoryPanelJs(): string {
 export function highlightSql(sql: string): string {
   const KEYWORDS = new Set([
     'SELECT','FROM','WHERE','AND','OR','NOT','IN','EXISTS','BETWEEN','LIKE','IS','NULL',
-    'INSERT','INTO','VALUES','UPDATE','SET','DELETE','MERGE','USING','MATCHED','WHEN',
+    'INSERT','INTO','VALUES','UPDATE','SET','DELETE','MERGE','UPSERT','USING','MATCHED','WHEN',
     'CREATE','ALTER','DROP','TABLE','VIEW','INDEX','ON','AS','JOIN','LEFT','RIGHT',
     'INNER','OUTER','FULL','CROSS','GROUP','BY','ORDER','HAVING','LIMIT','OFFSET',
     'DISTINCT','ALL','UNION','EXCEPT','INTERSECT','CASE','THEN','ELSE','END',

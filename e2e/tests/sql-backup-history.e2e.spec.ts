@@ -202,6 +202,19 @@ test.describe('SAP Tools SQL Backup History', () => {
       statementType: 'DELETE', tableName: 'T2', rowCount: 1, folderPath: dir2
     }), 'utf8');
 
+    // Backup 3 (UPSERT Simulation)
+    const ts3 = new Date(tsBase.getTime() - 2000);
+    const id3 = `us10-org-space-app-upsert-table-${ts3.toISOString().replace(/[-:.Z]/g, '').slice(0, 15)}`;
+    const dir3 = path.join(getBackupRoot(), monthFolder, id3);
+    fs.mkdirSync(dir3, { recursive: true });
+    fs.writeFileSync(path.join(dir3, 'query.sql'), 'UPSERT "Users" VALUES (1)', 'utf8');
+    fs.writeFileSync(path.join(dir3, 'backup.csv'), 'Col3\nVal3', 'utf8');
+    fs.writeFileSync(path.join(dir3, 'metadata.json'), JSON.stringify({
+      id: id3, timestamp: ts3.toISOString(), timestampLabel: 'TS3',
+      region: 'r3', org: 'o3', space: 's3', appName: 'a3',
+      statementType: 'UPSERT', tableName: 'T3', rowCount: 1, folderPath: dir3
+    }), 'utf8');
+
     const session = await launchExtensionHost();
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
@@ -212,21 +225,34 @@ test.describe('SAP Tools SQL Backup History', () => {
       const historyFrame = await findSqlHistoryFrame(session.window);
       if (historyFrame === undefined) throw new Error('History frame not found');
 
+      // The month bucket is sorted descending by folderName.
+      // IDs:
+      // id1 = ...update-table-...
+      // id2 = ...delete-table-...
+      // id3 = ...upsert-table-...
+      // Descending order: upsert (T3), update (T1), delete (T2).
+      
       const entries = historyFrame.locator('.entry-item');
-      await expect(entries).toHaveCount(2);
+      await expect(entries).toHaveCount(3);
 
-      // Click second item
-      await entries.nth(1).click();
-      await expect(entries.nth(1)).toHaveClass(/is-selected/);
+      // Click third item (which is T2 / DELETE)
+      await entries.nth(2).click();
+      await expect(entries.nth(2)).toHaveClass(/is-selected/);
       await expect(historyFrame.locator('.detail-title')).toContainText('T2');
       
-      // Copy CSV
+      // Copy CSV for T2
       await session.window.context().grantPermissions(['clipboard-read', 'clipboard-write']);
       await historyFrame.locator('#copy-btn').click();
       await session.window.waitForTimeout(500);
       const clip = await session.window.evaluate(() => navigator.clipboard.readText());
       expect(clip).toContain('Col2\nVal2');
       
+      // Click first item (which is T3 / UPSERT)
+      await entries.nth(0).click();
+      await expect(historyFrame.locator('.detail-title')).toContainText('T3');
+      const sqlBlock = historyFrame.locator('.sql-block');
+      await expect(sqlBlock.locator('.sql-kw').first()).toContainText('UPSERT');
+
       await session.window.waitForTimeout(1000);
       await expect(session.window).toHaveScreenshot('sql-history-interactions-darwin.png', { maxDiffPixelRatio: 0.1 });
     } finally {

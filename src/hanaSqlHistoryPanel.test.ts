@@ -43,6 +43,12 @@ describe('hanaSqlHistoryPanel', () => {
       expect(result).toContain(' &gt; &quot;Bob&quot;');
     });
 
+    it('should highlight UPSERT keyword', () => {
+      const sql = 'UPSERT "Users" VALUES (1)';
+      const result = highlightSql(sql);
+      expect(result).toContain('<span class="sql-kw">UPSERT</span>');
+    });
+
     it('should highlight numbers', () => {
       const sql = 'LIMIT 100 OFFSET 20.5';
       const result = highlightSql(sql);

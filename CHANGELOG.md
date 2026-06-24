@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.172 (stable)
+- Test: Added exhaustive `UPSERT` unit tests demonstrating safe parsing bypass for 5 complex `UPSERT` variations. 
+- UI: Added `UPSERT` keyword highlighting to SQL history panel and verified with new E2E tests.
+
 ## 0.10.171 (stable)
 - Test: Expanded unit and E2E test coverage for SQL Backup History, bringing total unit tests to 750+. Added exhaustive mutation tests for `INSERT` safety, extreme whitespace formatting, multi-line separation, and unquoted identifiers.
 
