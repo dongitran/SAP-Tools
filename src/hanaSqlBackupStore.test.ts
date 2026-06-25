@@ -117,15 +117,22 @@ describe('hanaSqlBackupStore', () => {
 
       // Mock readFile for metadata.json for the 3 entries
       vi.mocked(fs.readFile)
-        .mockResolvedValueOnce(JSON.stringify({ id: '20260624T120000' }))
-        .mockResolvedValueOnce(JSON.stringify({ id: '20260624T100000' }))
-        .mockResolvedValueOnce(JSON.stringify({ id: '20260501T000000' }));
+        .mockResolvedValueOnce(JSON.stringify({
+          id: '20260624T120000',
+          timestamp: '2026-06-24T12:00:00.000Z',
+        }))
+        .mockResolvedValueOnce(JSON.stringify({
+          id: '20260624T100000',
+          timestamp: '2026-06-24T10:00:00.000Z',
+        }))
+        .mockResolvedValueOnce(JSON.stringify({
+          id: '20260501T000000',
+          timestamp: '2026-05-01T00:00:00.000Z',
+        }));
 
       const list = await store.listBackups();
       expect(list).toHaveLength(3);
-      
-      // Sorted by folder name descending (which implies newest first if they share prefixes,
-      // but the exact order depends on the mocked metadata ids)
+
       expect(list[0]?.id).toBe('20260624T120000');
       expect(list[1]?.id).toBe('20260624T100000');
       expect(list[2]?.id).toBe('20260501T000000');
@@ -153,6 +160,32 @@ describe('hanaSqlBackupStore', () => {
       expect(list).toHaveLength(3);
       expect(list[0]?.id).toBe('eu10-org-space-app-update-table-20260624T100000');
       expect(list[2]?.id).toBe('eu10-org-space-app-update-table-20260624T080000');
+    });
+
+    it('should apply the limit after sorting metadata timestamps globally', async () => {
+      const store = new HanaSqlBackupStore();
+      const lexicallyNewerButOlder = 'zz10-org-space-app-update-table-20260624T100000';
+      const lexicallyOlderButNewer = 'aa10-org-space-app-update-table-20260624T120000';
+
+      vi.mocked(fs.readdir).mockResolvedValueOnce(['202606'] as unknown as string[]);
+      vi.mocked(fs.readdir).mockResolvedValueOnce([
+        lexicallyNewerButOlder,
+        lexicallyOlderButNewer,
+      ] as unknown as string[]);
+      vi.mocked(fs.readFile)
+        .mockResolvedValueOnce(JSON.stringify({
+          id: lexicallyNewerButOlder,
+          timestamp: '2026-06-24T10:00:00.000Z',
+        }))
+        .mockResolvedValueOnce(JSON.stringify({
+          id: lexicallyOlderButNewer,
+          timestamp: '2026-06-24T12:00:00.000Z',
+        }));
+
+      const list = await store.listBackups(1);
+
+      expect(list).toHaveLength(1);
+      expect(list[0]?.id).toBe(lexicallyOlderButNewer);
     });
   });
 

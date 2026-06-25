@@ -25,8 +25,8 @@ async function findSqlHistoryFrame(window: Page): Promise<Frame | undefined> {
     .filter((frame) => frame.url().includes('vscode-webview://'));
 
   for (const frame of [...candidateFrames].reverse()) {
-    const layout = frame.locator('.app-layout').first();
-    const visible = await layout.isVisible().catch(() => false);
+    const navigation = frame.getByRole('navigation', { name: 'Backup entries' });
+    const visible = await navigation.isVisible().catch(() => false);
     if (visible) {
       return frame;
     }
@@ -45,7 +45,7 @@ test.describe('SAP Tools SQL Backup History', () => {
     fs.rmSync(getBackupRoot(), { recursive: true, force: true });
   });
 
-  test('Empty state: shows no backups found message', async () => {
+  test('User can see the empty backup history state', async () => {
     fs.mkdirSync(getBackupRoot(), { recursive: true });
     
     const session = await launchExtensionHost();
@@ -53,7 +53,7 @@ test.describe('SAP Tools SQL Backup History', () => {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openSqlTabForDefaultScope(webviewFrame);
 
-      const historyBtn = webviewFrame.locator('[data-action="open-sql-backup-history"]');
+      const historyBtn = webviewFrame.getByRole('button', { name: 'View SQL backup history' });
       await expect(historyBtn).toBeVisible();
       await clickWithFallback(historyBtn);
 
@@ -61,16 +61,14 @@ test.describe('SAP Tools SQL Backup History', () => {
       const historyFrame = await findSqlHistoryFrame(session.window);
       if (historyFrame === undefined) throw new Error('History frame not found');
 
-      await expect(historyFrame.locator('.empty-list')).toContainText('No backups found yet');
-      
-      await session.window.waitForTimeout(1000);
+      await expect(historyFrame.getByText('No backups found yet.', { exact: false })).toBeVisible();
       await expect(session.window).toHaveScreenshot('sql-history-empty-darwin.png', { maxDiffPixelRatio: 0.1 });
     } finally {
       await cleanupExtensionHost(session);
     }
   });
 
-  test('Horizontal scrolling: handles many columns gracefully', async () => {
+  test('User can inspect backups with many columns', async () => {
     const ts = new Date();
     const monthFolder = ts.toISOString().slice(0, 7).replace('-', '');
     const backupId = `us10-org-space-app-update-table-${ts.toISOString().replace(/[-:.Z]/g, '').slice(0, 15)}`;
@@ -93,37 +91,36 @@ test.describe('SAP Tools SQL Backup History', () => {
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openSqlTabForDefaultScope(webviewFrame);
-      await clickWithFallback(webviewFrame.locator('[data-action="open-sql-backup-history"]'));
+      await clickWithFallback(webviewFrame.getByRole('button', { name: 'View SQL backup history' }));
 
       await expect.poll(async () => (await findSqlHistoryFrame(session.window)) !== undefined, { timeout: 20000 }).toBe(true);
       const historyFrame = await findSqlHistoryFrame(session.window);
       if (historyFrame === undefined) throw new Error('History frame not found');
 
       // Click the entry to load detail
-      await historyFrame.locator('.entry-item').first().click();
+      await historyFrame.getByRole('option').first().click();
       
-      // Wait for table to load
-      await expect(historyFrame.locator('.data-table th').last()).toContainText('Col30');
-      
-      await session.window.waitForTimeout(1000);
+      await expect(historyFrame.getByRole('columnheader', { name: 'Col30' })).toBeVisible();
       await expect(session.window).toHaveScreenshot('sql-history-horizontal-scroll-darwin.png', { maxDiffPixelRatio: 0.1 });
     } finally {
       await cleanupExtensionHost(session);
     }
   });
 
-  test('Extreme SQL: renders complex highlighting accurately', async () => {
+  test('User can inspect highlighted SQL mutation variants', async () => {
     const ts = new Date();
     const monthFolder = ts.toISOString().slice(0, 7).replace('-', '');
-    const backupId = `us10-org-space-app-delete-extreme-${ts.toISOString().replace(/[-:.Z]/g, '').slice(0, 15)}`;
-    const backupDir = path.join(getBackupRoot(), monthFolder, backupId);
-    fs.mkdirSync(backupDir, { recursive: true });
-
-    const sql = `
+    const backups = [
+      {
+        id: `us10-org-space-app-update-extreme-${ts.toISOString().replace(/[-:.Z]/g, '').slice(0, 15)}`,
+        type: 'UPDATE',
+        table: 'table1',
+        ts: ts,
+        sql: `
   UPDATE 
   
   
-  table 
+  "table1" 
   
   SET 
      "Level" = 'ERROR',
@@ -138,41 +135,129 @@ test.describe('SAP Tools SQL Backup History', () => {
   -- Inline comment
   AND "Code" IN (
      SELECT "C" FROM "Codes" WHERE "Cat" = 5.5
-  );`;
+  );`
+      },
+      {
+        id: `us10-org-space-app-delete-extreme-${new Date(ts.getTime()-1000).toISOString().replace(/[-:.Z]/g, '').slice(0, 15)}`,
+        type: 'DELETE',
+        table: 'table2',
+        ts: new Date(ts.getTime()-1000),
+        sql: `
+  DELETE 
+  
+  FROM
+  
+  "table2"
+  
+  WHERE "Id" = 1;
+  `
+      },
+      {
+        id: `us10-org-space-app-insert-extreme-${new Date(ts.getTime()-2000).toISOString().replace(/[-:.Z]/g, '').slice(0, 15)}`,
+        type: 'INSERT',
+        table: 'table3',
+        ts: new Date(ts.getTime()-2000),
+        sql: `
+  INSERT 
+  INTO
+  
+  
+  "table3" (
+    "A", "B"
+  ) VALUES (
+    1, 2
+  );
+  `
+      },
+      {
+        id: `us10-org-space-app-upsert-extreme-${new Date(ts.getTime()-3000).toISOString().replace(/[-:.Z]/g, '').slice(0, 15)}`,
+        type: 'UPSERT',
+        table: 'table4',
+        ts: new Date(ts.getTime()-3000),
+        sql: `
+  UPSERT 
+  "table4"
+  
+  VALUES ( 1, 2, 'hello' )
+  
+  
+  WHERE "ID" = 1;
+  `
+      },
+      {
+        id: `us10-org-space-app-merge-extreme-${new Date(ts.getTime()-4000).toISOString().replace(/[-:.Z]/g, '').slice(0, 15)}`,
+        type: 'MERGE',
+        table: 'table5',
+        ts: new Date(ts.getTime()-4000),
+        sql: `
+  MERGE 
+  
+  INTO 
+  "table5" 
+  
+  USING "source"
+  
+  ON "table5"."id" = "source"."id"
+  
+  WHEN MATCHED THEN UPDATE SET "val" = 1;
+  `
+      }
+    ];
 
-    fs.writeFileSync(path.join(backupDir, 'query.sql'), sql, 'utf8');
-    fs.writeFileSync(path.join(backupDir, 'backup.csv'), 'A\n1', 'utf8');
-    fs.writeFileSync(path.join(backupDir, 'metadata.json'), JSON.stringify({
-      id: backupId, timestamp: ts.toISOString(), timestampLabel: '2026-06-24 11:00 UTC',
-      region: 'us10', org: 'org', space: 'space', appName: 'app',
-      statementType: 'UPDATE', tableName: 'table', rowCount: 1, folderPath: backupDir
-    }), 'utf8');
+    for (const b of backups) {
+      const backupDir = path.join(getBackupRoot(), monthFolder, b.id);
+      fs.mkdirSync(backupDir, { recursive: true });
+      fs.writeFileSync(path.join(backupDir, 'query.sql'), b.sql, 'utf8');
+      fs.writeFileSync(path.join(backupDir, 'backup.csv'), 'A\n1', 'utf8');
+      fs.writeFileSync(path.join(backupDir, 'metadata.json'), JSON.stringify({
+        id: b.id, timestamp: b.ts.toISOString(), timestampLabel: '2026-06-24 11:00 UTC',
+        region: 'us10', org: 'org', space: 'space', appName: 'app',
+        statementType: b.type, tableName: b.table, rowCount: 1, folderPath: backupDir
+      }), 'utf8');
+    }
 
     const session = await launchExtensionHost();
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openSqlTabForDefaultScope(webviewFrame);
-      await clickWithFallback(webviewFrame.locator('[data-action="open-sql-backup-history"]'));
+      await clickWithFallback(webviewFrame.getByRole('button', { name: 'View SQL backup history' }));
 
       await expect.poll(async () => (await findSqlHistoryFrame(session.window)) !== undefined, { timeout: 20000 }).toBe(true);
       const historyFrame = await findSqlHistoryFrame(session.window);
       if (historyFrame === undefined) throw new Error('History frame not found');
 
-      await historyFrame.locator('.entry-item').first().click();
+      // Click each item one by one and assert to test all SQL variation syntaxes
+      const items = historyFrame.getByRole('option');
+      await expect(items).toHaveCount(5);
       
-      // Verify highlights exist
-      const sqlBlock = historyFrame.locator('.sql-block');
-      await expect(sqlBlock.locator('.sql-kw').first()).toContainText('UPDATE');
-      await expect(sqlBlock.locator('.sql-cmt').first()).toContainText('Block comment');
+      // Update is the newest (first)
+      await items.nth(0).click();
+      await expect(historyFrame.getByText('UPDATE', { exact: true }).last()).toBeVisible();
+      await expect(historyFrame.getByText('Block comment', { exact: false })).toBeVisible();
       
-      await session.window.waitForTimeout(1000);
+      // Delete
+      await items.nth(1).click();
+      await expect(historyFrame.getByText('DELETE', { exact: true }).last()).toBeVisible();
+
+      // Insert
+      await items.nth(2).click();
+      await expect(historyFrame.getByText('INSERT', { exact: true }).last()).toBeVisible();
+
+      // Upsert
+      await items.nth(3).click();
+      await expect(historyFrame.getByText('UPSERT', { exact: true }).last()).toBeVisible();
+
+      // Merge
+      await items.nth(4).click();
+      await expect(historyFrame.getByText('MERGE', { exact: true }).last()).toBeVisible();
+
       await expect(session.window).toHaveScreenshot('sql-history-extreme-sql-darwin.png', { maxDiffPixelRatio: 0.1 });
     } finally {
       await cleanupExtensionHost(session);
     }
   });
 
-  test('Interactions: switches between items and copies CSV', async () => {
+  test('User can switch backup entries and copy CSV data', async () => {
     const tsBase = new Date();
     const monthFolder = tsBase.toISOString().slice(0, 7).replace('-', '');
     
@@ -215,41 +300,37 @@ test.describe('SAP Tools SQL Backup History', () => {
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openSqlTabForDefaultScope(webviewFrame);
-      await clickWithFallback(webviewFrame.locator('[data-action="open-sql-backup-history"]'));
+      await clickWithFallback(webviewFrame.getByRole('button', { name: 'View SQL backup history' }));
 
       await expect.poll(async () => (await findSqlHistoryFrame(session.window)) !== undefined, { timeout: 20000 }).toBe(true);
       const historyFrame = await findSqlHistoryFrame(session.window);
       if (historyFrame === undefined) throw new Error('History frame not found');
 
-      // The month bucket is sorted descending by folderName.
-      // IDs:
-      // id1 = ...update-table-...
-      // id2 = ...delete-table-...
-      // id3 = ...upsert-table-...
-      // Descending order: upsert (T3), update (T1), delete (T2).
+      // The entries are now globally sorted by timestamp descending.
+      // ts1 (UPDATE, T1) is newest -> index 0
+      // ts2 (DELETE, T2) is next   -> index 1
+      // ts3 (UPSERT, T3) is oldest -> index 2
       
-      const entries = historyFrame.locator('.entry-item');
+      const entries = historyFrame.getByRole('option');
       await expect(entries).toHaveCount(3);
 
-      // Click third item (which is T2 / DELETE)
-      await entries.nth(2).click();
-      await expect(entries.nth(2)).toHaveClass(/is-selected/);
-      await expect(historyFrame.locator('.detail-title')).toContainText('T2');
+      // Click middle item (which is T2 / DELETE)
+      await entries.nth(1).click();
+      await expect(entries.nth(1)).toHaveAttribute('aria-selected', 'true');
+      await expect(historyFrame.getByText('T2', { exact: true })).toBeVisible();
       
       // Copy CSV for T2
       await session.window.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-      await historyFrame.locator('#copy-btn').click();
-      await session.window.waitForTimeout(500);
-      const clip = await session.window.evaluate(() => navigator.clipboard.readText());
-      expect(clip).toContain('Col2\nVal2');
+      await historyFrame.getByRole('button', { name: 'Copy CSV' }).click();
+      await expect.poll(
+        async () => session.window.evaluate(() => navigator.clipboard.readText())
+      ).toContain('Col2\nVal2');
       
-      // Click first item (which is T3 / UPSERT)
-      await entries.nth(0).click();
-      await expect(historyFrame.locator('.detail-title')).toContainText('T3');
-      const sqlBlock = historyFrame.locator('.sql-block');
-      await expect(sqlBlock.locator('.sql-kw').first()).toContainText('UPSERT');
+      // Click last item (which is T3 / UPSERT)
+      await entries.nth(2).click();
+      await expect(historyFrame.getByText('T3', { exact: true })).toBeVisible();
+      await expect(historyFrame.getByText('UPSERT', { exact: true }).last()).toBeVisible();
 
-      await session.window.waitForTimeout(1000);
       await expect(session.window).toHaveScreenshot('sql-history-interactions-darwin.png', { maxDiffPixelRatio: 0.1 });
     } finally {
       await cleanupExtensionHost(session);

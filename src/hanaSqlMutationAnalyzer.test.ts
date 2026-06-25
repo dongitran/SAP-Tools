@@ -163,9 +163,20 @@ describe('hanaSqlMutationAnalyzer', () => {
     });
 
     it('should handle missing table name in analyzeSqlMutation directly', () => {
-      const sql = 'UPDATE ';
+      const sql = 'UPDATE "" SET x = 1';
       const result = analyzeMutatingStatement(sql, 'SCH');
-      expect(result).toBeNull();
+      expect(result?.canBackup).toBe(false);
+      expect(result?.tableName).toBe('""');
+    });
+
+    it('should not build backup SQL for empty quoted table identifiers with filters', () => {
+      const updateResult = analyzeMutatingStatement('UPDATE "" SET x = 1 WHERE ID = 1', 'SCH');
+      const deleteResult = analyzeMutatingStatement('DELETE FROM "" WHERE ID = 1', 'SCH');
+
+      expect(updateResult?.canBackup).toBe(false);
+      expect(updateResult?.backupSelectSql).toBeNull();
+      expect(deleteResult?.canBackup).toBe(false);
+      expect(deleteResult?.backupSelectSql).toBeNull();
     });
 
     it('should gracefully handle unclosed single quotes at EOF', () => {

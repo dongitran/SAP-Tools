@@ -1,9 +1,11 @@
 # SAP Tools Extension Changelog
 
-## 0.10.173 (stable)
+## 0.10.174 (stable)
 - Audit: Successfully passed comprehensive verification loop.
 - Test: Expanded unit tests for core SQL utilities (`hanaSqlLimitGuard`, `hanaSqlMutationAnalyzer`) achieving 100% core coverage. Implemented EOF safety edge cases for unmatched quotes and missing block comments.
 - Test: Added complex fallback parsing and filesystem simulated-failure tests for `hanaSqlBackupStore`. Enhanced E2E to successfully render `metadata.json`-less historical records.
+- Fix: SQL backup history now applies the result limit after globally sorting metadata timestamps, so newer backups are not skipped when folder names and metadata order differ.
+- Test: Added workbench-level SQL backup coverage for pre-mutation CSV persistence, unsafe no-WHERE skips, and best-effort backup failures.
 
 ## 0.10.172 (stable)
 - Test: Added exhaustive `UPSERT` unit tests demonstrating safe parsing bypass for 5 complex `UPSERT` variations. 

@@ -148,5 +148,51 @@ describe('applyDefaultHanaSelectLimit', () => {
         sql: sql + ' LIMIT ' + HANA_SQL_DEFAULT_SELECT_LIMIT,
       });
     });
+
+    test('should handle missing block comments gracefully without hanging', () => {
+      const sql = `SELECT * FROM T1 /* block comment unclosed
+WHERE ID = 1`;
+      expect(applyDefaultHanaSelectLimit(sql, 20)).toEqual({
+        applied: true,
+        limit: 20,
+        sql: sql + ' LIMIT 20',
+      });
+    });
+
+    test('should handle unclosed single quotes gracefully without hanging', () => {
+      const sql = `SELECT * FROM T1 WHERE NAME = 'unclosed string`;
+      expect(applyDefaultHanaSelectLimit(sql, 20)).toEqual({
+        applied: true,
+        limit: 20,
+        sql: sql + ' LIMIT 20',
+      });
+    });
+
+    test('should handle unclosed double quotes gracefully without hanging', () => {
+      const sql = `SELECT * FROM "unclosed_identifier`;
+      expect(applyDefaultHanaSelectLimit(sql, 20)).toEqual({
+        applied: true,
+        limit: 20,
+        sql: sql + ' LIMIT 20',
+      });
+    });
+
+    test('should parse escaped single quotes correctly', () => {
+      const sql = `SELECT * FROM T1 WHERE NAME = 'escaped '' quote'`;
+      expect(applyDefaultHanaSelectLimit(sql, 20)).toEqual({
+        applied: true,
+        limit: 20,
+        sql: sql + ' LIMIT 20',
+      });
+    });
+
+    test('should parse escaped double quotes correctly', () => {
+      const sql = `SELECT * FROM "escaped "" table"`;
+      expect(applyDefaultHanaSelectLimit(sql, 20)).toEqual({
+        applied: true,
+        limit: 20,
+        sql: sql + ' LIMIT 20',
+      });
+    });
   });
 });

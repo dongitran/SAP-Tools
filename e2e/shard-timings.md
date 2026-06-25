@@ -9,12 +9,12 @@ The CI workflow reads this table through `scripts/run-e2e-lane.mjs`. When tests 
 | Lane | Expected seconds | Test count |
 | --- | ---: | ---: |
 | 01 | 84.1 | 3 |
-| 02 | 84.0 | 3 |
+| 02 | 88.8 | 4 |
 | 03 | 84.0 | 3 |
-| 04 | 82.6 | 9 |
-| 05 | 82.0 | 11 |
+| 04 | 87.1 | 10 |
+| 05 | 87.6 | 12 |
 | 06 | 86.3 | 12 |
-| 07 | 83.4 | 12 |
+| 07 | 88.3 | 13 |
 | 08 | 85.7 | 12 |
 | 09 | 85.4 | 12 |
 | 10 | 84.8 | 12 |
@@ -31,6 +31,7 @@ The CI workflow reads this table through `scripts/run-e2e-lane.mjs`. When tests 
 | 02 | 72.0 | tests/region-selector-ui.e2e.spec.ts:975 | User can keep confirmed scope after closing and reopening extension host |
 | 02 | 6.1 | tests/cf-logs-panel.e2e.spec.ts:1661 | User can use full-height CF logs table after opening and closing settings |
 | 02 | 5.9 | tests/region-selector-ui.e2e.spec.ts:1972 | User can see interrupted sync status after stale cache sync recovery on launch |
+| 02 | 4.8 | tests/sql-backup-history.e2e.spec.ts:260 | User can switch backup entries and copy CSV data |
 | 03 | 72.0 | tests/region-selector-ui.e2e.spec.ts:1676 | User can reopen extension and see mapped services in Apps export table |
 | 03 | 6.1 | tests/region-selector-ui.e2e.spec.ts:193 | User can see code-first region labels without cloud provider suffix |
 | 03 | 5.9 | tests/region-selector-ui.e2e.spec.ts:2011 | User can start from Quick Org Search when synced topology has orgs |
@@ -43,6 +44,7 @@ The CI workflow reads this table through `scripts/run-e2e-lane.mjs`. When tests 
 | 04 | 6.3 | tests/region-selector-ui.e2e.spec.ts:1292 | User can see smooth organization and space hover without top border clipping |
 | 04 | 6.2 | tests/region-selector-ui.e2e.spec.ts:2039 | User can use Custom tab without topology rows changing manual selection |
 | 04 | 5.9 | tests/login-gate.e2e.spec.ts:72 | User can see login validation for invalid email |
+| 04 | 4.5 | tests/sql-backup-history.e2e.spec.ts:71 | User can inspect backups with many columns |
 | 05 | 12.3 | tests/sql-workbench.e2e.spec.ts:257 | User can review SQL app list with initial tables panel state |
 | 05 | 7.9 | tests/sql-workbench.e2e.spec.ts:718 | User can run manual SQL with uppercase app table references in selected schema |
 | 05 | 7.5 | tests/cf-logs-panel.e2e.spec.ts:673 | User can inspect dominant endpoint events with compact HTTP details |
@@ -54,6 +56,7 @@ The CI workflow reads this table through `scripts/run-e2e-lane.mjs`. When tests 
 | 05 | 6.3 | tests/region-selector-ui.e2e.spec.ts:803 | User can complete selection flow and reset via Change buttons only |
 | 05 | 6.2 | tests/region-selector-ui.e2e.spec.ts:1934 | User can open settings, update sync interval, and return to selection screen |
 | 05 | 7.5 | tests/apis-tab.e2e.spec.ts:147 | User can wait for API discovery without demo endpoints and keep scroll after selecting an endpoint |
+| 05 | 5.6 | tests/sql-backup-history.e2e.spec.ts:48 | User can see the empty backup history state |
 | 06 | 11.9 | tests/sql-workbench.e2e.spec.ts:1015 | User can search selected app tables and run a quick SELECT |
 | 06 | 8.0 | tests/sql-workbench.e2e.spec.ts:1605 | User can select a lower SQL app while preserving the app list position |
 | 06 | 7.5 | tests/cf-logs-panel.e2e.spec.ts:364 | User can inspect and copy raw JSON metadata from CF log messages |
@@ -78,6 +81,7 @@ The CI workflow reads this table through `scripts/run-e2e-lane.mjs`. When tests 
 | 07 | 6.2 | tests/region-selector-ui.e2e.spec.ts:743 | User can see app catalog failure state for an unreachable selected space |
 | 07 | 6.0 | tests/region-selector-ui.e2e.spec.ts:472 | User can load fourteen organizations when selecting br-10 from local fixtures |
 | 07 | 5.7 | tests/region-selector-ui.e2e.spec.ts:2162 | User can keep Quick Org Search input focus while topology refreshes |
+| 07 | 4.9 | tests/sql-backup-history.e2e.spec.ts:110 | User can inspect highlighted SQL mutation variants |
 | 08 | 11.0 | tests/region-selector-ui.e2e.spec.ts:1627 | User can reopen extension host and keep mapped services without selecting root folder again |
 | 08 | 8.2 | tests/sql-workbench.e2e.spec.ts:762 | User can save an app SQL editor and run a mutating statement to a status result |
 | 08 | 7.6 | tests/workspace-tabs.e2e.spec.ts:368 | User can open compact Settings from selection and workspace headers |

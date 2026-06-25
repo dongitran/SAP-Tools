@@ -143,8 +143,12 @@ function buildAnalysis(
   whereClause: string | null,
   schema: string
 ): MutationAnalysis {
-  if (tableName.length === 0) {
-    return { canBackup: false, statementType, tableName: '', whereClause: null, backupSelectSql: null };
+  const trimmedTableName = tableName.trim();
+  const hasEmptyQuotedIdentifier = trimmedTableName
+    .split('.')
+    .some((segment) => segment.trim() === '""');
+  if (trimmedTableName.length === 0 || hasEmptyQuotedIdentifier) {
+    return { canBackup: false, statementType, tableName, whereClause: null, backupSelectSql: null };
   }
 
   if (whereClause === null || whereClause.trim().length === 0) {

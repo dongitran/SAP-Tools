@@ -43,10 +43,15 @@ describe('hanaSqlHistoryPanel', () => {
       expect(result).toContain(' &gt; &quot;Bob&quot;');
     });
 
-    it('should highlight UPSERT keyword', () => {
-      const sql = 'UPSERT "Users" VALUES (1)';
+    it.each([
+      ['UPDATE', 'UPDATE "Users" SET "Name" = \'Ada\''],
+      ['DELETE', 'DELETE FROM "Users"'],
+      ['INSERT', 'INSERT INTO "Users" VALUES (1)'],
+      ['UPSERT', 'UPSERT "Users" VALUES (1)'],
+      ['MERGE', 'MERGE INTO "Users" USING "Source" ON "Users"."Id" = "Source"."Id"'],
+    ])('should highlight %s mutation keyword', (keyword, sql) => {
       const result = highlightSql(sql);
-      expect(result).toContain('<span class="sql-kw">UPSERT</span>');
+      expect(result).toContain(`<span class="sql-kw">${keyword}</span>`);
     });
 
     it('should highlight numbers', () => {

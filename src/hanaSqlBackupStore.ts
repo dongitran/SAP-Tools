@@ -147,7 +147,6 @@ export class HanaSqlBackupStore {
     const entries: HanaSqlBackupEntry[] = [];
 
     for (const bucket of monthBuckets) {
-      if (entries.length >= limit) break;
       if (!/^\d{6}$/.test(bucket)) continue;
 
       const bucketPath = join(SAPTOOLS_BACKUP_ROOT, bucket);
@@ -162,7 +161,6 @@ export class HanaSqlBackupStore {
       folderNames.sort((a, b) => b.localeCompare(a));
 
       for (const folderName of folderNames) {
-        if (entries.length >= limit) break;
         const entryFolderPath = join(bucketPath, folderName);
         let entry: HanaSqlBackupEntry | null = null;
         try {
@@ -178,7 +176,18 @@ export class HanaSqlBackupStore {
       }
     }
 
-    return entries;
+    // Metadata is canonical because legacy or manually moved folders may not sort by creation time.
+    entries.sort((a, b) => {
+      const timeA = Date.parse(a.timestamp);
+      const timeB = Date.parse(b.timestamp);
+      const validA = Number.isFinite(timeA);
+      const validB = Number.isFinite(timeB);
+      if (validA && validB && timeA !== timeB) return timeB - timeA;
+      if (validA !== validB) return validA ? -1 : 1;
+      return b.id.localeCompare(a.id);
+    });
+
+    return entries.slice(0, limit);
   }
 }
 

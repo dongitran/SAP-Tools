@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { HanaSqlScopeSession } from './hanaSqlConnectionResolver';
-import type { HanaConnection, HanaQueryResult } from './hanaSqlService';
+import type { HanaSqlBackupStore } from './hanaSqlBackupStore';
+import type {
+  HanaConnection,
+  HanaQueryResult,
+  HanaSqlStatementKind,
+} from './hanaSqlService';
 import type {
   HanaTableDisplayEntry,
   RenderSqlResultOptions,
@@ -152,11 +157,53 @@ interface HanaSqlWorkbenchQuickSelectTestAccess extends HanaSqlWorkbenchTestAcce
   ): Promise<HanaQueryResult>;
 }
 
+interface HanaSqlWorkbenchBackupTestAccess extends HanaSqlWorkbenchTestAccess {
+  backupSingleStatement(
+    context: HanaSqlAppContextForTest,
+    statement: {
+      readonly executionSql: string;
+      readonly statementKind: HanaSqlStatementKind;
+      readonly tableName: string;
+    }
+  ): Promise<void>;
+  withTunnelFallback(
+    context: HanaSqlAppContextForTest,
+    run: (connection: HanaConnection) => Promise<HanaQueryResult>
+  ): Promise<HanaQueryResult>;
+}
+
 function createWorkbench(): HanaSqlWorkbench {
   const outputChannel = {
     appendLine: vi.fn(),
   };
   return new HanaSqlWorkbench(outputChannel);
+}
+
+function createBackupTestHarness(): {
+  readonly access: HanaSqlWorkbenchBackupTestAccess;
+  readonly context: HanaSqlAppContextForTest;
+  readonly saveBackup: ReturnType<typeof vi.fn>;
+} {
+  const saveBackup = vi.fn(async (): Promise<null> => null);
+  const workbench = new HanaSqlWorkbench(
+    { appendLine: vi.fn() } as unknown as ConstructorParameters<typeof HanaSqlWorkbench>[0],
+    null,
+    { saveBackup } as unknown as HanaSqlBackupStore
+  );
+  const access = workbench as unknown as HanaSqlWorkbenchBackupTestAccess;
+  const context = access.ensureAppContext({
+    appId: 'finance-uat-api',
+    appName: 'finance-uat-api',
+    session: createScopeSession(),
+  });
+  context.connection = {
+    host: 'hana.example.test',
+    port: 30015,
+    user: 'test-user',
+    password: 'test-password',
+  };
+  context.schema = 'TEST_SCHEMA';
+  return { access, context, saveBackup };
 }
 
 function createScopeSession(overrides: Partial<HanaSqlScopeSession> = {}): HanaSqlScopeSession {
@@ -212,6 +259,66 @@ describe('HanaSqlWorkbench shortcut notification', () => {
       })
     ).rejects.toThrow('Open failed');
     expect(showHanaSqlShortcutNotificationMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('HanaSqlWorkbench mutation backups', () => {
+  test('saves the pre-mutation resultset as CSV for a filtered update', async () => {
+    const { access, context, saveBackup } = createBackupTestHarness();
+    access.withTunnelFallback = vi.fn(async (): Promise<HanaQueryResult> => ({
+      kind: 'resultset',
+      columns: ['ID', 'NOTE'],
+      rows: [['7', 'ready, now']],
+      rowCount: 1,
+      elapsedMs: 4,
+    }));
+
+    await access.backupSingleStatement(context, {
+      executionSql: 'UPDATE "Orders" SET "Status" = \'DONE\' WHERE "Id" = 7',
+      statementKind: 'mutating',
+      tableName: 'Orders',
+    });
+
+    expect(access.withTunnelFallback).toHaveBeenCalledTimes(1);
+    expect(saveBackup).toHaveBeenCalledWith(expect.objectContaining({
+      session: context.session,
+      appName: 'finance-uat-api',
+      statementType: 'UPDATE',
+      tableName: '"Orders"',
+      originalSql: 'UPDATE "Orders" SET "Status" = \'DONE\' WHERE "Id" = 7',
+      csvContent: 'ID,NOTE\n7,"ready, now"',
+      rowCount: 1,
+      timestamp: expect.any(Date),
+    }));
+  });
+
+  test('skips pre-mutation queries when an update has no where clause', async () => {
+    const { access, context, saveBackup } = createBackupTestHarness();
+    access.withTunnelFallback = vi.fn();
+
+    await access.backupSingleStatement(context, {
+      executionSql: 'UPDATE "Orders" SET "Status" = \'DONE\'',
+      statementKind: 'mutating',
+      tableName: 'Orders',
+    });
+
+    expect(access.withTunnelFallback).not.toHaveBeenCalled();
+    expect(saveBackup).not.toHaveBeenCalled();
+  });
+
+  test('keeps mutation execution unblocked when the backup query fails', async () => {
+    const { access, context, saveBackup } = createBackupTestHarness();
+    access.withTunnelFallback = vi.fn(async (): Promise<HanaQueryResult> => {
+      throw new Error('Backup query failed');
+    });
+
+    await expect(access.backupSingleStatement(context, {
+      executionSql: 'DELETE FROM "Orders" WHERE "Id" = 7',
+      statementKind: 'mutating',
+      tableName: 'Orders',
+    })).resolves.toBeUndefined();
+
+    expect(saveBackup).not.toHaveBeenCalled();
   });
 });
 
