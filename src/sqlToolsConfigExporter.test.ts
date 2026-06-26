@@ -316,6 +316,59 @@ describe('exportSqlToolsConfig', () => {
     expect(result.connection.name).toBe('finance-uat-api (us10)');
   });
 
+  it('re-authenticates and retries twice when fetching default-env fails with an auth error', async () => {
+    existsSyncMock.mockReturnValue(false);
+    fetchDefaultEnvJsonFromTargetMock
+      .mockRejectedValueOnce(new Error('Failed to fetch CF environment. (cli: not authorized)'))
+      .mockRejectedValueOnce(new Error('Failed to fetch CF environment. (cli: 401 unauthorized)'))
+      .mockResolvedValueOnce(`${JSON.stringify(VALID_DEFAULT_ENV, null, 2)}\n`);
+
+    const result = await exportSqlToolsConfig(BASE_EXPORT_OPTIONS);
+
+    expect(prepareCfCliSessionMock).toHaveBeenNthCalledWith(1, {
+      apiEndpoint: BASE_EXPORT_OPTIONS.session.apiEndpoint,
+      email: BASE_EXPORT_OPTIONS.session.email,
+      password: BASE_EXPORT_OPTIONS.session.password,
+      orgName: BASE_EXPORT_OPTIONS.session.orgName,
+      spaceName: BASE_EXPORT_OPTIONS.session.spaceName,
+      cfHomeDir: BASE_EXPORT_OPTIONS.session.cfHomeDir,
+    });
+    expect(prepareCfCliSessionMock).toHaveBeenNthCalledWith(2, {
+      apiEndpoint: BASE_EXPORT_OPTIONS.session.apiEndpoint,
+      email: BASE_EXPORT_OPTIONS.session.email,
+      password: BASE_EXPORT_OPTIONS.session.password,
+      orgName: BASE_EXPORT_OPTIONS.session.orgName,
+      spaceName: BASE_EXPORT_OPTIONS.session.spaceName,
+      cfHomeDir: BASE_EXPORT_OPTIONS.session.cfHomeDir,
+      forceReauth: true,
+    });
+    expect(prepareCfCliSessionMock).toHaveBeenNthCalledWith(3, {
+      apiEndpoint: BASE_EXPORT_OPTIONS.session.apiEndpoint,
+      email: BASE_EXPORT_OPTIONS.session.email,
+      password: BASE_EXPORT_OPTIONS.session.password,
+      orgName: BASE_EXPORT_OPTIONS.session.orgName,
+      spaceName: BASE_EXPORT_OPTIONS.session.spaceName,
+      cfHomeDir: BASE_EXPORT_OPTIONS.session.cfHomeDir,
+      forceReauth: true,
+    });
+    expect(fetchDefaultEnvJsonFromTargetMock).toHaveBeenCalledTimes(3);
+    expect(writeFileMock).toHaveBeenCalledTimes(1);
+    expect(result.connection.name).toBe('finance-uat-api (us10)');
+  });
+
+  it('does not retry SQLTools export when default-env parsing fails', async () => {
+    existsSyncMock.mockReturnValue(false);
+    fetchDefaultEnvJsonFromTargetMock.mockResolvedValueOnce('not-json');
+
+    await expect(exportSqlToolsConfig(BASE_EXPORT_OPTIONS)).rejects.toThrow(
+      /Failed to parse default-env\.json/
+    );
+
+    expect(prepareCfCliSessionMock).toHaveBeenCalledTimes(1);
+    expect(fetchDefaultEnvJsonFromTargetMock).toHaveBeenCalledTimes(1);
+    expect(writeFileMock).not.toHaveBeenCalled();
+  });
+
   it('merges into existing settings.json preserving other keys', async () => {
     existsSyncMock.mockReturnValue(true);
     const existingSettings = JSON.stringify({

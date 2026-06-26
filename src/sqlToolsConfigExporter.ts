@@ -3,10 +3,8 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import {
-  fetchDefaultEnvJsonFromTarget,
-  prepareCfCliSession,
-} from './cfClient';
+import { fetchDefaultEnvJsonFromTarget } from './cfClient';
+import { runWithCfCliAuthRecovery } from './cfCliAuthRecovery';
 import type { ServiceExportSession } from './serviceArtifactExporter';
 
 // ── Fixed SQLTools constants (mirrors 01-saptools/src/vscode.ts) ────────────
@@ -240,15 +238,14 @@ function isSqlToolsConnectionEntry(value: unknown): value is SqlToolsConnectionE
 export async function exportSqlToolsConfig(
   options: SqlToolsConfigExportOptions
 ): Promise<SqlToolsConfigExportResult> {
-  await prepareCfCliSession({
-    apiEndpoint: options.session.apiEndpoint,
-    email: options.session.email,
-    password: options.session.password,
-    orgName: options.session.orgName,
-    spaceName: options.session.spaceName,
-    cfHomeDir: options.session.cfHomeDir,
-  });
+  return runWithCfCliAuthRecovery(options.session, () =>
+    exportSqlToolsConfigAttempt(options)
+  );
+}
 
+async function exportSqlToolsConfigAttempt(
+  options: SqlToolsConfigExportOptions
+): Promise<SqlToolsConfigExportResult> {
   const defaultEnvJson = await fetchDefaultEnvJsonFromTarget({
     appName: options.appName,
     cfHomeDir: options.session.cfHomeDir,

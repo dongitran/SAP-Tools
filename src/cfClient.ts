@@ -5,6 +5,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { parseCfAppsOutput } from './cfAppsParser';
+import { isRecoverableCfCliAuthError } from './cfCliAuthError';
 import { logCfCommand } from './cfCommandLogger';
 export { parseCfAppsOutput } from './cfAppsParser';
 export { configureCfCommandLogger } from './cfCommandLogger';
@@ -54,6 +55,7 @@ interface CfCliTargetParams {
   readonly orgName: string;
   readonly spaceName: string;
   readonly cfHomeDir?: string;
+  readonly forceReauth?: boolean;
 }
 
 export interface CfLoginInfo {
@@ -309,6 +311,7 @@ async function runCfCliSessionPreparation(params: CfCliTargetParams): Promise<vo
 
   const cached = preparedCfSessions.get(sessionKey);
   const canReuseSession =
+    params.forceReauth !== true &&
     cached?.apiEndpoint === params.apiEndpoint &&
     cached.email === params.email &&
     Date.now() - cached.preparedAt < CF_SESSION_REUSE_WINDOW_MS;
@@ -467,6 +470,9 @@ export async function fetchPnpmLockFromTarget(params: {
       }
       errors.push(`CF SSH command returned empty content: ${command}`);
     } catch (error) {
+      if (isRecoverableCfCliAuthError(error)) {
+        throw error;
+      }
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown CF SSH command error.';
       errors.push(errorMessage);
@@ -505,7 +511,10 @@ export async function fetchRemoteTextFileFromTarget(params: {
       if (content !== null) {
         return content;
       }
-    } catch {
+    } catch (error) {
+      if (isRecoverableCfCliAuthError(error)) {
+        throw error;
+      }
       // Missing optional files are expected for some CAP apps; try the next location.
     }
   }

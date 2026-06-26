@@ -296,6 +296,27 @@ describe('prepareCfCliSession', () => {
 
     expect(order).toEqual(['api', 'auth', 'target', 'api', 'auth', 'target']);
   });
+
+  it('does a full preparation again when forced even inside the reuse window', async () => {
+    const order: string[] = [];
+    execFileAsyncMock.mockImplementation((_cmd: string, args: string[]) => {
+      order.push(args[0] ?? '');
+      return Promise.resolve({ stdout: '' });
+    });
+    const params = {
+      apiEndpoint: 'https://api.cf.us10.hana.ondemand.com',
+      email: 'test@example.com',
+      password: 'super-secret-password',
+      orgName: 'finance-services-prod',
+      spaceName: 'uat',
+      cfHomeDir: '/tmp/sap-tools-cf-home-force',
+    };
+
+    await prepareCfCliSession(params);
+    await prepareCfCliSession({ ...params, forceReauth: true });
+
+    expect(order).toEqual(['api', 'auth', 'target', 'api', 'auth', 'target']);
+  });
 });
 
 describe('fetchStartedAppsViaCfCli', () => {
@@ -761,6 +782,18 @@ VCAP_SERVICES: {
     );
   });
 
+  it('throws recoverable auth errors without trying pnpm-lock fallback paths', async () => {
+    execFileAsyncMock.mockRejectedValueOnce({ stderr: '401 Unauthorized' });
+
+    await expect(
+      fetchPnpmLockFromTarget({
+        appName: 'finance-uat-api',
+      })
+    ).rejects.toThrow('401 Unauthorized');
+
+    expect(execFileAsyncMock).toHaveBeenCalledTimes(1);
+  });
+
   it('tries the configured remote root before the standard locations', async () => {
     execFileAsyncMock.mockResolvedValueOnce({ stdout: 'lockfileVersion: 9.0\n' });
 
@@ -927,6 +960,19 @@ describe('fetchRemoteTextFileFromTarget', () => {
       ],
       expect.any(Object)
     );
+  });
+
+  it('throws recoverable auth errors instead of treating them as missing optional files', async () => {
+    execFileAsyncMock.mockRejectedValueOnce({ stderr: 'Not logged in. Use cf login.' });
+
+    await expect(
+      fetchRemoteTextFileFromTarget({
+        appName: 'finance-uat-api',
+        fileName: '.npmrc',
+      })
+    ).rejects.toThrow('Not logged in');
+
+    expect(execFileAsyncMock).toHaveBeenCalledTimes(1);
   });
 });
 

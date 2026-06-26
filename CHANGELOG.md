@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.177 (stable)
+- Fix: Apps artifact export now recovers from stale Cloud Foundry CLI auth/target state in SAP Tools' isolated `CF_HOME`, re-authenticating and retrying transient `cf ssh` authorization failures before surfacing the final error.
+- Test: Added focused coverage for CF CLI auth-failure detection, retry recovery, and export session preparation.
+
 ## 0.10.175 (stable)
 - Fix: Single-package builds in the Apps Packages list now build the full local dependency closure in dependency order, instead of rebuilding only the clicked package.
 - Fix: Local package installs now refresh broken pnpm lockfile entries before build, so downstream packages resolve the active dist-tag instead of a stale tarball URL.

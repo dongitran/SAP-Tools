@@ -245,6 +245,113 @@ describe('exportServiceArtifacts', () => {
     });
   });
 
+  it('re-authenticates and retries twice when CF SSH fails with an auth error', async () => {
+    fetchPnpmLockFromTargetMock
+      .mockRejectedValueOnce(new Error('Failed to fetch pnpm-lock.yaml. (cli: not authorized)'))
+      .mockRejectedValueOnce(new Error('Failed to fetch pnpm-lock.yaml. (cli: 401 unauthorized)'))
+      .mockResolvedValueOnce('lockfileVersion: 9.0\n');
+    fetchRemoteTextFileFromTargetMock.mockResolvedValue(null);
+
+    const result = await exportServiceArtifacts({
+      ...baseOptions,
+      includeDefaultEnv: false,
+      includePnpmLock: true,
+    });
+
+    expect(prepareCfCliSessionMock).toHaveBeenNthCalledWith(1, {
+      apiEndpoint: baseOptions.session.apiEndpoint,
+      email: baseOptions.session.email,
+      password: baseOptions.session.password,
+      orgName: baseOptions.session.orgName,
+      spaceName: baseOptions.session.spaceName,
+      cfHomeDir: baseOptions.session.cfHomeDir,
+    });
+    expect(prepareCfCliSessionMock).toHaveBeenNthCalledWith(2, {
+      apiEndpoint: baseOptions.session.apiEndpoint,
+      email: baseOptions.session.email,
+      password: baseOptions.session.password,
+      orgName: baseOptions.session.orgName,
+      spaceName: baseOptions.session.spaceName,
+      cfHomeDir: baseOptions.session.cfHomeDir,
+      forceReauth: true,
+    });
+    expect(prepareCfCliSessionMock).toHaveBeenNthCalledWith(3, {
+      apiEndpoint: baseOptions.session.apiEndpoint,
+      email: baseOptions.session.email,
+      password: baseOptions.session.password,
+      orgName: baseOptions.session.orgName,
+      spaceName: baseOptions.session.spaceName,
+      cfHomeDir: baseOptions.session.cfHomeDir,
+      forceReauth: true,
+    });
+    expect(fetchPnpmLockFromTargetMock).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({
+      writtenFiles: ['/tmp/workspace/finance-uat-api/pnpm-lock.yaml'],
+    });
+  });
+
+  it('retries when an optional remote source artifact hits a CF SSH auth error', async () => {
+    fetchPnpmLockFromTargetMock.mockResolvedValue('lockfileVersion: 9.0\n');
+    fetchRemoteTextFileFromTargetMock
+      .mockRejectedValueOnce(new Error('Failed to fetch package.json. (cli: not authorized)'))
+      .mockRejectedValueOnce(new Error('Failed to fetch package.json. (cli: 401 unauthorized)'))
+      .mockResolvedValueOnce('{"name":"finance-uat-api"}\n')
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+
+    const result = await exportServiceArtifacts({
+      ...baseOptions,
+      includeDefaultEnv: false,
+      includePnpmLock: true,
+    });
+
+    expect(prepareCfCliSessionMock).toHaveBeenCalledTimes(3);
+    expect(fetchPnpmLockFromTargetMock).toHaveBeenCalledTimes(3);
+    expect(fetchRemoteTextFileFromTargetMock).toHaveBeenCalledTimes(6);
+    expect(result).toEqual({
+      writtenFiles: [
+        '/tmp/workspace/finance-uat-api/pnpm-lock.yaml',
+        '/tmp/workspace/finance-uat-api/package.json',
+      ],
+    });
+  });
+
+  it('does not retry when CF SSH fails for a non-auth reason', async () => {
+    fetchPnpmLockFromTargetMock.mockRejectedValueOnce(
+      new Error('Unable to read pnpm-lock.yaml. (cli: No such file or directory)')
+    );
+
+    await expect(
+      exportServiceArtifacts({
+        ...baseOptions,
+        includeDefaultEnv: false,
+        includePnpmLock: true,
+      })
+    ).rejects.toThrow('No such file');
+
+    expect(prepareCfCliSessionMock).toHaveBeenCalledTimes(1);
+    expect(fetchPnpmLockFromTargetMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces the final auth error after the retry budget is exhausted', async () => {
+    fetchPnpmLockFromTargetMock
+      .mockRejectedValueOnce(new Error('Failed to fetch pnpm-lock.yaml. (cli: not authorized)'))
+      .mockRejectedValueOnce(new Error('Failed to fetch pnpm-lock.yaml. (cli: not authorized)'))
+      .mockRejectedValueOnce(new Error('Failed to fetch pnpm-lock.yaml. (cli: not authorized)'));
+
+    await expect(
+      exportServiceArtifacts({
+        ...baseOptions,
+        includeDefaultEnv: false,
+        includePnpmLock: true,
+      })
+    ).rejects.toThrow('not authorized');
+
+    expect(prepareCfCliSessionMock).toHaveBeenCalledTimes(3);
+    expect(fetchPnpmLockFromTargetMock).toHaveBeenCalledTimes(3);
+  });
+
   it('passes a literal remoteRoot setting straight through to the lock fetch', async () => {
     fetchPnpmLockFromTargetMock.mockResolvedValueOnce('lockfileVersion: 9.0\n');
 

@@ -6,8 +6,8 @@ import {
   fetchPnpmLockFromTarget,
   fetchRemoteTextFileFromTarget,
   findRemotePackageJsonPathsFromTarget,
-  prepareCfCliSession,
 } from './cfClient';
+import { runWithCfCliAuthRecovery } from './cfCliAuthRecovery';
 import { resolveRemoteRootForApp } from './remoteRootResolver';
 
 export interface ServiceExportSession {
@@ -70,15 +70,14 @@ export async function exportServiceArtifacts(
     throw new Error('At least one artifact must be selected for export.');
   }
 
-  await prepareCfCliSession({
-    apiEndpoint: options.session.apiEndpoint,
-    email: options.session.email,
-    password: options.session.password,
-    orgName: options.session.orgName,
-    spaceName: options.session.spaceName,
-    cfHomeDir: options.session.cfHomeDir,
-  });
+  return runWithCfCliAuthRecovery(options.session, () =>
+    exportServiceArtifactsAttempt(options)
+  );
+}
 
+async function exportServiceArtifactsAttempt(
+  options: ServiceArtifactExportOptions
+): Promise<ServiceArtifactExportResult> {
   const writtenFiles: string[] = [];
 
   if (options.includeDefaultEnv) {
