@@ -191,7 +191,7 @@ function expectCompactSettingsLayout(snapshot: SettingsLayoutSnapshot): void {
   expect(snapshot.bodyFlexDirection).toBe('column');
   expect(snapshot.bodyOverflowX).toBe('hidden');
   expect(['auto', 'scroll']).toContain(snapshot.bodyOverflowY);
-  expect(snapshot.sectionCount).toBe(2);
+  expect(snapshot.sectionCount).toBe(3);
   expect(snapshot.bodyGap).toBeGreaterThanOrEqual(9);
   expect(snapshot.bodyGap).toBeLessThanOrEqual(11);
   expect(snapshot.bodyPaddingTop).toBeGreaterThanOrEqual(9);
