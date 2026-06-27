@@ -1,202 +1,28 @@
 /* eslint-disable */
 // @ts-nocheck
 
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import * as vscode from 'vscode';
-import type { ApisExplorerPanelManager, ApisExplorerPanelSession } from '../../apisExplorerPanel';
-import { normalizeUserEmail, type CacheStore } from '../../cacheStore';
-import type { CacheRuntimeSnapshot, CacheSyncService } from '../../cacheSyncService';
-import type { CfSession } from '../../cfClient';
-import {
-    cfLogin,
-    fetchCfLoginInfo,
-    fetchOrgs,
-    getCfApiEndpoint,
-    isCfSessionExpired
-} from '../../cfClient';
-import { ensureCfHomeDir } from '../../cfHome';
-import type { CfLogsPanelProvider } from '../../cfLogsPanel';
-import { refreshCfSyncSpace } from '../../cfSpaceRefresh';
-import {
-    EMPTY_CF_TOPOLOGY,
-    getCfTopologySnapshot,
-    getCfTopologySnapshotSync,
-    type CfTopology
-} from '../../cfTopology';
-import { getEffectiveCredentials } from '../../credentialStore';
-import type { HanaSqlBackupStore } from '../../hanaSqlBackupStore';
-import type { HanaSqlHistoryPanelManager } from '../../hanaSqlHistoryPanel';
-import type { HanaSqlWorkbench } from '../../hanaSqlWorkbench';
+import { runBuildPublishAll } from "../../localPackages/buildPublishOrchestrator";
 import { buildDependencyOrder } from '../../localPackages/dependencyGraph';
 import { scanLocalPackages } from '../../localPackages/localPackageScanner';
 import {
     readLocalPackagesConfig,
     type LocalPackagesConfig,
 } from '../../localPackages/localPackagesConfig';
-import { VerdaccioManager } from '../../localPackages/verdaccioManager';
+import { replaceServicePackageDependencyTags } from "../../localPackages/serviceDependencyTags";
+import { RegionSidebarProvider } from "../../sidebarProvider";
 import {
-    readMicrosoftGraphToolRunRequest,
-    sanitizeGraphMessage,
-    type MicrosoftGraphToolRunRequest,
-    type MicrosoftGraphToolStepProgress
-} from '../../microsoftGraphTools';
-import { SAP_BTP_REGIONS, toHyphenatedRegionCode } from '../../regions';
-import { type SharedCfScope } from '../../scopeSync';
-import {
-    buildServiceFolderMappings,
-    type ServiceFolderMapping,
-} from '../../serviceFolderMapping';
-import { readSharedAppFolderMappings } from '../../sharedDebugConfig';
-import {
-    resolveMockCfTopology,
-    resolveMockOrgsForRegion
-} from '../../testModeData';
-import { buildLoginGateHtml, buildMainHtml } from '../../sidebarProvider.html';
-import type {
-    AppListReloadRequest,
-    CacheStatePayload,
-    CfLogSessionSeed,
-    ConfirmScopeOptions,
-    ConfirmScopePayload,
-    EventMeshViewerController,
-    ExportServiceArtifactsPayload,
-    ExportSqlToolsConfigPayload,
-    LoadedScopeState,
-    OpenHanaSqlFilePayload,
-    OrgSelectionPayload,
-    PersistedConfirmedScopeEntry,
-    PersistedServiceMappingScopeEntry,
-    QuickScopeConfirmPayload,
-    RefreshHanaTablesPayload,
-    RefreshServiceFolderMappingsPayload,
-    RegionSelectionPayload,
-    RootFolderCacheScope,
-    RunHanaTableSelectPayload,
-    SelectServiceFolderMappingPayload,
-    SidebarAppEntry,
-    SpaceSelectionPayload,
-    TopologyOrgSelectedPayload
-} from '../../sidebarProvider.types';
-import {
-    MSG_ACTIVE_APPS_CHANGED,
-    MSG_APPS_ERROR,
-    MSG_APPS_LOADED,
-    MSG_APPS_RELOAD_ERROR,
-    MSG_BUILD_PUBLISH_ALL,
-    MSG_BUILD_PUBLISH_RESULT,
-    MSG_BUILD_SINGLE_PACKAGE,
-    MSG_CACHE_STATE,
-    MSG_CF_TOPOLOGY,
-    MSG_CLEAR_SSH_PROXY_SETTINGS,
-    MSG_CONFIRM_SCOPE,
-    MSG_EVENT_MESH_VIEWER_SETTLED,
-    MSG_EXPORT_SERVICE_ARTIFACTS,
-    MSG_EXPORT_SQLTOOLS_CONFIG,
-    MSG_GET_SSH_PROXY_STATUS,
-    MSG_HANA_SQL_FILE_OPEN_RESULT,
-    MSG_HANA_TABLE_SELECT_RESULT,
-    MSG_HANA_TABLES_LOADED,
-    MSG_HANA_TUNNEL_STATE,
-    MSG_LOCAL_PACKAGES_LOADED,
-    MSG_LOCAL_PACKAGES_LOADING,
-    MSG_LOCAL_REGISTRY_START,
-    MSG_LOCAL_REGISTRY_STATE,
-    MSG_LOCAL_REGISTRY_STATUS,
-    MSG_LOCAL_REGISTRY_STOP,
-    MSG_LOCAL_ROOT_FOLDER_UPDATED,
-    MSG_LOGIN_SUBMIT,
-    MSG_LOGOUT,
-    MSG_OPEN_APIS_EXPLORER,
-    MSG_OPEN_CF_LOGS_PANEL,
-    MSG_OPEN_EVENT_MESH,
-    MSG_OPEN_HANA_SQL_FILE,
-    MSG_OPEN_LOCAL_PACKAGES_SETTINGS,
-    MSG_OPEN_SQL_BACKUP_HISTORY,
-    MSG_OPEN_SQLTOOLS_EXTENSION,
-    MSG_ORG_SELECTED,
-    MSG_ORGS_ERROR,
-    MSG_ORGS_LOADED,
-    MSG_PAUSED_APPS_CHANGED,
-    MSG_QUICK_SCOPE_CONFIRM,
-    MSG_REFRESH_HANA_TABLES,
-    MSG_REFRESH_SERVICE_FOLDER_MAPPINGS,
-    MSG_REGION_SELECTED,
-    MSG_RELOAD_APP_LIST,
-    MSG_REPLACE_SERVICE_PACKAGE_PLACEHOLDER,
-    MSG_REQUEST_CF_TOPOLOGY,
-    MSG_REQUEST_INITIAL_STATE,
-    MSG_RESTORE_CONFIRMED_SCOPE,
-    MSG_RUN_HANA_TABLE_SELECT,
-    MSG_RUN_MICROSOFT_GRAPH_TOOL,
-    MSG_SAVE_SSH_PROXY_SETTINGS,
-    MSG_SELECT_LOCAL_ROOT_FOLDER,
-    MSG_SELECT_SERVICE_FOLDER_MAPPING,
-    MSG_SERVICE_FOLDER_MAPPINGS_ERROR,
-    MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
-    MSG_SPACE_SELECTED,
-    MSG_SPACES_ERROR,
-    MSG_SSH_PROXY_STATUS,
-    MSG_SYNC_NOW,
-    MSG_TOPOLOGY_ORG_SELECTED,
-    MSG_UPDATE_SYNC_INTERVAL
-} from '../../sidebarProvider.types';
-import { handleBuildPublishAll, handleClearSshProxySettings, handleConfirmScope, handleExportServiceArtifacts, handleExportSqlToolsConfig, handleExternalScopeChange, handleLoginSubmit, handleLogout, handleMicrosoftGraphToolRun, handleOpenApisExplorer, handleOpenHanaSqlFile, handleOpenSqlBackupHistory, handleOpenSqlToolsExtension, handleOrgSelected, handleQuickScopeConfirm, handleRefreshHanaTables, handleRefreshServiceFolderMappings, handleRegionSelected, handleReloadAppList, handleReplaceServicePackagePlaceholder, handleRequestInitialState, handleRunHanaTableSelect, handleSaveSshProxySettings, handleSelectLocalRootFolder, handleSpaceSelected, handleTestModeSpaceSelection, handleTopologyOrgSelected } from "../../sidebar/handlers/sidebarHandlers";
-import {
-    appListsEqual,
     areLocalPackageListsEqual,
-    areRegionCodesEquivalent,
-    areReloadScopesEqual,
-    areSharedScopesEqual,
     buildLocalPackagesCacheKey,
-    buildScopeLabel,
-    buildServiceMappingsScopeKey,
-    buildSharedScopeFromConfirmPayload,
-    createNonce,
-    formatAppListReloadFailure,
-    haveSameOrgEntries,
-    isActiveAppsChangedMessage,
-    isConfirmScopeMessage,
-    isExportServiceArtifactsMessage,
-    isExportSqlToolsConfigMessage,
-    isLoadedScopeForConfirmedScope,
-    isLoginSubmitMessage,
-    isOpenHanaSqlFileMessage,
-    isOrgSelectedMessage,
-    isQuickScopeConfirmMessage,
-    isRecord,
-    isRefreshHanaTablesMessage,
-    isRefreshServiceFolderMappingsMessage,
-    isRegionSelectedMessage,
-    isRunHanaTableSelectMessage,
-    isSelectServiceFolderMappingMessage,
-    isSpaceSelectedMessage,
-    isTestMode,
-    isTopologyOrgSelectedMessage,
-    isUpdateSyncIntervalMessage,
-    normalizePersistedServiceMappingsByScope,
-    normalizeServiceMappingForPersistence,
-    pathExists,
-    readActiveAppsChangedPayload,
-    readConfirmScopePayload,
-    readExportServiceArtifactsPayload,
-    readExportSqlToolsConfigPayload,
-    readLoginSubmitPayload,
-    readOpenHanaSqlFilePayload,
-    readOptionalString,
-    readOrgSelectionPayload,
-    readQuickScopeConfirmPayload,
-    readRefreshHanaTablesPayload,
-    readRefreshServiceFolderMappingsPayload,
-    readRegionSelectionPayload,
-    readRunHanaTableSelectPayload,
-    readSelectServiceFolderMappingPayload,
-    readSpaceSelectionPayload,
-    readTopologyOrgSelectedPayload,
-    readUpdateSyncIntervalPayload,
-    sanitizeErrorForLog,
-    sanitizeForLog,
-    sanitizeSqlUiLogValue,
-    shouldSkipSensitiveExportConfirmation
+    formatServicePackageReplaceMessage
 } from '../../sidebarProvider.helpers';
+import {
+    MSG_BUILD_PUBLISH_PREVIEW, MSG_BUILD_PUBLISH_PROGRESS,
+    MSG_LOCAL_PACKAGES_LOADED, MSG_LOCAL_PACKAGES_LOADING,
+    MSG_LOCAL_REGISTRY_STATE
+} from '../../sidebarProvider.types';
 
 const CONFIRMED_SCOPE_BY_EMAIL_GLOBAL_STATE_KEY = 'sapTools.confirmedScopeByEmail.v1';
 const SERVICE_MAPPINGS_BY_SCOPE_GLOBAL_STATE_KEY = 'sapTools.serviceMappingsByScope.v1';
@@ -316,4 +142,123 @@ return packages.map((pkg) => ({
   hasBuildScript: pkg.buildScript !== undefined,
   round: roundByName.get(pkg.name) ?? null,
 }));
+}
+
+export async function handleBuildPublishAll(this: RegionSidebarProvider, targetPackageName?: string): Promise<void> {
+    if (this.buildPublishInProgress) {
+      this.postBuildResult(false, 'A build & publish run is already in progress.');
+      return;
+    }
+
+    const rootFolderPath = this.selectedLocalRootFolderPath.trim();
+    if (rootFolderPath.length === 0) {
+      this.postBuildResult(false, 'Select a local root folder before building packages.');
+      return;
+    }
+
+    const config = readLocalPackagesConfig(this.currentConfirmedScope);
+    if (config.namePatterns.trim().length === 0) {
+      this.postBuildResult(
+        false,
+        'Configure "sapTools.localPackages.namePatterns" (e.g. "@example/") to detect your packages.'
+      );
+      return;
+    }
+
+    this.buildPublishInProgress = true;
+    this.npmBuildChannel.appendLine(
+      `\n=== Build & publish all local packages (${new Date().toISOString()}) ===`
+    );
+    try {
+      await this.verdaccioManager.start({
+        port: config.registry.port,
+        scopes: config.registry.scopes,
+      });
+      await this.postRegistryState();
+
+      const requestOpts: import('../../localPackages/buildPublishOrchestrator').BuildPublishRequest = {
+        rootFolderPath,
+        config,
+        registryUrl: this.verdaccioManager.getRegistryUrl(config.registry.port),
+        authToken: this.verdaccioManager.getAuthToken(),
+        onOrder: (order) => {
+          this.postMessage({ type: MSG_BUILD_PUBLISH_PREVIEW, order: [...order] });
+        },
+        onProgress: (progress) => {
+          this.postMessage({ type: MSG_BUILD_PUBLISH_PROGRESS, ...progress });
+        },
+        onOutput: (chunk) => {
+          this.npmBuildChannel.append(chunk);
+        },
+      };
+
+      if (targetPackageName !== undefined) {
+        Object.assign(requestOpts, { targetPackageName });
+      }
+
+      const outcome = await runBuildPublishAll(requestOpts);
+
+      const summary =
+        `Published ${String(outcome.order.length)} package(s) ` +
+        `(${String(outcome.builtCount)} built, ${String(outcome.skippedCount)} skipped) ` +
+        'to the local registry.';
+      this.npmBuildChannel.appendLine(summary);
+      this.postBuildResult(true, targetPackageName === undefined ? '' : summary);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Build & publish failed.';
+      this.npmBuildChannel.appendLine(`ERROR: ${message}`);
+      this.postBuildResult(false, message);
+    } finally {
+      this.buildPublishInProgress = false;
+      await this.postRegistryState();
+    }
+}
+
+export async function handleReplaceServicePackagePlaceholder(this: RegionSidebarProvider, appId: string): Promise<void> {
+    const mapping = this.serviceFolderMappings.find(
+          (m) => m.appId === appId && m.folderPath.length > 0
+        );
+    if (mapping === undefined) {
+      void vscode.window.showErrorMessage(
+        `SAP Tools: No mapped folder found for service "${appId}".`
+      );
+      return;
+    }
+
+    const config = readLocalPackagesConfig(this.currentConfirmedScope);
+    const placeholders = config.packageJsonTagPlaceholder
+          .split(',')
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0);
+    const tag = config.registry.defaultTag;
+    const packageJsonPath = join(mapping.folderPath, 'package.json');
+    try {
+      const localPackageNames = await this.resolveLocalPackageNamesForReplacement(config);
+      if (placeholders.length === 0 && localPackageNames.length === 0) {
+        void vscode.window.showWarningMessage(
+          'SAP Tools: No placeholder configured. Set "sapTools.localPackages.packageJsonTagPlaceholder" first.'
+        );
+        return;
+      }
+
+      const content = await readFile(packageJsonPath, 'utf8');
+      const result = replaceServicePackageDependencyTags(content, {
+        placeholders,
+        localPackageNames,
+        tag,
+      });
+      if (!result.changed) {
+        void vscode.window.showInformationMessage(
+          `SAP Tools: No package.json update needed for "${mapping.appName}".`
+        );
+        return;
+      }
+      await writeFile(packageJsonPath, result.content, 'utf8');
+      void vscode.window.showInformationMessage(
+        formatServicePackageReplaceMessage(mapping.appName, tag, result)
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      void vscode.window.showErrorMessage(`SAP Tools: Failed to update package.json: ${msg}`);
+    }
 }

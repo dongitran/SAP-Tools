@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 async function readSidebarProviderSource(): Promise<string> {
   const providerSource = await readFile(new URL('./sidebarProvider.ts', import.meta.url), 'utf8');
-  const handlersSource = await readFile(new URL('./sidebar/handlers/sidebarHandlers.ts', import.meta.url), 'utf8');
+  const handlersSource = await readFile(new URL('./sidebar/handlers/miscHandlers.ts', import.meta.url), 'utf8');
   return providerSource + '\n' + handlersSource;
 }
 

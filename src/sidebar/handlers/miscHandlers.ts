@@ -2,201 +2,36 @@
 // @ts-nocheck
 
 import * as vscode from 'vscode';
-import type { ApisExplorerPanelManager, ApisExplorerPanelSession } from '../../apisExplorerPanel';
-import { normalizeUserEmail, type CacheStore } from '../../cacheStore';
-import type { CacheRuntimeSnapshot, CacheSyncService } from '../../cacheSyncService';
-import type { CfSession } from '../../cfClient';
+import { CacheRuntimeSnapshot } from '../../cacheSyncService';
 import {
-    cfLogin,
-    fetchCfLoginInfo,
-    fetchOrgs,
-    getCfApiEndpoint,
-    isCfSessionExpired
-} from '../../cfClient';
-import { ensureCfHomeDir } from '../../cfHome';
-import type { CfLogsPanelProvider } from '../../cfLogsPanel';
-import { refreshCfSyncSpace } from '../../cfSpaceRefresh';
-import {
-    EMPTY_CF_TOPOLOGY,
-    getCfTopologySnapshot,
-    getCfTopologySnapshotSync,
-    type CfTopology
-} from '../../cfTopology';
-import { getEffectiveCredentials } from '../../credentialStore';
-import type { HanaSqlBackupStore } from '../../hanaSqlBackupStore';
-import type { HanaSqlHistoryPanelManager } from '../../hanaSqlHistoryPanel';
-import type { HanaSqlWorkbench } from '../../hanaSqlWorkbench';
-import { buildDependencyOrder } from '../../localPackages/dependencyGraph';
-import { scanLocalPackages } from '../../localPackages/localPackageScanner';
-import {
-    readLocalPackagesConfig,
-    type LocalPackagesConfig,
-} from '../../localPackages/localPackagesConfig';
-import { VerdaccioManager } from '../../localPackages/verdaccioManager';
-import {
-    readMicrosoftGraphToolRunRequest,
+    runMicrosoftGraphTool,
     sanitizeGraphMessage,
     type MicrosoftGraphToolRunRequest,
     type MicrosoftGraphToolStepProgress
 } from '../../microsoftGraphTools';
-import { SAP_BTP_REGIONS, toHyphenatedRegionCode } from '../../regions';
-import { type SharedCfScope } from '../../scopeSync';
+import { exportServiceArtifacts, formatServiceArtifactExportCompletionMessage, type ServiceExportSession } from "../../serviceArtifactExporter";
 import {
-    buildServiceFolderMappings,
-    type ServiceFolderMapping,
+    type ServiceFolderMapping
 } from '../../serviceFolderMapping';
-import { readSharedAppFolderMappings } from '../../sharedDebugConfig';
+import { readSharedRemoteRoot } from '../../sharedDebugConfig';
+import { RegionSidebarProvider } from "../../sidebarProvider";
 import {
-    resolveMockCfTopology,
-    resolveMockOrgsForRegion
-} from '../../testModeData';
-import { buildLoginGateHtml, buildMainHtml } from '../../sidebarProvider.html';
-import type {
-    AppListReloadRequest,
-    CacheStatePayload,
-    CfLogSessionSeed,
-    ConfirmScopeOptions,
-    ConfirmScopePayload,
-    EventMeshViewerController,
-    ExportServiceArtifactsPayload,
-    ExportSqlToolsConfigPayload,
-    LoadedScopeState,
-    OpenHanaSqlFilePayload,
-    OrgSelectionPayload,
-    PersistedConfirmedScopeEntry,
-    PersistedServiceMappingScopeEntry,
-    QuickScopeConfirmPayload,
-    RefreshHanaTablesPayload,
-    RefreshServiceFolderMappingsPayload,
-    RegionSelectionPayload,
-    RootFolderCacheScope,
-    RunHanaTableSelectPayload,
-    SelectServiceFolderMappingPayload,
-    SidebarAppEntry,
-    SpaceSelectionPayload,
-    TopologyOrgSelectedPayload
-} from '../../sidebarProvider.types';
-import {
-    MSG_ACTIVE_APPS_CHANGED,
-    MSG_APPS_ERROR,
-    MSG_APPS_LOADED,
-    MSG_APPS_RELOAD_ERROR,
-    MSG_BUILD_PUBLISH_ALL,
-    MSG_BUILD_PUBLISH_RESULT,
-    MSG_BUILD_SINGLE_PACKAGE,
-    MSG_CACHE_STATE,
-    MSG_CF_TOPOLOGY,
-    MSG_CLEAR_SSH_PROXY_SETTINGS,
-    MSG_CONFIRM_SCOPE,
-    MSG_EVENT_MESH_VIEWER_SETTLED,
-    MSG_EXPORT_SERVICE_ARTIFACTS,
-    MSG_EXPORT_SQLTOOLS_CONFIG,
-    MSG_GET_SSH_PROXY_STATUS,
-    MSG_HANA_SQL_FILE_OPEN_RESULT,
-    MSG_HANA_TABLE_SELECT_RESULT,
-    MSG_HANA_TABLES_LOADED,
-    MSG_HANA_TUNNEL_STATE,
-    MSG_LOCAL_PACKAGES_LOADED,
-    MSG_LOCAL_PACKAGES_LOADING,
-    MSG_LOCAL_REGISTRY_START,
-    MSG_LOCAL_REGISTRY_STATE,
-    MSG_LOCAL_REGISTRY_STATUS,
-    MSG_LOCAL_REGISTRY_STOP,
-    MSG_LOCAL_ROOT_FOLDER_UPDATED,
-    MSG_LOGIN_SUBMIT,
-    MSG_LOGOUT,
-    MSG_OPEN_APIS_EXPLORER,
-    MSG_OPEN_CF_LOGS_PANEL,
-    MSG_OPEN_EVENT_MESH,
-    MSG_OPEN_HANA_SQL_FILE,
-    MSG_OPEN_LOCAL_PACKAGES_SETTINGS,
-    MSG_OPEN_SQL_BACKUP_HISTORY,
-    MSG_OPEN_SQLTOOLS_EXTENSION,
-    MSG_ORG_SELECTED,
-    MSG_ORGS_ERROR,
-    MSG_ORGS_LOADED,
-    MSG_PAUSED_APPS_CHANGED,
-    MSG_QUICK_SCOPE_CONFIRM,
-    MSG_REFRESH_HANA_TABLES,
-    MSG_REFRESH_SERVICE_FOLDER_MAPPINGS,
-    MSG_REGION_SELECTED,
-    MSG_RELOAD_APP_LIST,
-    MSG_REPLACE_SERVICE_PACKAGE_PLACEHOLDER,
-    MSG_REQUEST_CF_TOPOLOGY,
-    MSG_REQUEST_INITIAL_STATE,
-    MSG_RESTORE_CONFIRMED_SCOPE,
-    MSG_RUN_HANA_TABLE_SELECT,
-    MSG_RUN_MICROSOFT_GRAPH_TOOL,
-    MSG_SAVE_SSH_PROXY_SETTINGS,
-    MSG_SELECT_LOCAL_ROOT_FOLDER,
-    MSG_SELECT_SERVICE_FOLDER_MAPPING,
-    MSG_SERVICE_FOLDER_MAPPINGS_ERROR,
-    MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
-    MSG_SPACE_SELECTED,
-    MSG_SPACES_ERROR,
-    MSG_SSH_PROXY_STATUS,
-    MSG_SYNC_NOW,
-    MSG_TOPOLOGY_ORG_SELECTED,
-    MSG_UPDATE_SYNC_INTERVAL
-} from '../../sidebarProvider.types';
-import { handleBuildPublishAll, handleClearSshProxySettings, handleConfirmScope, handleExportServiceArtifacts, handleExportSqlToolsConfig, handleExternalScopeChange, handleLoginSubmit, handleLogout, handleMicrosoftGraphToolRun, handleOpenApisExplorer, handleOpenHanaSqlFile, handleOpenSqlBackupHistory, handleOpenSqlToolsExtension, handleOrgSelected, handleQuickScopeConfirm, handleRefreshHanaTables, handleRefreshServiceFolderMappings, handleRegionSelected, handleReloadAppList, handleReplaceServicePackagePlaceholder, handleRequestInitialState, handleRunHanaTableSelect, handleSaveSshProxySettings, handleSelectLocalRootFolder, handleSpaceSelected, handleTestModeSpaceSelection, handleTopologyOrgSelected } from "../../sidebar/handlers/sidebarHandlers";
-import {
-    appListsEqual,
-    areLocalPackageListsEqual,
-    areRegionCodesEquivalent,
-    areReloadScopesEqual,
-    areSharedScopesEqual,
-    buildLocalPackagesCacheKey,
-    buildScopeLabel,
-    buildServiceMappingsScopeKey,
-    buildSharedScopeFromConfirmPayload,
-    createNonce,
-    formatAppListReloadFailure,
-    haveSameOrgEntries,
-    isActiveAppsChangedMessage,
-    isConfirmScopeMessage,
-    isExportServiceArtifactsMessage,
-    isExportSqlToolsConfigMessage,
-    isLoadedScopeForConfirmedScope,
-    isLoginSubmitMessage,
-    isOpenHanaSqlFileMessage,
-    isOrgSelectedMessage,
-    isQuickScopeConfirmMessage,
-    isRecord,
-    isRefreshHanaTablesMessage,
-    isRefreshServiceFolderMappingsMessage,
-    isRegionSelectedMessage,
-    isRunHanaTableSelectMessage,
-    isSelectServiceFolderMappingMessage,
-    isSpaceSelectedMessage,
-    isTestMode,
-    isTopologyOrgSelectedMessage,
-    isUpdateSyncIntervalMessage,
-    normalizePersistedServiceMappingsByScope,
-    normalizeServiceMappingForPersistence,
-    pathExists,
-    readActiveAppsChangedPayload,
-    readConfirmScopePayload,
-    readExportServiceArtifactsPayload,
-    readExportSqlToolsConfigPayload,
-    readLoginSubmitPayload,
-    readOpenHanaSqlFilePayload,
-    readOptionalString,
-    readOrgSelectionPayload,
-    readQuickScopeConfirmPayload,
-    readRefreshHanaTablesPayload,
-    readRefreshServiceFolderMappingsPayload,
-    readRegionSelectionPayload,
-    readRunHanaTableSelectPayload,
-    readSelectServiceFolderMappingPayload,
-    readSpaceSelectionPayload,
-    readTopologyOrgSelectedPayload,
-    readUpdateSyncIntervalPayload,
     sanitizeErrorForLog,
     sanitizeForLog,
-    sanitizeSqlUiLogValue,
     shouldSkipSensitiveExportConfirmation
 } from '../../sidebarProvider.helpers';
+import {
+    CacheStatePayload,
+    ExportServiceArtifactsPayload,
+    ExportSqlToolsConfigPayload,
+    MSG_APIS_EXPLORER_SETTLED,
+    MSG_BUILD_PUBLISH_RESULT,
+    MSG_CACHE_STATE,
+    MSG_EXPORT_ARTIFACT_PROGRESS, MSG_EXPORT_ARTIFACT_RESULT, MSG_EXPORT_SQLTOOLS_PROGRESS, MSG_EXPORT_SQLTOOLS_RESULT,
+    MSG_MICROSOFT_GRAPH_TOOL_PROGRESS, MSG_MICROSOFT_GRAPH_TOOL_RESULT,
+    RegionSelectionPayload
+} from '../../sidebarProvider.types';
+import { exportSqlToolsConfig } from "../../sqlToolsConfigExporter";
 
 const CONFIRMED_SCOPE_BY_EMAIL_GLOBAL_STATE_KEY = 'sapTools.confirmedScopeByEmail.v1';
 const SERVICE_MAPPINGS_BY_SCOPE_GLOBAL_STATE_KEY = 'sapTools.serviceMappingsByScope.v1';
@@ -388,4 +223,240 @@ this.postMessage({
     regionAccessById: snapshot.regionAccessById,
   },
 } satisfies CacheStatePayload);
+}
+
+export async function handleOpenApisExplorer(this: RegionSidebarProvider, appId: string): Promise<void> {
+    if (appId.length === 0) {
+      return;
+    }
+
+    try {
+      const session = await this.openApisExplorerSession(appId);
+      await session.initialLoad;
+    } finally {
+      this.postMessage({
+        type: MSG_APIS_EXPLORER_SETTLED,
+        appId,
+      });
+    }
+}
+
+export async function handleExportServiceArtifacts(this: RegionSidebarProvider, payload: ExportServiceArtifactsPayload, options: {
+      readonly includeDefaultEnv: boolean;
+      readonly includePnpmLock: boolean;
+    }): Promise<void> {
+    if (this.exportInProgress) {
+      this.postMessage({
+        type: MSG_EXPORT_ARTIFACT_RESULT,
+        success: false,
+        message: 'Another export is already running. Please wait.',
+      });
+      return;
+    }
+
+    const mapping = this.resolveServiceFolderMapping(payload);
+    if (mapping === null || mapping.folderPath.length === 0) {
+      this.postMessage({
+        type: MSG_EXPORT_ARTIFACT_RESULT,
+        success: false,
+        message: `No mapped local folder found for service "${payload.appName}".`,
+      });
+      return;
+    }
+
+    const session = this.currentLogSessionSeed;
+    if (session === null) {
+      this.postMessage({
+        type: MSG_EXPORT_ARTIFACT_RESULT,
+        success: false,
+        message: 'No active CF scope session. Select region/org/space again.',
+      });
+      return;
+    }
+
+    const exportSession: ServiceExportSession = {
+          apiEndpoint: session.apiEndpoint,
+          email: session.email,
+          password: session.password,
+          orgName: session.orgName,
+          spaceName: session.spaceName,
+          cfHomeDir: session.cfHomeDir,
+        };
+    const confirmed = await this.confirmSensitiveExport({
+          appName: payload.appName,
+          exportType: 'artifacts',
+        });
+    if (!confirmed) {
+      this.postMessage({
+        type: MSG_EXPORT_ARTIFACT_RESULT,
+        success: false,
+        message: 'Export cancelled.',
+      });
+      return;
+    }
+
+    this.exportInProgress = true;
+    this.postMessage({
+      type: MSG_EXPORT_ARTIFACT_PROGRESS,
+      inProgress: true,
+      message: `Exporting artifacts for "${payload.appName}"...`,
+    });
+    try {
+      const remoteRootSetting = readSharedRemoteRoot();
+      const result = await exportServiceArtifacts({
+        appName: payload.appName,
+        targetFolderPath: mapping.folderPath,
+        session: exportSession,
+        includeDefaultEnv: options.includeDefaultEnv,
+        includePnpmLock: options.includePnpmLock,
+        ...(remoteRootSetting !== undefined ? { remoteRootSetting } : {}),
+      });
+
+      const filesLabel = result.writtenFiles
+        .map((filePath) => `"${filePath}"`)
+        .join(', ');
+      this.outputChannel.appendLine(
+        `[export] ${sanitizeForLog(payload.appName)} -> ${sanitizeForLog(filesLabel)}`
+      );
+      this.postMessage({
+        type: MSG_EXPORT_ARTIFACT_RESULT,
+        success: true,
+        message: formatServiceArtifactExportCompletionMessage(
+          payload.appName,
+          result.writtenFiles
+        ),
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to export service artifacts.';
+      this.postMessage({
+        type: MSG_EXPORT_ARTIFACT_RESULT,
+        success: false,
+        message: errorMessage,
+      });
+    } finally {
+      this.exportInProgress = false;
+      this.postMessage({
+        type: MSG_EXPORT_ARTIFACT_PROGRESS,
+        inProgress: false,
+      });
+    }
+}
+
+export async function handleMicrosoftGraphToolRun(this: RegionSidebarProvider, request: MicrosoftGraphToolRunRequest): Promise<void> {
+    this.microsoftGraphChannel.show(true);
+    this.appendMicrosoftGraphToolLog(request.toolId, 'run', 'started', 'Run started.');
+    const result = await runMicrosoftGraphTool(request, {
+          onProgress: (progress) => {
+            this.appendMicrosoftGraphToolProgress(progress);
+            this.postMessage({ type: MSG_MICROSOFT_GRAPH_TOOL_PROGRESS, ...progress });
+          },
+        });
+    this.appendMicrosoftGraphToolLog(
+      result.toolId,
+      'result',
+      result.success ? 'done' : 'failed',
+      result.message
+    );
+    this.postMessage({ type: MSG_MICROSOFT_GRAPH_TOOL_RESULT, ...result });
+}
+
+export async function handleExportSqlToolsConfig(this: RegionSidebarProvider, payload: ExportSqlToolsConfigPayload): Promise<void> {
+    if (this.exportInProgress) {
+      this.postMessage({
+        type: MSG_EXPORT_SQLTOOLS_RESULT,
+        success: false,
+        message: 'Another export is already running. Please wait.',
+      });
+      return;
+    }
+
+    const mapping = this.resolveServiceFolderMapping(payload);
+    if (mapping === null || mapping.folderPath.length === 0) {
+      this.postMessage({
+        type: MSG_EXPORT_SQLTOOLS_RESULT,
+        success: false,
+        message: `No mapped local folder found for service "${payload.appName}".`,
+      });
+      return;
+    }
+
+    const rootFolderPath = this.selectedLocalRootFolderPath.trim();
+    if (rootFolderPath.length === 0) {
+      this.postMessage({
+        type: MSG_EXPORT_SQLTOOLS_RESULT,
+        success: false,
+        message: 'No root folder selected. Select a root folder first.',
+      });
+      return;
+    }
+
+    const session = this.currentLogSessionSeed;
+    if (session === null) {
+      this.postMessage({
+        type: MSG_EXPORT_SQLTOOLS_RESULT,
+        success: false,
+        message: 'No active CF scope session. Select region/org/space again.',
+      });
+      return;
+    }
+
+    const exportSession = {
+          apiEndpoint: session.apiEndpoint,
+          email: session.email,
+          password: session.password,
+          orgName: session.orgName,
+          spaceName: session.spaceName,
+          cfHomeDir: session.cfHomeDir,
+        };
+    const confirmed = await this.confirmSensitiveExport({
+          appName: payload.appName,
+          exportType: 'sqltools',
+        });
+    if (!confirmed) {
+      this.postMessage({
+        type: MSG_EXPORT_SQLTOOLS_RESULT,
+        success: false,
+        message: 'Export cancelled.',
+      });
+      return;
+    }
+
+    this.exportInProgress = true;
+    this.postMessage({
+      type: MSG_EXPORT_SQLTOOLS_PROGRESS,
+      inProgress: true,
+      message: `Exporting SQLTools config for "${payload.appName}"...`,
+    });
+    try {
+      const result = await exportSqlToolsConfig({
+        appName: payload.appName,
+        regionCode: this.selectedRegionCode,
+        rootFolderPath,
+        session: exportSession,
+      });
+
+      this.outputChannel.appendLine(
+        `[export] SQLTools ${sanitizeForLog(payload.appName)} -> ${sanitizeForLog(result.settingsPath)}`
+      );
+      this.postMessage({
+        type: MSG_EXPORT_SQLTOOLS_RESULT,
+        success: true,
+        message: `SQLTools connection "${result.connection.name}" exported to "${result.settingsPath}".`,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to export SQLTools config.';
+      this.postMessage({
+        type: MSG_EXPORT_SQLTOOLS_RESULT,
+        success: false,
+        message: errorMessage,
+      });
+    } finally {
+      this.exportInProgress = false;
+      this.postMessage({
+        type: MSG_EXPORT_SQLTOOLS_PROGRESS,
+        inProgress: false,
+      });
+    }
 }

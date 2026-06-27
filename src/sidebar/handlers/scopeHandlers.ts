@@ -1,202 +1,59 @@
 /* eslint-disable */
 // @ts-nocheck
 
-import * as vscode from 'vscode';
-import type { ApisExplorerPanelManager, ApisExplorerPanelSession } from '../../apisExplorerPanel';
-import { normalizeUserEmail, type CacheStore } from '../../cacheStore';
-import type { CacheRuntimeSnapshot, CacheSyncService } from '../../cacheSyncService';
-import type { CfSession } from '../../cfClient';
-import {
-    cfLogin,
-    fetchCfLoginInfo,
-    fetchOrgs,
-    getCfApiEndpoint,
-    isCfSessionExpired
-} from '../../cfClient';
+import { normalizeUserEmail } from '../../cacheStore';
+import { cfLogin, CfSession, fetchCfLoginInfo, fetchOrgs, fetchSpaces, getCfApiEndpoint, isCfSessionExpired } from '../../cfClient';
 import { ensureCfHomeDir } from '../../cfHome';
-import type { CfLogsPanelProvider } from '../../cfLogsPanel';
 import { refreshCfSyncSpace } from '../../cfSpaceRefresh';
 import {
-    EMPTY_CF_TOPOLOGY,
-    getCfTopologySnapshot,
-    getCfTopologySnapshotSync,
-    type CfTopology
+    getAppsFromTopologySync
 } from '../../cfTopology';
 import { getEffectiveCredentials } from '../../credentialStore';
-import type { HanaSqlBackupStore } from '../../hanaSqlBackupStore';
-import type { HanaSqlHistoryPanelManager } from '../../hanaSqlHistoryPanel';
-import type { HanaSqlWorkbench } from '../../hanaSqlWorkbench';
-import { buildDependencyOrder } from '../../localPackages/dependencyGraph';
-import { scanLocalPackages } from '../../localPackages/localPackageScanner';
-import {
-    readLocalPackagesConfig,
-    type LocalPackagesConfig,
-} from '../../localPackages/localPackagesConfig';
-import { VerdaccioManager } from '../../localPackages/verdaccioManager';
-import {
-    readMicrosoftGraphToolRunRequest,
-    sanitizeGraphMessage,
-    type MicrosoftGraphToolRunRequest,
-    type MicrosoftGraphToolStepProgress
-} from '../../microsoftGraphTools';
 import { SAP_BTP_REGIONS, toHyphenatedRegionCode } from '../../regions';
-import { type SharedCfScope } from '../../scopeSync';
+import { writeScopeIfChanged, type SharedCfScope } from '../../scopeSync';
 import {
-    buildServiceFolderMappings,
-    type ServiceFolderMapping,
+    type ServiceFolderMapping
 } from '../../serviceFolderMapping';
-import { readSharedAppFolderMappings } from '../../sharedDebugConfig';
+import { RegionSidebarProvider } from "../../sidebarProvider";
 import {
-    resolveMockCfTopology,
-    resolveMockOrgsForRegion
-} from '../../testModeData';
-import { buildLoginGateHtml, buildMainHtml } from '../../sidebarProvider.html';
-import type {
-    AppListReloadRequest,
-    CacheStatePayload,
-    CfLogSessionSeed,
+    appListsEqual,
+    areSharedScopesEqual,
+    buildScopeLabel,
+    buildServiceMappingsScopeKey,
+    buildSharedScopeFromConfirmPayload,
+    isRecord,
+    isTestMode,
+    normalizePersistedServiceMappingsByScope,
+    normalizeServiceMappingForPersistence,
+    pathExists,
+    readOptionalString,
+    resolveE2eTestModeAppsDelayMs,
+    sanitizeErrorForLog,
+    sanitizeForLog,
+    sleep
+} from '../../sidebarProvider.helpers';
+import {
     ConfirmScopeOptions,
     ConfirmScopePayload,
-    EventMeshViewerController,
-    ExportServiceArtifactsPayload,
-    ExportSqlToolsConfigPayload,
-    LoadedScopeState,
-    OpenHanaSqlFilePayload,
+    MSG_APPS_LOADED,
+    MSG_ORGS_LOADED,
+    MSG_RESTORE_CONFIRMED_SCOPE,
+    MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
+    MSG_SPACES_LOADED,
     OrgSelectionPayload,
     PersistedConfirmedScopeEntry,
     PersistedServiceMappingScopeEntry,
     QuickScopeConfirmPayload,
-    RefreshHanaTablesPayload,
-    RefreshServiceFolderMappingsPayload,
     RegionSelectionPayload,
     RootFolderCacheScope,
-    RunHanaTableSelectPayload,
-    SelectServiceFolderMappingPayload,
     SidebarAppEntry,
-    SpaceSelectionPayload,
-    TopologyOrgSelectedPayload
+    SpaceSelectionPayload
 } from '../../sidebarProvider.types';
 import {
-    MSG_ACTIVE_APPS_CHANGED,
-    MSG_APPS_ERROR,
-    MSG_APPS_LOADED,
-    MSG_APPS_RELOAD_ERROR,
-    MSG_BUILD_PUBLISH_ALL,
-    MSG_BUILD_PUBLISH_RESULT,
-    MSG_BUILD_SINGLE_PACKAGE,
-    MSG_CACHE_STATE,
-    MSG_CF_TOPOLOGY,
-    MSG_CLEAR_SSH_PROXY_SETTINGS,
-    MSG_CONFIRM_SCOPE,
-    MSG_EVENT_MESH_VIEWER_SETTLED,
-    MSG_EXPORT_SERVICE_ARTIFACTS,
-    MSG_EXPORT_SQLTOOLS_CONFIG,
-    MSG_GET_SSH_PROXY_STATUS,
-    MSG_HANA_SQL_FILE_OPEN_RESULT,
-    MSG_HANA_TABLE_SELECT_RESULT,
-    MSG_HANA_TABLES_LOADED,
-    MSG_HANA_TUNNEL_STATE,
-    MSG_LOCAL_PACKAGES_LOADED,
-    MSG_LOCAL_PACKAGES_LOADING,
-    MSG_LOCAL_REGISTRY_START,
-    MSG_LOCAL_REGISTRY_STATE,
-    MSG_LOCAL_REGISTRY_STATUS,
-    MSG_LOCAL_REGISTRY_STOP,
-    MSG_LOCAL_ROOT_FOLDER_UPDATED,
-    MSG_LOGIN_SUBMIT,
-    MSG_LOGOUT,
-    MSG_OPEN_APIS_EXPLORER,
-    MSG_OPEN_CF_LOGS_PANEL,
-    MSG_OPEN_EVENT_MESH,
-    MSG_OPEN_HANA_SQL_FILE,
-    MSG_OPEN_LOCAL_PACKAGES_SETTINGS,
-    MSG_OPEN_SQL_BACKUP_HISTORY,
-    MSG_OPEN_SQLTOOLS_EXTENSION,
-    MSG_ORG_SELECTED,
-    MSG_ORGS_ERROR,
-    MSG_ORGS_LOADED,
-    MSG_PAUSED_APPS_CHANGED,
-    MSG_QUICK_SCOPE_CONFIRM,
-    MSG_REFRESH_HANA_TABLES,
-    MSG_REFRESH_SERVICE_FOLDER_MAPPINGS,
-    MSG_REGION_SELECTED,
-    MSG_RELOAD_APP_LIST,
-    MSG_REPLACE_SERVICE_PACKAGE_PLACEHOLDER,
-    MSG_REQUEST_CF_TOPOLOGY,
-    MSG_REQUEST_INITIAL_STATE,
-    MSG_RESTORE_CONFIRMED_SCOPE,
-    MSG_RUN_HANA_TABLE_SELECT,
-    MSG_RUN_MICROSOFT_GRAPH_TOOL,
-    MSG_SAVE_SSH_PROXY_SETTINGS,
-    MSG_SELECT_LOCAL_ROOT_FOLDER,
-    MSG_SELECT_SERVICE_FOLDER_MAPPING,
-    MSG_SERVICE_FOLDER_MAPPINGS_ERROR,
-    MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
-    MSG_SPACE_SELECTED,
-    MSG_SPACES_ERROR,
-    MSG_SSH_PROXY_STATUS,
-    MSG_SYNC_NOW,
-    MSG_TOPOLOGY_ORG_SELECTED,
-    MSG_UPDATE_SYNC_INTERVAL
-} from '../../sidebarProvider.types';
-import { handleBuildPublishAll, handleClearSshProxySettings, handleConfirmScope, handleExportServiceArtifacts, handleExportSqlToolsConfig, handleExternalScopeChange, handleLoginSubmit, handleLogout, handleMicrosoftGraphToolRun, handleOpenApisExplorer, handleOpenHanaSqlFile, handleOpenSqlBackupHistory, handleOpenSqlToolsExtension, handleOrgSelected, handleQuickScopeConfirm, handleRefreshHanaTables, handleRefreshServiceFolderMappings, handleRegionSelected, handleReloadAppList, handleReplaceServicePackagePlaceholder, handleRequestInitialState, handleRunHanaTableSelect, handleSaveSshProxySettings, handleSelectLocalRootFolder, handleSpaceSelected, handleTestModeSpaceSelection, handleTopologyOrgSelected } from "../../sidebar/handlers/sidebarHandlers";
-import {
-    appListsEqual,
-    areLocalPackageListsEqual,
-    areRegionCodesEquivalent,
-    areReloadScopesEqual,
-    areSharedScopesEqual,
-    buildLocalPackagesCacheKey,
-    buildScopeLabel,
-    buildServiceMappingsScopeKey,
-    buildSharedScopeFromConfirmPayload,
-    createNonce,
-    formatAppListReloadFailure,
-    haveSameOrgEntries,
-    isActiveAppsChangedMessage,
-    isConfirmScopeMessage,
-    isExportServiceArtifactsMessage,
-    isExportSqlToolsConfigMessage,
-    isLoadedScopeForConfirmedScope,
-    isLoginSubmitMessage,
-    isOpenHanaSqlFileMessage,
-    isOrgSelectedMessage,
-    isQuickScopeConfirmMessage,
-    isRecord,
-    isRefreshHanaTablesMessage,
-    isRefreshServiceFolderMappingsMessage,
-    isRegionSelectedMessage,
-    isRunHanaTableSelectMessage,
-    isSelectServiceFolderMappingMessage,
-    isSpaceSelectedMessage,
-    isTestMode,
-    isTopologyOrgSelectedMessage,
-    isUpdateSyncIntervalMessage,
-    normalizePersistedServiceMappingsByScope,
-    normalizeServiceMappingForPersistence,
-    pathExists,
-    readActiveAppsChangedPayload,
-    readConfirmScopePayload,
-    readExportServiceArtifactsPayload,
-    readExportSqlToolsConfigPayload,
-    readLoginSubmitPayload,
-    readOpenHanaSqlFilePayload,
-    readOptionalString,
-    readOrgSelectionPayload,
-    readQuickScopeConfirmPayload,
-    readRefreshHanaTablesPayload,
-    readRefreshServiceFolderMappingsPayload,
-    readRegionSelectionPayload,
-    readRunHanaTableSelectPayload,
-    readSelectServiceFolderMappingPayload,
-    readSpaceSelectionPayload,
-    readTopologyOrgSelectedPayload,
-    readUpdateSyncIntervalPayload,
-    sanitizeErrorForLog,
-    sanitizeForLog,
-    sanitizeSqlUiLogValue,
-    shouldSkipSensitiveExportConfirmation
-} from '../../sidebarProvider.helpers';
+    resolveMockApps,
+    resolveMockOrgsForRegion,
+    resolveMockSpacesForOrg
+} from '../../testModeData';
 
 const CONFIRMED_SCOPE_BY_EMAIL_GLOBAL_STATE_KEY = 'sapTools.confirmedScopeByEmail.v1';
 const SERVICE_MAPPINGS_BY_SCOPE_GLOBAL_STATE_KEY = 'sapTools.serviceMappingsByScope.v1';
@@ -1027,4 +884,439 @@ return this.externalScopeChangeRequestId;
 
 export function isCurrentExternalScopeRequest(this: any, requestId: number): boolean {
 return requestId === this.externalScopeChangeRequestId;
+}
+
+export async function handleConfirmScope(this: RegionSidebarProvider, payload: ConfirmScopePayload, options: ConfirmScopeOptions = {}): Promise<void> {
+    await this.persistConfirmedScopeForCurrentUser(payload);
+    const sharedScope = buildSharedScopeFromConfirmPayload(payload);
+    const isChangedScope = !areSharedScopesEqual(sharedScope, this.currentConfirmedScope);
+    this.lastWrittenScope = sharedScope;
+    this.currentConfirmedScope = sharedScope;
+    const shouldInvalidateHanaAppContexts = options.invalidateHanaAppContexts ?? true;
+    if (isChangedScope && shouldInvalidateHanaAppContexts) {
+      this.hanaSqlWorkbench.invalidateAllAppContexts();
+    }
+
+    if (isChangedScope) {
+      // An open event viewer is bound to the previous scope's app/queue; stop its
+      // AMQP listener and delete its debug queue so we never leak a tap across scopes.
+      this.eventMeshPanelManager.stopAllListeners('scope-changed');
+      void this.apisExplorerPanelManager.stopAllTraces('scope-changed');
+    }
+
+    const shouldWriteSharedScope = options.writeSharedScope ?? true;
+    if (shouldWriteSharedScope) {
+      try {
+        await writeScopeIfChanged(sharedScope);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : 'Failed to write shared scope setting.';
+        this.outputChannel.appendLine(
+          `[scope] Shared setting update failed: ${sanitizeForLog(errorMessage)}`
+        );
+      }
+    }
+
+    this.outputChannel.appendLine(
+      `[scope] Confirmed scope region=${sanitizeForLog(payload.regionCode)} org=${sanitizeForLog(payload.orgName)} space=${sanitizeForLog(payload.spaceName)}`
+    );
+    void this.refreshTopologyForConfirmedScope(payload).catch(() => undefined);
+}
+
+export async function handleExternalScopeChange(this: RegionSidebarProvider, scope: SharedCfScope): Promise<void> {
+    if (areSharedScopesEqual(scope, this.lastWrittenScope)) {
+      return;
+    }
+
+    const region = SAP_BTP_REGIONS.find((entry) => entry.id === scope.regionCode);
+    if (region === undefined) {
+      return;
+    }
+
+    if (areSharedScopesEqual(scope, this.currentConfirmedScope)) {
+      return;
+    }
+
+    const requestId = this.bumpExternalScopeChangeRequestId();
+    try {
+      await this.restoreExternalScope(scope, requestId);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to restore external scope.';
+      this.outputChannel.appendLine(
+        `[scope] External scope restore failed: ${sanitizeForLog(errorMessage)}`
+      );
+    }
+}
+
+export async function handleQuickScopeConfirm(this: RegionSidebarProvider, payload: QuickScopeConfirmPayload): Promise<void> {
+    const region = SAP_BTP_REGIONS.find((entry) => entry.id === payload.regionKey);
+    if (region === undefined) {
+      this.postSpacesError(`Region "${payload.regionKey}" is not known to SAP Tools.`);
+      return;
+    }
+
+    let orgGuid = '';
+    try {
+      orgGuid = await this.resolveQuickScopeOrgGuid(region, payload.orgName);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Could not confirm scope.';
+      this.outputChannel.appendLine(
+        `[scope] Quick scope confirm failed: ${sanitizeForLog(errorMessage)}`
+      );
+      this.postSpacesError(
+        'Could not confirm scope. Please try again or use Custom tab.'
+      );
+      return;
+    }
+
+    if (orgGuid.length === 0) {
+      this.postSpacesError(
+        `Org "${payload.orgName}" was not found in region ${region.id}. It may have been removed.`
+      );
+      return;
+    }
+
+    const confirmPayload: ConfirmScopePayload = {
+          regionId: region.id,
+          regionCode: toHyphenatedRegionCode(region.id),
+          regionName: region.displayName,
+          regionArea: region.area,
+          orgGuid,
+          orgName: payload.orgName,
+          spaceName: payload.spaceName,
+        };
+    await this.handleConfirmScope(confirmPayload);
+    await this.hydrateQuickConfirmedScope(confirmPayload);
+}
+
+export async function handleRegionSelected(this: RegionSidebarProvider, region: RegionSelectionPayload): Promise<void> {
+    const requestId = this.bumpRegionSelectionRequestId();
+    this.selectedRegionId = region.id;
+    this.selectedRegionCode = region.code;
+    this.selectedOrgGuid = '';
+    this.cfSession = null;
+    this.cfSessionRegionCode = '';
+    this.currentApps = [];
+    this.currentLogSessionSeed = null;
+    this.serviceFolderMappings = [];
+    this.serviceFolderSelections.clear();
+    this.exportInProgress = false;
+    this.lastLoadedScope = null;
+    this.hanaSqlWorkbench.invalidateAllAppContexts();
+    this.cfLogsPanel.updateApps([], null);
+    this.cfLogsPanel.updateScope(buildScopeLabel(region.code, 'select-org', 'select-space'));
+    this.postMessage({
+      type: MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
+      mappings: this.serviceFolderMappings,
+    });
+    if (isTestMode()) {
+      this.cfSession = {
+        apiEndpoint: getCfApiEndpoint(region.code),
+        token: {
+          accessToken: 'sap-tools-test-token',
+          expiresAt: Number.MAX_SAFE_INTEGER,
+          refreshToken: '',
+        },
+      };
+      this.cfSessionRegionCode = region.code;
+      this.postMessage({
+        type: MSG_ORGS_LOADED,
+        orgs: resolveMockOrgsForRegion(region.code),
+      });
+      return;
+    }
+
+    const credentials = await getEffectiveCredentials(this.context);
+    if (credentials === null) {
+      this.postOrgsError('No credentials found. Please re-open SAP Tools and log in.');
+      return;
+    }
+
+    const cachedOrgs = await this.cacheSyncService.getCachedOrgs(region.id);
+    if (!this.isCurrentRegionRequest(requestId)) {
+      return;
+    }
+
+    if (cachedOrgs !== null && cachedOrgs.length > 0) {
+      this.postMessage({
+        type: MSG_ORGS_LOADED,
+        orgs: cachedOrgs,
+      });
+      const warmupRequestId = requestId;
+      void this.refreshOrgsFromLiveAfterCachedRender(
+        credentials,
+        region.code,
+        warmupRequestId,
+        cachedOrgs
+      ).catch((error: unknown) => {
+        if (!this.isCurrentRegionRequest(warmupRequestId)) {
+          return;
+        }
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : 'Unknown warm-up error while preparing CF session.';
+        this.outputChannel.appendLine(
+          `[session] Warm-up failed for ${region.code}: ${errorMessage}`
+        );
+      });
+      return;
+    }
+
+    try {
+      const session = await this.ensureRegionSession(credentials);
+      if (!this.isCurrentRegionRequest(requestId)) {
+        return;
+      }
+      const orgs = await fetchOrgs(session);
+      if (!this.isCurrentRegionRequest(requestId)) {
+        return;
+      }
+      this.postMessage({ type: MSG_ORGS_LOADED, orgs });
+    } catch (error) {
+      if (!this.isCurrentRegionRequest(requestId)) {
+        return;
+      }
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to connect to Cloud Foundry.';
+      this.postOrgsError(errorMessage);
+    }
+}
+
+export async function handleOrgSelected(this: RegionSidebarProvider, org: OrgSelectionPayload): Promise<void> {
+    const requestId = this.bumpOrgSelectionRequestId();
+    this.selectedOrgGuid = org.guid;
+    const scopeLabel = buildScopeLabel(this.selectedRegionCode, org.name, 'select-space');
+    this.cfLogsPanel.updateScope(scopeLabel);
+    this.cfLogsPanel.updateApps([], null);
+    this.currentApps = [];
+    this.currentLogSessionSeed = null;
+    this.serviceFolderMappings = [];
+    this.serviceFolderSelections.clear();
+    this.exportInProgress = false;
+    this.lastLoadedScope = null;
+    this.hanaSqlWorkbench.invalidateAllAppContexts();
+    this.clearRootFolderSelection();
+    this.postMessage({
+      type: MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
+      mappings: this.serviceFolderMappings,
+    });
+    if (!this.isCurrentOrgRequest(requestId)) {
+      return;
+    }
+
+    if (isTestMode()) {
+      this.postMessage({ type: MSG_SPACES_LOADED, spaces: resolveMockSpacesForOrg(org) });
+      return;
+    }
+
+    try {
+      const cachedSpaces = await this.cacheSyncService.getCachedSpaces(
+        this.selectedRegionId,
+        org.guid
+      );
+      if (!this.isCurrentOrgRequest(requestId)) {
+        return;
+      }
+
+      if (cachedSpaces !== null) {
+        this.postMessage({ type: MSG_SPACES_LOADED, spaces: cachedSpaces });
+        return;
+      }
+
+      const credentials = await getEffectiveCredentials(this.context);
+      if (credentials === null) {
+        this.postSpacesError('No credentials found. Please re-open SAP Tools and log in.');
+        return;
+      }
+
+      const session = await this.ensureRegionSession(credentials);
+      if (!this.isCurrentOrgRequest(requestId)) {
+        return;
+      }
+      const spaces = await fetchSpaces(session, org.guid);
+      if (!this.isCurrentOrgRequest(requestId)) {
+        return;
+      }
+      this.postMessage({ type: MSG_SPACES_LOADED, spaces });
+    } catch (error) {
+      if (!this.isCurrentOrgRequest(requestId)) {
+        return;
+      }
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to fetch spaces.';
+      this.outputChannel.appendLine(
+        `[spaces] Failed to load spaces for org ${sanitizeForLog(org.guid)}: ${sanitizeErrorForLog(errorMessage)}`
+      );
+      this.postSpacesError(errorMessage);
+    }
+}
+
+export async function handleSpaceSelected(this: RegionSidebarProvider, payload: SpaceSelectionPayload): Promise<void> {
+    const requestId = this.bumpSpaceSelectionRequestId();
+    const regionCode = this.selectedRegionCode;
+    this.lastLoadedScope = null;
+    if (isTestMode()) {
+      await this.handleTestModeSpaceSelection(payload);
+      return;
+    }
+
+    const credentials = await getEffectiveCredentials(this.context);
+    if (credentials === null) {
+      this.postAppsError('No credentials found. Please re-open SAP Tools and log in.');
+      return;
+    }
+
+    const apiEndpoint = getCfApiEndpoint(regionCode);
+    const previousSeed = this.currentLogSessionSeed;
+    const spaceChanged = previousSeed?.apiEndpoint !== apiEndpoint ||
+          previousSeed.orgName !== payload.orgName ||
+          previousSeed.spaceName !== payload.spaceName;
+    if (spaceChanged) {
+      this.hanaSqlWorkbench.invalidateAllAppContexts();
+    }
+
+    const topologyApps = getAppsFromTopologySync(apiEndpoint, payload.orgName, payload.spaceName);
+    const cachedApps = topologyApps === null
+            ? await this.cacheSyncService.getCachedApps(
+                this.selectedRegionId,
+                payload.orgGuid,
+                payload.spaceName
+              )
+            : null;
+    if (!this.isCurrentSpaceRequest(requestId)) {
+      return;
+    }
+
+    const cfHomeDir = await ensureCfHomeDir(this.context);
+    if (!this.isCurrentSpaceRequest(requestId)) {
+      return;
+    }
+
+    const immediateApps: SidebarAppEntry[] | null = topologyApps ??
+          (cachedApps === null
+            ? null
+            : cachedApps.map((app) => ({
+                id: app.id,
+                name: app.name,
+                runningInstances: app.runningInstances,
+              })));
+    if (immediateApps !== null) {
+      // Serve straight from the shared cf-structure.json (kept fresh by the cf-sync
+      // engine and the sibling CDS Debug extension). Do NOT trigger a live cf-sync
+      // here: running it on every space selection — including scope hand-offs received
+      // from CDS Debug via sapCap.currentScope — made both extensions drive the shared
+      // ~/.saptools cf-sync engine at the same time, contending over its CF config and
+      // lock files and breaking the bidirectional scope sync. Freshness for scopes the
+      // user actually confirms is handled by refreshTopologyForConfirmedScope, and
+      // CDS Debug keeps the shared structure fresh otherwise.
+      await this.postAppsLoaded(immediateApps, payload, credentials, cfHomeDir, regionCode);
+      return;
+    }
+
+    try {
+      const refresh = await refreshCfSyncSpace({
+        apiEndpoint,
+        orgName: payload.orgName,
+        spaceName: payload.spaceName,
+        email: credentials.email,
+        password: credentials.password,
+        log: (message) => {
+        this.outputChannel.appendLine(message);
+      },
+      });
+      if (!this.isCurrentSpaceRequest(requestId)) {
+        return;
+      }
+
+      if (refresh.status === 'refreshed') {
+        // Use the apps returned by the refresh directly: when the shared lock is
+        // busy the sync runs against a private fallback directory that
+        // getAppsFromTopologySync (which only reads the shared structure) cannot
+        // see, so re-reading the shared file would yield nothing.
+        const freshApps: SidebarAppEntry[] = refresh.apps.map((app) => ({
+          id: app.id,
+          name: app.name,
+          runningInstances: app.runningInstances,
+        }));
+        this.outputChannel.appendLine(
+          `[apps] Refreshed ${sanitizeForLog(payload.spaceName)} via ${refresh.source} (${String(refresh.appCount)} apps)`
+        );
+        await this.postAppsLoaded(freshApps, payload, credentials, cfHomeDir, regionCode);
+        return;
+      }
+
+      const reason =
+        refresh.status === 'failed'
+          ? refresh.error instanceof Error
+            ? refresh.error.message
+            : 'Failed to load apps from Cloud Foundry.'
+          : 'Could not resolve the Cloud Foundry region for this scope.';
+      this.outputChannel.appendLine(
+        `[apps] Refresh ${refresh.status} for ${sanitizeForLog(payload.spaceName)}: ${sanitizeForLog(reason)}`
+      );
+      this.postAppsError(reason);
+    } catch (error) {
+      if (!this.isCurrentSpaceRequest(requestId)) {
+        return;
+      }
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to load apps from Cloud Foundry.';
+      this.postAppsError(errorMessage);
+    }
+}
+
+export async function handleTestModeSpaceSelection(this: RegionSidebarProvider, payload: SpaceSelectionPayload): Promise<void> {
+    const appsDelayMs = resolveE2eTestModeAppsDelayMs();
+    if (appsDelayMs > 0) {
+      await sleep(appsDelayMs);
+    }
+
+    if (payload.spaceName === 'failspace') {
+      this.postAppsError(
+        'Simulated CF CLI failure: could not reach API endpoint for failspace.'
+      );
+      return;
+    }
+
+    const apps = resolveMockApps(payload.spaceName).map((name) => ({
+          id: name,
+          name,
+          runningInstances: 1,
+        }));
+    this.postMessage({
+      type: MSG_APPS_LOADED,
+      apps,
+      scopeKey: `${this.selectedRegionCode}::${payload.orgName}::${payload.spaceName}`,
+    });
+    this.cfLogsPanel.updateScope(
+      buildScopeLabel(this.selectedRegionCode, payload.orgName, payload.spaceName)
+    );
+    this.cfLogsPanel.updateApps(apps, null);
+    this.currentApps = apps;
+    this.currentLogSessionSeed = null;
+    this.lastLoadedScope = {
+      regionId: this.selectedRegionId,
+      regionCode: this.selectedRegionCode,
+      orgGuid: payload.orgGuid,
+      orgName: payload.orgName,
+      spaceName: payload.spaceName,
+    };
+    this.exportInProgress = false;
+    await this.restoreRootFolderForLoadedSpace(payload);
+    const restoredMappings = await this.restoreServiceFolderMappingsForCurrentScope();
+    if (!restoredMappings) {
+      this.serviceFolderMappings = [];
+      this.serviceFolderSelections.clear();
+      this.postMessage({
+        type: MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
+        mappings: this.serviceFolderMappings,
+      });
+    }
+
+    if (this.selectedLocalRootFolderPath.length > 0) {
+      void this.refreshServiceFolderMappings();
+    }
 }

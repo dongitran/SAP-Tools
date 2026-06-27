@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.185 (stable)
+
+- Refactor `sidebarHandlers.ts` to extract handler functions into smaller domain-specific files.
+
 ## 0.10.184 (stable)
 
 - Refactor `cfLogsPanel.ts` to extract types, helpers, and html logic into separate modules.
