@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.186 (stable)
+
+- Fix e2e test settings layout section count.
+
 ## 0.10.185 (stable)
 
 - Refactor `sidebarHandlers.ts` to extract handler functions into smaller domain-specific files.
