@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.184 (stable)
+
+- Refactor `cfLogsPanel.ts` to extract types, helpers, and html logic into separate modules.
+
 ## 0.10.183 (stable)
 
 - Extract `RegionSidebarProvider` private methods into domain-specific handlers.
