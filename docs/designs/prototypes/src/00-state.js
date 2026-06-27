@@ -166,6 +166,11 @@ const CF_TOPOLOGY_MESSAGE_TYPE = 'sapTools.cfTopology';
 const TOPOLOGY_SCOPE_RESOLVED_MESSAGE_TYPE = 'sapTools.topologyScopeResolved';
 const TOPOLOGY_ORG_SELECTED_MESSAGE_TYPE = 'sapTools.topologyOrgSelected';
 const QUICK_SCOPE_CONFIRM_MESSAGE_TYPE = 'sapTools.quickScopeConfirm';
+const GET_SSH_PROXY_STATUS_MESSAGE_TYPE = 'sapTools.getSshProxyStatus';
+const SAVE_SSH_PROXY_SETTINGS_MESSAGE_TYPE = 'sapTools.saveSshProxySettings';
+const CLEAR_SSH_PROXY_SETTINGS_MESSAGE_TYPE = 'sapTools.clearSshProxySettings';
+const SSH_PROXY_STATUS_MESSAGE_TYPE = 'sapTools.sshProxyStatus';
+
 const TOPOLOGY_ORG_SEARCH_LIMIT = 50;
 const vscodeApi = resolveVscodeApi();
 const HANA_SQL_RUN_SHORTCUT_LABEL = /Mac/i.test(navigator.platform)
@@ -195,6 +200,8 @@ let lastSyncStartedAt = null;
 let lastSyncCompletedAt = null;
 let nextSyncAt = null;
 let lastSyncError = '';
+let sshProxyStatus = { enabled: false, host: '', port: 22, username: '', connection: 'disabled', message: null };
+
 let activeUserEmail = '';
 let settingsStatusMessage = '';
 let previousModeBeforeSettings = 'selection';

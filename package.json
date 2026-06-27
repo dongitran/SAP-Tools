@@ -2,7 +2,7 @@
   "name": "sap-tools",
   "displayName": "SAP Tools",
   "description": "All-in-one toolbox for SAP BTP development workflows",
-  "version": "0.10.178",
+  "version": "0.10.180",
   "publisher": "dongtran",
   "icon": "resources/icon.png",
   "license": "MIT",
@@ -162,6 +162,36 @@
             "scope": "application",
             "default": true,
             "markdownDescription": "Start the local Verdaccio registry automatically when SAP Tools activates (only takes effect once it has been installed on first use)."
+          },
+          "sapTools.sshProxy.enabled": {
+            "type": "boolean",
+            "scope": "application",
+            "default": false,
+            "markdownDescription": "Enable SSH Proxy for Cloud Foundry connections (e.g. Live Trace)."
+          },
+          "sapTools.sshProxy.host": {
+            "type": "string",
+            "scope": "application",
+            "default": "",
+            "markdownDescription": "SSH Proxy hostname or IP address."
+          },
+          "sapTools.sshProxy.port": {
+            "type": "number",
+            "scope": "application",
+            "default": 22,
+            "markdownDescription": "SSH Proxy port."
+          },
+          "sapTools.sshProxy.username": {
+            "type": "string",
+            "scope": "application",
+            "default": "",
+            "markdownDescription": "SSH Proxy username."
+          },
+          "sapTools.sshProxy.password": {
+            "type": "string",
+            "scope": "application",
+            "default": "",
+            "markdownDescription": "SSH Proxy password (optional if you prefer storing in settings, for best security use an SSH agent or private key if supported in the future)."
           }
         }
       }
@@ -277,7 +307,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:prototype": "node ./scripts/build-prototype.mjs",
-    "postbuild": "node ./scripts/vendor-hdb.mjs && node ./scripts/vendor-table-name-formatters.mjs && node ./scripts/vendor-cf-sync.mjs && node ./scripts/vendor-xb-msg-amqp.mjs && node ./scripts/vendor-solclientjs.mjs && npm run build:prototype",
+    "postbuild": "node ./scripts/vendor-hdb.mjs && node ./scripts/vendor-table-name-formatters.mjs && node ./scripts/vendor-cf-sync.mjs && node ./scripts/vendor-xb-msg-amqp.mjs && node ./scripts/vendor-solclientjs.mjs && node ./scripts/vendor-ssh.mjs && npm run build:prototype",
     "watch": "tsc -watch -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
@@ -293,16 +323,19 @@
     "vscode:prepublish": "npm run build"
   },
   "dependencies": {
+    "@pondwader/socks5-server": "^1.0.10",
     "@sap/xb-msg-amqp-v100": "^0.9.58",
     "@saptools/cf-sync": "^0.4.10",
     "change-case": "^5.4.4",
     "hdb": "^2.27.1",
     "solclientjs": "^10.18.3",
+    "ssh2": "^1.17.0",
     "wordsninja": "^1.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.24.0",
     "@types/node": "^22.14.1",
+    "@types/ssh2": "^1.15.5",
     "@types/vscode": "^1.90.0",
     "@vitest/coverage-v8": "^3.2.6",
     "cspell": "^8.17.1",

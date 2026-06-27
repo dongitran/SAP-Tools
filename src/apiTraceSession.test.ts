@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
+vi.mock('vscode', () => ({
+  workspace: {
+    getConfiguration: vi.fn(() => ({
+      get: vi.fn(),
+    })),
+  },
+}));
+
 import { ApiTraceSession } from './apiTraceSession';
 import type { ApiTraceStartOptions, ApiTraceStatePayload } from './apiTraceTypes';
 import type { ApiTraceInspectorClient } from './apiTraceInspectorClient';

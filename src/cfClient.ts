@@ -594,8 +594,9 @@ export function spawnCfSshPortForward(params: {
   readonly keepAliveSeconds: number;
   readonly cfHomeDir?: string;
   readonly instanceIndex?: number;
+  readonly envOverrides?: Record<string, string>;
 }): CfPortForwardHandle {
-  const env = buildCfCliEnv(params.cfHomeDir, undefined);
+  const env = buildCfCliEnv(params.cfHomeDir, params.envOverrides);
   const forwardSpec = `${String(params.localPort)}:${params.remoteHost}:${String(params.remotePort)}`;
   // Log without the remote sleep command (keeps the log clean and stable).
   const sshArgs = buildCfSshArgs(params.appName, params.instanceIndex, ['-L', forwardSpec]);

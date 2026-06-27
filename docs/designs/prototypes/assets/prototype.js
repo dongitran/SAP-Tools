@@ -167,6 +167,11 @@ const CF_TOPOLOGY_MESSAGE_TYPE = 'sapTools.cfTopology';
 const TOPOLOGY_SCOPE_RESOLVED_MESSAGE_TYPE = 'sapTools.topologyScopeResolved';
 const TOPOLOGY_ORG_SELECTED_MESSAGE_TYPE = 'sapTools.topologyOrgSelected';
 const QUICK_SCOPE_CONFIRM_MESSAGE_TYPE = 'sapTools.quickScopeConfirm';
+const GET_SSH_PROXY_STATUS_MESSAGE_TYPE = 'sapTools.getSshProxyStatus';
+const SAVE_SSH_PROXY_SETTINGS_MESSAGE_TYPE = 'sapTools.saveSshProxySettings';
+const CLEAR_SSH_PROXY_SETTINGS_MESSAGE_TYPE = 'sapTools.clearSshProxySettings';
+const SSH_PROXY_STATUS_MESSAGE_TYPE = 'sapTools.sshProxyStatus';
+
 const TOPOLOGY_ORG_SEARCH_LIMIT = 50;
 const vscodeApi = resolveVscodeApi();
 const HANA_SQL_RUN_SHORTCUT_LABEL = /Mac/i.test(navigator.platform)
@@ -196,6 +201,8 @@ let lastSyncStartedAt = null;
 let lastSyncCompletedAt = null;
 let nextSyncAt = null;
 let lastSyncError = '';
+let sshProxyStatus = { enabled: false, host: '', port: 22, username: '', connection: 'disabled', message: null };
+
 let activeUserEmail = '';
 let settingsStatusMessage = '';
 let previousModeBeforeSettings = 'selection';
@@ -756,6 +763,15 @@ window.addEventListener('message', (event) => {
 
   // Ignore gallery navigation messages (prototype gallery only).
   if (msg.type === 'saptools.prototype.navigate') {
+    return;
+  }
+
+  
+  if (msg.type === SSH_PROXY_STATUS_MESSAGE_TYPE) {
+    if (msg.payload) {
+      sshProxyStatus = { ...sshProxyStatus, ...msg.payload };
+      renderPrototype();
+    }
     return;
   }
 
@@ -1755,6 +1771,35 @@ appElement.addEventListener('click', (event) => {
 
 appElement.addEventListener('change', (event) => {
   const target = event.target;
+  if (target instanceof HTMLInputElement) {
+
+  if (target.id === 'chk-ssh-proxy-enabled') {
+    const enabled = !!target.checked;
+    const previous = sshProxyStatus;
+    sshProxyStatus = {
+      ...previous,
+      enabled,
+      connection: enabled ? 'disconnected' : 'disabled',
+      message: null,
+    };
+    if (!enabled && previous.host && previous.username) {
+      if (vscodeApi !== null) {
+        vscodeApi.postMessage({
+          type: SAVE_SSH_PROXY_SETTINGS_MESSAGE_TYPE,
+          payload: {
+            enabled: false,
+            host: previous.host,
+            port: previous.port,
+            username: previous.username,
+          },
+        });
+      }
+    }
+    renderPrototype();
+    return;
+  }
+
+  }
   if (!(target instanceof HTMLSelectElement)) return;
   const action = target.dataset.action;
   if (action === 'api-select-auth') {
@@ -3019,6 +3064,45 @@ function handleSettingsAction(action, actionElement) {
   if (action === 'logout') {
     settingsStatusMessage = 'Signing out...';
     postLogout();
+    return true;
+  }
+
+  if (action === 'save-ssh-proxy') {
+    const host = String(appElement.querySelector('#ssh-proxy-host')?.value || '').trim();
+    const port = parseInt(String(appElement.querySelector('#ssh-proxy-port')?.value || ''), 10);
+    const username = String(appElement.querySelector('#ssh-proxy-username')?.value || '').trim();
+    const password = String(appElement.querySelector('#ssh-proxy-password')?.value || '');
+    if (!host || !username || !Number.isInteger(port) || port < 1 || port > 65535) {
+      sshProxyStatus = {
+        ...sshProxyStatus,
+        connection: 'error',
+        message: 'Enter a valid host, SSH port, and username.',
+      };
+      renderPrototype();
+      return true;
+    }
+    sshProxyStatus = {
+      ...sshProxyStatus,
+      enabled: true,
+      host,
+      port,
+      username,
+      connection: 'connecting',
+      message: null,
+    };
+    const payload = { enabled: true, host, port, username };
+    if (password) payload.password = password;
+    if (vscodeApi !== null) {
+      vscodeApi.postMessage({ type: SAVE_SSH_PROXY_SETTINGS_MESSAGE_TYPE, payload });
+    }
+    renderPrototype();
+    return true;
+  }
+
+  if (action === 'clear-ssh-proxy') {
+    if (vscodeApi !== null) {
+      vscodeApi.postMessage({ type: CLEAR_SSH_PROXY_SETTINGS_MESSAGE_TYPE });
+    }
     return true;
   }
 
@@ -4835,6 +4919,62 @@ function renderSettingsScreen() {
           <button type="button" class="primary-action" data-action="sync-now">Sync now</button>
           <button type="button" class="secondary-action" data-action="logout">Logout</button>
         </div>
+      </section>
+
+      <section class="group-card settings-section">
+        <h2>SSH Proxy</h2>
+        
+        <label class="pref-row" for="chk-ssh-proxy-enabled">
+          <div class="pref-row-content">
+            <span class="pref-row-title">Use SSH proxy
+              <span class="pref-state-badge ${sshProxyStatus.enabled ? 'pref-state-on' : 'pref-state-off'}">
+                ${sshProxyStatus.enabled ? 'enabled' : 'disabled'}
+              </span>
+            </span>
+          </div>
+          <div class="toggle-switch ${sshProxyStatus.enabled ? 'on' : ''}">
+            <input type="checkbox" id="chk-ssh-proxy-enabled" ${sshProxyStatus.enabled ? 'checked' : ''} />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </div>
+        </label>
+
+        ${sshProxyStatus.enabled ? `
+        <div class="ssh-proxy-grid">
+          <label class="ssh-proxy-field" for="ssh-proxy-host">
+            <span>Host / domain</span>
+            <input class="input" id="ssh-proxy-host" value="${escapeHtml(sshProxyStatus.host)}" />
+          </label>
+          <label class="ssh-proxy-field ssh-proxy-port" for="ssh-proxy-port">
+            <span>SSH port</span>
+            <input class="input" id="ssh-proxy-port" type="number" min="1" max="65535" value="${sshProxyStatus.port}" />
+          </label>
+          <label class="ssh-proxy-field" for="ssh-proxy-username">
+            <span>Username</span>
+            <input class="input" id="ssh-proxy-username" value="${escapeHtml(sshProxyStatus.username)}" />
+          </label>
+          <label class="ssh-proxy-field" for="ssh-proxy-password">
+            <span>Password</span>
+            <input class="input" id="ssh-proxy-password" type="password" placeholder="(Unchanged)" />
+          </label>
+        </div>
+
+        <div class="ssh-proxy-actions">
+          <button class="primary-action" id="btn-save-ssh-proxy" data-action="save-ssh-proxy" ${sshProxyStatus.connection === 'connecting' ? 'disabled' : ''}>
+            ${sshProxyStatus.connection === 'connecting' ? 'Testing...' : 'Save & Test'}
+          </button>
+          <button class="secondary-action" id="btn-clear-ssh-proxy" data-action="clear-ssh-proxy">Clear</button>
+        </div>
+
+        <div class="ssh-proxy-status ${sshProxyStatus.connection === 'error' ? 'error' : sshProxyStatus.connection === 'connected' ? 'connected' : ''}">
+          ${sshProxyStatus.connection === 'connected'
+            ? 'Connected on 127.0.0.1'
+            : sshProxyStatus.connection === 'connecting'
+              ? 'Connecting...'
+              : sshProxyStatus.connection === 'error'
+                ? escapeHtml(sshProxyStatus.message || 'Connection failed.')
+                : 'Not connected'}
+        </div>
+        ` : ''}
       </section>
     </section>
   `;

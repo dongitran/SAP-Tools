@@ -10,6 +10,15 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  
+  if (msg.type === SSH_PROXY_STATUS_MESSAGE_TYPE) {
+    if (msg.payload) {
+      sshProxyStatus = { ...sshProxyStatus, ...msg.payload };
+      renderPrototype();
+    }
+    return;
+  }
+
   if (msg.type === 'sapTools.orgsLoaded') {
     const rawOrgs = msg.orgs;
     if (!Array.isArray(rawOrgs)) {
@@ -1006,6 +1015,35 @@ appElement.addEventListener('click', (event) => {
 
 appElement.addEventListener('change', (event) => {
   const target = event.target;
+  if (target instanceof HTMLInputElement) {
+
+  if (target.id === 'chk-ssh-proxy-enabled') {
+    const enabled = !!target.checked;
+    const previous = sshProxyStatus;
+    sshProxyStatus = {
+      ...previous,
+      enabled,
+      connection: enabled ? 'disconnected' : 'disabled',
+      message: null,
+    };
+    if (!enabled && previous.host && previous.username) {
+      if (vscodeApi !== null) {
+        vscodeApi.postMessage({
+          type: SAVE_SSH_PROXY_SETTINGS_MESSAGE_TYPE,
+          payload: {
+            enabled: false,
+            host: previous.host,
+            port: previous.port,
+            username: previous.username,
+          },
+        });
+      }
+    }
+    renderPrototype();
+    return;
+  }
+
+  }
   if (!(target instanceof HTMLSelectElement)) return;
   const action = target.dataset.action;
   if (action === 'api-select-auth') {

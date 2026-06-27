@@ -93,6 +93,10 @@ const MSG_ACTIVE_APPS_CHANGED = 'sapTools.activeAppsChanged';
 const MSG_PAUSED_APPS_CHANGED = 'sapTools.pausedAppsChanged';
 const MSG_UPDATE_SYNC_INTERVAL = 'sapTools.updateSyncInterval';
 const MSG_SYNC_NOW = 'sapTools.syncNow';
+const MSG_GET_SSH_PROXY_STATUS = 'sapTools.getSshProxyStatus';
+const MSG_SAVE_SSH_PROXY_SETTINGS = 'sapTools.saveSshProxySettings';
+const MSG_CLEAR_SSH_PROXY_SETTINGS = 'sapTools.clearSshProxySettings';
+
 const MSG_LOGOUT = 'sapTools.logout';
 const MSG_SELECT_LOCAL_ROOT_FOLDER = 'sapTools.selectLocalRootFolder';
 const MSG_REFRESH_SERVICE_FOLDER_MAPPINGS = 'sapTools.refreshServiceFolderMappings';
@@ -121,6 +125,8 @@ const BUILTIN_EXTENSION_OPEN_COMMAND = 'extension.open';
 // ── Outbound message types (extension → webview) ────────────────────────────
 
 const MSG_LOGIN_RESULT = 'sapTools.loginResult';
+const MSG_SSH_PROXY_STATUS = 'sapTools.sshProxyStatus';
+
 const MSG_LOGOUT_RESULT = 'sapTools.logoutResult';
 const MSG_ORGS_LOADED = 'sapTools.orgsLoaded';
 const MSG_ORGS_ERROR = 'sapTools.orgsError';
@@ -386,6 +392,8 @@ export class RegionSidebarProvider
 
     const cacheSubscription = this.cacheSyncService.subscribe((snapshot) => {
       this.postCacheState(snapshot);
+    this.sendSshProxyStatus();
+
       if (!snapshot.syncInProgress) {
         void this.pushCfTopology();
       }
@@ -724,12 +732,16 @@ export class RegionSidebarProvider
         payload.syncIntervalHours
       );
       this.postCacheState(snapshot);
+    this.sendSshProxyStatus();
+
       return;
     }
 
     if (type === MSG_SYNC_NOW) {
       const snapshot = await this.cacheSyncService.triggerSyncNow();
       this.postCacheState(snapshot);
+    this.sendSshProxyStatus();
+
       return;
     }
 
@@ -737,6 +749,25 @@ export class RegionSidebarProvider
       await this.handleLogout();
       return;
     }
+
+    if (type === MSG_GET_SSH_PROXY_STATUS) {
+      this.sendSshProxyStatus();
+      return;
+    }
+
+    if (type === MSG_SAVE_SSH_PROXY_SETTINGS) {
+      if ('payload' in message) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+        await this.handleSaveSshProxySettings((message as any).payload);
+      }
+      return;
+    }
+
+    if (type === MSG_CLEAR_SSH_PROXY_SETTINGS) {
+      await this.handleClearSshProxySettings();
+      return;
+    }
+
   }
 
   private async handleOpenApisExplorer(appId: string): Promise<void> {
@@ -779,6 +810,8 @@ export class RegionSidebarProvider
   private async handleRequestInitialState(): Promise<void> {
     const snapshot = await this.cacheSyncService.getRuntimeSnapshot();
     this.postCacheState(snapshot);
+    this.sendSshProxyStatus();
+
 
     if (!this.hasAttemptedConfirmedScopeRestore) {
       await this.preloadRootFolderForPersistedScope();
@@ -3860,6 +3893,70 @@ export class RegionSidebarProvider
     if (process.env['SAP_TOOLS_E2E'] === '1') {
       void vscode.window.showInformationMessage(formattedMessage);
     }
+  }
+
+
+private sendSshProxyStatus(): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+    const config = vscode.workspace.getConfiguration('sapTools').get<any>('sshProxy') ?? {};
+    this.postMessage({
+      type: MSG_SSH_PROXY_STATUS,
+      payload: {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        enabled: config.enabled === true,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        host: typeof config.host === 'string' ? (config.host as string) : '',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        port: typeof config.port === 'number' ? (config.port as number) : 22,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        username: typeof config.username === 'string' ? (config.username as string) : '',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        connection: config.enabled === true ? 'disconnected' : 'disabled',
+        message: null,
+      },
+    });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async handleSaveSshProxySettings(payload: any): Promise<void> {
+    const config = vscode.workspace.getConfiguration('sapTools');
+    await config.update('sshProxy', {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      enabled: payload.enabled === true,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      host: typeof payload.host === 'string' ? (payload.host as string) : '',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      port: typeof payload.port === 'number' ? (payload.port as number) : 22,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      username: typeof payload.username === 'string' ? (payload.username as string) : '',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      password: typeof payload.password === 'string' ? (payload.password as string) : undefined,
+    }, vscode.ConfigurationTarget.Global);
+    
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    if (payload.enabled === true) {
+      try {
+        const { ensureSshProxy } = await import('./sshProxyTunnel.js');
+        await ensureSshProxy();
+        this.postMessage({
+          type: MSG_SSH_PROXY_STATUS,
+          payload: { connection: 'connected', message: null }
+        });
+      } catch (error: unknown) {
+        this.postMessage({
+          type: MSG_SSH_PROXY_STATUS,
+          payload: { connection: 'error', message: error instanceof Error ? error.message : String(error) }
+        });
+      }
+    } else {
+      this.sendSshProxyStatus();
+    }
+  }
+
+  private async handleClearSshProxySettings(): Promise<void> {
+    const config = vscode.workspace.getConfiguration('sapTools');
+    await config.update('sshProxy', undefined, vscode.ConfigurationTarget.Global);
+    this.sendSshProxyStatus();
   }
 
   private logWebviewMessageFailure(context: string, error: unknown): void {

@@ -1,6 +1,14 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 
+vi.mock('vscode', () => ({
+  workspace: {
+    getConfiguration: vi.fn(() => ({
+      get: vi.fn(),
+    })),
+  },
+}));
+
 import { openApiTraceInspectorTunnel } from './apiTraceTunnel';
 import type { CfPortForwardHandle } from './cfClient';
 

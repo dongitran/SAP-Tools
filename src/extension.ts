@@ -11,6 +11,7 @@ import { HanaSqlHistoryPanelManager } from './hanaSqlHistoryPanel';
 import { reapOrphanedTunnels } from './hanaTunnelRegistry';
 import { REGION_VIEW_ID, RegionSidebarProvider } from './sidebarProvider';
 import { readCurrentScope } from './scopeSync';
+import { disposeSshProxy } from './sshProxyTunnel';
 
 import { ApisExplorerPanelManager } from './apisExplorerPanel';
 import { AdvancedEventMeshPanelManager } from './advancedEventMeshPanel';
@@ -145,6 +146,9 @@ export function activate(context: vscode.ExtensionContext): void {
     outputChannel,
     new vscode.Disposable(() => {
       configureCfCommandLogger(null);
+    }),
+    new vscode.Disposable(() => {
+      void disposeSshProxy();
     }),
     cacheSyncService,
     regionSidebarProvider,

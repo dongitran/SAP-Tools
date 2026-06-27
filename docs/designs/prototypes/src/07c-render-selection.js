@@ -275,6 +275,62 @@ function renderSettingsScreen() {
           <button type="button" class="secondary-action" data-action="logout">Logout</button>
         </div>
       </section>
+
+      <section class="group-card settings-section">
+        <h2>SSH Proxy</h2>
+        
+        <label class="pref-row" for="chk-ssh-proxy-enabled">
+          <div class="pref-row-content">
+            <span class="pref-row-title">Use SSH proxy
+              <span class="pref-state-badge ${sshProxyStatus.enabled ? 'pref-state-on' : 'pref-state-off'}">
+                ${sshProxyStatus.enabled ? 'enabled' : 'disabled'}
+              </span>
+            </span>
+          </div>
+          <div class="toggle-switch ${sshProxyStatus.enabled ? 'on' : ''}">
+            <input type="checkbox" id="chk-ssh-proxy-enabled" ${sshProxyStatus.enabled ? 'checked' : ''} />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </div>
+        </label>
+
+        ${sshProxyStatus.enabled ? `
+        <div class="ssh-proxy-grid">
+          <label class="ssh-proxy-field" for="ssh-proxy-host">
+            <span>Host / domain</span>
+            <input class="input" id="ssh-proxy-host" value="${escapeHtml(sshProxyStatus.host)}" />
+          </label>
+          <label class="ssh-proxy-field ssh-proxy-port" for="ssh-proxy-port">
+            <span>SSH port</span>
+            <input class="input" id="ssh-proxy-port" type="number" min="1" max="65535" value="${sshProxyStatus.port}" />
+          </label>
+          <label class="ssh-proxy-field" for="ssh-proxy-username">
+            <span>Username</span>
+            <input class="input" id="ssh-proxy-username" value="${escapeHtml(sshProxyStatus.username)}" />
+          </label>
+          <label class="ssh-proxy-field" for="ssh-proxy-password">
+            <span>Password</span>
+            <input class="input" id="ssh-proxy-password" type="password" placeholder="(Unchanged)" />
+          </label>
+        </div>
+
+        <div class="ssh-proxy-actions">
+          <button class="primary-action" id="btn-save-ssh-proxy" data-action="save-ssh-proxy" ${sshProxyStatus.connection === 'connecting' ? 'disabled' : ''}>
+            ${sshProxyStatus.connection === 'connecting' ? 'Testing...' : 'Save & Test'}
+          </button>
+          <button class="secondary-action" id="btn-clear-ssh-proxy" data-action="clear-ssh-proxy">Clear</button>
+        </div>
+
+        <div class="ssh-proxy-status ${sshProxyStatus.connection === 'error' ? 'error' : sshProxyStatus.connection === 'connected' ? 'connected' : ''}">
+          ${sshProxyStatus.connection === 'connected'
+            ? 'Connected on 127.0.0.1'
+            : sshProxyStatus.connection === 'connecting'
+              ? 'Connecting...'
+              : sshProxyStatus.connection === 'error'
+                ? escapeHtml(sshProxyStatus.message || 'Connection failed.')
+                : 'Not connected'}
+        </div>
+        ` : ''}
+      </section>
     </section>
   `;
 }

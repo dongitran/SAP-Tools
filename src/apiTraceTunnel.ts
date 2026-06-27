@@ -1,6 +1,7 @@
 import { connect as netConnect, createServer } from 'node:net';
 
 import { spawnCfSshPortForward, type CfPortForwardHandle } from './cfClient';
+import { ensureSshProxy } from './sshProxyTunnel';
 
 const INSPECTOR_REMOTE_HOST = '127.0.0.1';
 const INSPECTOR_REMOTE_PORT = 9229;
@@ -44,6 +45,17 @@ export async function openApiTraceInspectorTunnel(
   dependencies: ApiTraceTunnelDependencies = defaultApiTraceTunnelDependencies
 ): Promise<ApiTraceTunnelOpenResult> {
   const localPort = await dependencies.allocatePort();
+  const proxy = await ensureSshProxy();
+  const envOverrides: Record<string, string> = {};
+  if (proxy !== undefined) {
+    const proxyUrl = `socks5://${proxy.host}:${proxy.port.toString()}`;
+    envOverrides['http_proxy'] = proxyUrl;
+    envOverrides['HTTP_PROXY'] = proxyUrl;
+    envOverrides['https_proxy'] = proxyUrl;
+    envOverrides['HTTPS_PROXY'] = proxyUrl;
+    envOverrides['all_proxy'] = proxyUrl;
+    envOverrides['ALL_PROXY'] = proxyUrl;
+  }
   const forwardParams = {
     appName: params.appName,
     localPort,
@@ -51,6 +63,7 @@ export async function openApiTraceInspectorTunnel(
     remotePort: INSPECTOR_REMOTE_PORT,
     keepAliveSeconds: TRACE_TUNNEL_KEEPALIVE_SECONDS,
     instanceIndex: params.instanceIndex,
+    ...(Object.keys(envOverrides).length > 0 ? { envOverrides } : {}),
   };
   const handle = dependencies.spawnPortForward(
     params.cfHomeDir === undefined ? forwardParams : { ...forwardParams, cfHomeDir: params.cfHomeDir }

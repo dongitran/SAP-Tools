@@ -1371,6 +1371,149 @@ body.vscode-high-contrast-light.prototype-page .confirm-button {
   padding-inline: 12px;
   font-size: 0.6rem;
 }
+
+.pref-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.12s;
+}
+.pref-row:hover { background: var(--vscode-list-hoverBackground); }
+.pref-row-content { flex: 1; min-width: 0; }
+.pref-row-title {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 3px;
+}
+.pref-state-badge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 99px;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+.pref-state-off {
+  background: transparent;
+  border: 1px solid var(--vscode-descriptionForeground);
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.7;
+}
+.pref-state-on {
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed) 12%, transparent);
+  border: 1px solid var(--vscode-testing-iconPassed);
+  color: var(--vscode-testing-iconPassed);
+}
+.pref-row-desc {
+  display: block;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.4;
+}
+
+.ssh-proxy-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  gap: 8px;
+  margin: 8px 0;
+}
+.ssh-proxy-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted-color);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.ssh-proxy-field .input {
+  border: 1px solid color-mix(in oklab, var(--border-color) 86%, var(--mix-base));
+  border-radius: 8px;
+  min-height: 34px;
+  width: 100%;
+  background: var(--frame-bg);
+  color: var(--text-color);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+
+.ssh-proxy-field .input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.ssh-proxy-field:nth-child(n+3) { grid-column: 1 / -1; }
+.ssh-proxy-actions {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+.ssh-proxy-status {
+  min-height: 18px;
+  padding: 6px 8px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 4px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.ssh-proxy-status.connected { color: var(--vscode-testing-iconPassed); }
+.ssh-proxy-status.error {
+  color: var(--vscode-inputValidation-errorForeground);
+  border-color: var(--vscode-inputValidation-errorBorder);
+  background: var(--vscode-inputValidation-errorBackground);
+}
+
+.toggle-switch {
+  flex-shrink: 0;
+  position: relative;
+  width: 32px;
+  height: 18px;
+  margin-top: 2px;
+  cursor: pointer;
+}
+.toggle-switch input[type=checkbox] {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.toggle-track {
+  display: block;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--vscode-input-border, rgba(128,128,128,0.4));
+  transition: background 0.22s ease;
+  position: relative;
+}
+.toggle-switch.on .toggle-track {
+  background: var(--vscode-button-background);
+}
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+}
+.toggle-switch.on .toggle-thumb {
+  transform: translateX(14px);
+}
 /* --- END 02-components.css --- */
 
 /* --- BEGIN 03-logs-panel.css --- */

@@ -1,5 +1,14 @@
 # SAP Tools Extension Changelog
 
+## 0.10.180 (stable)
+
+- Refined SSH Proxy UI in the settings page to match the cds-debug interface.
+
+## 0.10.179 (stable)
+- Feature: Added SSH Proxy support for Live Trace to improve connectivity speed to Cloud Foundry. Configure via `sapTools.sshProxy.*` settings.
+- Hardening: SOCKS5 proxy server lifecycle binds strictly to localhost and cleans up automatically on session close or extension deactivation.
+
+
 ## 0.10.178 (stable)
 - Fix: Cache credential initialization is now serialized so activation and sidebar resolution cannot interleave stale-sync recovery with a new background sync.
 - Test: Added Ubuntu SQL backup history E2E screenshot baselines and hardened Apps mapping/stale-sync E2E assertions against expected hydration timing.

@@ -218,6 +218,45 @@ function handleSettingsAction(action, actionElement) {
     return true;
   }
 
+  if (action === 'save-ssh-proxy') {
+    const host = String(appElement.querySelector('#ssh-proxy-host')?.value || '').trim();
+    const port = parseInt(String(appElement.querySelector('#ssh-proxy-port')?.value || ''), 10);
+    const username = String(appElement.querySelector('#ssh-proxy-username')?.value || '').trim();
+    const password = String(appElement.querySelector('#ssh-proxy-password')?.value || '');
+    if (!host || !username || !Number.isInteger(port) || port < 1 || port > 65535) {
+      sshProxyStatus = {
+        ...sshProxyStatus,
+        connection: 'error',
+        message: 'Enter a valid host, SSH port, and username.',
+      };
+      renderPrototype();
+      return true;
+    }
+    sshProxyStatus = {
+      ...sshProxyStatus,
+      enabled: true,
+      host,
+      port,
+      username,
+      connection: 'connecting',
+      message: null,
+    };
+    const payload = { enabled: true, host, port, username };
+    if (password) payload.password = password;
+    if (vscodeApi !== null) {
+      vscodeApi.postMessage({ type: SAVE_SSH_PROXY_SETTINGS_MESSAGE_TYPE, payload });
+    }
+    renderPrototype();
+    return true;
+  }
+
+  if (action === 'clear-ssh-proxy') {
+    if (vscodeApi !== null) {
+      vscodeApi.postMessage({ type: CLEAR_SSH_PROXY_SETTINGS_MESSAGE_TYPE });
+    }
+    return true;
+  }
+
   return null;
 }
 
