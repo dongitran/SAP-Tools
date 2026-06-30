@@ -559,14 +559,14 @@ export function getCustomSelectionPanel(webviewFrame: Frame): Locator {
 
 export async function openCustomSelectionMode(webviewFrame: Frame): Promise<void> {
   const customTab = getSelectionTab(webviewFrame, 'Custom');
-  if ((await customTab.count()) === 0) {
-    return;
-  }
   const areaOption = webviewFrame.getByRole('button', { name: AREA_TO_SELECT });
   let lastError: unknown;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
+      if (await areaOption.isVisible().catch((): false => false)) {
+        return;
+      }
       await expect(customTab).toBeVisible({ timeout: 10000 });
       if ((await customTab.getAttribute('aria-selected')) !== 'true') {
         await clickWithFallback(customTab);
