@@ -573,9 +573,24 @@ export async function clickCustomSelectionOption(
   webviewFrame: Frame,
   option: Locator
 ): Promise<void> {
-  await openCustomSelectionMode(webviewFrame);
-  await expect(option).toBeVisible({ timeout: 10000 });
-  await clickWithFallback(option);
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await openCustomSelectionMode(webviewFrame);
+      await expect(option).toBeVisible({ timeout: 10000 });
+      await clickWithFallback(option);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error('Custom selection option could not be clicked.');
 }
 
 export function getSelectionTab(
