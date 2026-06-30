@@ -1,5 +1,10 @@
 # SAP Tools Extension Changelog
 
+## 0.10.188 (stable)
+
+- Automate GitHub Release creation from `main` pushes using the package version.
+- Keep VS Marketplace publishing disabled for repository release verification.
+
 ## 0.10.187 (stable)
 
 - Fix stale Apps root and service mapping refreshes when switching confirmed BTP scopes.

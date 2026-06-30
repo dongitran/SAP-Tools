@@ -9,6 +9,7 @@ on:
     paths:
       - 'src/**'
       - 'resources/**'
+      - 'CHANGELOG.md'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/ci.yml'
@@ -39,57 +40,93 @@ jobs:
       - name: Build extension
         run: npm run build
 
-      - name: Extract version from tag
-        id: version
-        if: startsWith(github.ref, 'refs/tags/')
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+      - name: Resolve release info
+        id: release_info
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG_NAME="${GITHUB_REF_NAME}"
+            VERSION="${TAG_NAME#v}"
+            if [ "${TAG_NAME}" = "${VERSION}" ]; then
+              echo "::error::Release tags must use the v<version> format."
+              exit 1
+            fi
+            if [ "${VERSION}" != "${PACKAGE_VERSION}" ]; then
+              echo "::error::Tag ${TAG_NAME} does not match package.json version ${PACKAGE_VERSION}."
+              exit 1
+            fi
+          else
+            VERSION="${PACKAGE_VERSION}"
+            TAG_NAME="v${VERSION}"
+          fi
+
+          if ! echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Invalid release version: ${VERSION}"
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Check existing GitHub Release
+        id: existing_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG_NAME="${{ steps.release_info.outputs.tag_name }}"
+          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release tag
+        if: github.ref_type == 'branch' && steps.existing_release.outputs.exists != 'true'
+        run: |
+          TAG_NAME="${{ steps.release_info.outputs.tag_name }}"
+          REMOTE_TAG_COMMIT=$(git ls-remote --tags origin "refs/tags/${TAG_NAME}^{}" | awk '{print $1}')
+          if [ -z "${REMOTE_TAG_COMMIT}" ]; then
+            REMOTE_TAG_COMMIT=$(git ls-remote --tags origin "refs/tags/${TAG_NAME}" | awk '{print $1}')
+          fi
+
+          if [ -n "${REMOTE_TAG_COMMIT}" ]; then
+            if [ "${REMOTE_TAG_COMMIT}" != "${GITHUB_SHA}" ]; then
+              echo "::error::Tag ${TAG_NAME} already exists at ${REMOTE_TAG_COMMIT}, not ${GITHUB_SHA}."
+              exit 1
+            fi
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${TAG_NAME}" "${GITHUB_SHA}"
+          git push origin "refs/tags/${TAG_NAME}"
 
       - name: Package VSIX
-        if: startsWith(github.ref, 'refs/tags/')
-        run: npm run package -- --out sap-tools-${{ steps.version.outputs.VERSION }}.vsix
+        if: steps.existing_release.outputs.exists != 'true'
+        run: npm run package -- --out sap-tools-${{ steps.release_info.outputs.version }}.vsix
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: steps.existing_release.outputs.exists != 'true'
         uses: softprops/action-gh-release@v2
         with:
-          name: SAP Tools v${{ steps.version.outputs.VERSION }}
+          tag_name: ${{ steps.release_info.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
+          name: SAP Tools v${{ steps.release_info.outputs.version }}
           body: |
-            ## SAP Tools ${{ github.ref_name }}
+            ## SAP Tools ${{ steps.release_info.outputs.tag_name }}
 
             ### Installation
             Download the `.vsix` file below and install via:
             ```
-            code --install-extension sap-tools-${{ steps.version.outputs.VERSION }}.vsix
+            code --install-extension sap-tools-${{ steps.release_info.outputs.version }}.vsix
             ```
 
             ### Changes
             See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
-          files: sap-tools-${{ steps.version.outputs.VERSION }}.vsix
+          files: sap-tools-${{ steps.release_info.outputs.version }}.vsix
           draft: false
-          prerelease: ${{ contains(github.ref, '-') }}
-
-      - name: Resolve publish flavor
-        id: flavor
-        if: "startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-') || github.ref_type == 'branch'"
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          MINOR=$(node -p "require('./package.json').version.split('.')[1]")
-          if [ $((MINOR % 2)) -eq 1 ]; then
-            echo "script=publish:pre" >> "$GITHUB_OUTPUT"
-            echo "flavor=pre-release" >> "$GITHUB_OUTPUT"
-          else
-            echo "script=publish" >> "$GITHUB_OUTPUT"
-            echo "flavor=stable" >> "$GITHUB_OUTPUT"
-          fi
-          echo "Detected version=${VERSION} → ${MINOR} → publishing as ${flavor:-stable}"
-
-      - name: Publish to VS Marketplace
-        if: false # "startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-') || github.ref_type == 'branch'"
-        run: |
-          npm run ${{ steps.flavor.outputs.script }}
-          echo "Published ${{ steps.flavor.outputs.flavor }} build to VS Marketplace successfully"
-        env:
-          VSCE_PAT: ${{ secrets.AZURE_PAT }}
+          prerelease: ${{ contains(steps.release_info.outputs.version, '-') }}
 
   notify:
     name: Notify on Failure
