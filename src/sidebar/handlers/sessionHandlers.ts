@@ -161,6 +161,7 @@ export function postOrgsError(this: any, message: string): void {
 this.postMessage({ type: MSG_ORGS_ERROR, message });
 this.cfLogsPanel.updateApps([], null);
 this.lastLoadedScope = null;
+this.lastAppLoadErrorScope = null;
 this.currentApps = [];
 this.currentLogSessionSeed = null;
 this.serviceFolderMappings = [];
@@ -176,6 +177,7 @@ export function postSpacesError(this: any, message: string): void {
 this.postMessage({ type: MSG_SPACES_ERROR, message });
 this.cfLogsPanel.updateApps([], null);
 this.lastLoadedScope = null;
+this.lastAppLoadErrorScope = null;
 this.currentApps = [];
 this.currentLogSessionSeed = null;
 this.serviceFolderMappings = [];
@@ -280,6 +282,7 @@ export async function handleLogout(this: RegionSidebarProvider): Promise<void> {
       this.exportInProgress = false;
       this.hasAttemptedConfirmedScopeRestore = false;
       this.lastLoadedScope = null;
+      this.lastAppLoadErrorScope = null;
       this.lastWrittenScope = undefined;
       this.currentConfirmedScope = undefined;
       this.hanaSqlWorkbench.invalidateAllAppContexts();

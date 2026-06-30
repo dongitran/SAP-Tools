@@ -959,6 +959,51 @@ describe('RegionSidebarProvider shared CF scope sync', () => {
     });
   });
 
+  it('keeps selected Apps error when confirming a scope whose app load failed', async () => {
+    const { access } = createProviderFixture();
+    const postMessageSpy = vi.spyOn(access, 'postMessage');
+    process.env['SAP_TOOLS_TEST_MODE'] = '1';
+    access.currentConfirmedScope = {
+      regionCode: 'us10',
+      orgName: 'finance-services-prod',
+      spaceName: 'uat',
+    };
+    access.selectedRegionId = 'us10';
+    access.selectedRegionCode = 'us-10';
+
+    await access.handleSpaceSelected({
+      orgGuid: 'org-data-prod',
+      orgName: 'data-foundation-prod',
+      spaceName: 'failspace',
+    });
+
+    expect(postMessageSpy).toHaveBeenCalledWith({
+      type: 'sapTools.appsError',
+      message: 'Simulated CF CLI failure: could not reach API endpoint for failspace.',
+    });
+    postMessageSpy.mockClear();
+
+    await access.handleConfirmScope({
+      regionId: 'us10',
+      regionCode: 'us-10',
+      regionName: 'US East (VA)',
+      regionArea: 'Americas',
+      orgGuid: 'org-data-prod',
+      orgName: 'data-foundation-prod',
+      spaceName: 'failspace',
+    });
+
+    expect(postMessageSpy).not.toHaveBeenCalledWith({
+      type: 'sapTools.appsLoaded',
+      apps: [],
+      scopeKey: '',
+    });
+    expect(postMessageSpy).not.toHaveBeenCalledWith({
+      type: 'sapTools.localRootFolderUpdated',
+      path: '',
+    });
+  });
+
   it('clears stale Apps root state immediately when confirming a different scope', async () => {
     const { access } = createProviderFixture();
     const postMessageSpy = vi.spyOn(access, 'postMessage');
