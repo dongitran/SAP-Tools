@@ -920,6 +920,45 @@ describe('RegionSidebarProvider shared CF scope sync', () => {
   });
 
 
+  it('keeps loaded Apps state when confirming the selected scope', async () => {
+    const { access } = createProviderFixture();
+    const postMessageSpy = vi.spyOn(access, 'postMessage');
+    const loadedApps = [
+      { id: 'billing-prod-api', name: 'billing-prod-api', runningInstances: 1 },
+    ];
+    access.currentConfirmedScope = {
+      regionCode: 'us10',
+      orgName: 'finance-services-prod',
+      spaceName: 'uat',
+    };
+    access.lastLoadedScope = {
+      regionId: 'eu10',
+      regionCode: 'eu-10',
+      orgGuid: 'org-guid-2',
+      orgName: 'billing-services-prod',
+      spaceName: 'prod',
+    };
+    access.selectedLocalRootFolderPath = '/tmp/new-root';
+    access.currentApps = loadedApps;
+
+    await access.handleConfirmScope({
+      regionId: 'eu10',
+      regionCode: 'eu-10',
+      regionName: 'Europe (Frankfurt)',
+      regionArea: 'Europe',
+      orgGuid: 'org-guid-2',
+      orgName: 'billing-services-prod',
+      spaceName: 'prod',
+    });
+
+    expect(access.selectedLocalRootFolderPath).toBe('/tmp/new-root');
+    expect(access.currentApps).toEqual(loadedApps);
+    expect(postMessageSpy).not.toHaveBeenCalledWith({
+      type: 'sapTools.localRootFolderUpdated',
+      path: '',
+    });
+  });
+
   it('clears stale Apps root state immediately when confirming a different scope', async () => {
     const { access } = createProviderFixture();
     const postMessageSpy = vi.spyOn(access, 'postMessage');

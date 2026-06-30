@@ -898,8 +898,9 @@ export async function handleConfirmScope(this: RegionSidebarProvider, payload: C
     await this.persistConfirmedScopeForCurrentUser(payload);
     const sharedScope = buildSharedScopeFromConfirmPayload(payload);
     const isChangedScope = !areSharedScopesEqual(sharedScope, this.currentConfirmedScope);
+    const hasLoadedTargetScope = this.isLoadedScope(payload.orgGuid, payload.spaceName);
     const shouldInvalidateHanaAppContexts = options.invalidateHanaAppContexts ?? true;
-    if (isChangedScope) {
+    if (isChangedScope && !hasLoadedTargetScope) {
       this.clearScopeBoundRuntimeStateForScopeChange(shouldInvalidateHanaAppContexts);
     }
     this.lastWrittenScope = sharedScope;
