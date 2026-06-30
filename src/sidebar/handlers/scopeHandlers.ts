@@ -36,6 +36,7 @@ import {
     ConfirmScopeOptions,
     ConfirmScopePayload,
     MSG_APPS_LOADED,
+    MSG_LOCAL_ROOT_FOLDER_UPDATED,
     MSG_ORGS_LOADED,
     MSG_RESTORE_CONFIRMED_SCOPE,
     MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
@@ -113,17 +114,25 @@ await this.hydrateRestoredScope({
 });
 }
 
-export function clearScopeBoundRuntimeStateForScopeChange(this: any): void {
+export function clearScopeBoundRuntimeStateForScopeChange(this: any, invalidateHanaAppContexts = true): void {
 this.bumpRegionSelectionRequestId();
 this.currentApps = [];
 this.currentLogSessionSeed = null;
 this.serviceFolderMappings = [];
 this.serviceFolderSelections.clear();
+this.selectedLocalRootFolderPath = '';
 this.exportInProgress = false;
 this.lastLoadedScope = null;
+this.lastAppLoadErrorScope = null;
 this.cfLogsPanel.updateApps([], null);
-this.hanaSqlWorkbench.invalidateAllAppContexts();
+if (invalidateHanaAppContexts) {
+  this.hanaSqlWorkbench.invalidateAllAppContexts();
+}
 this.postMessage({ type: MSG_APPS_LOADED, apps: [], scopeKey: '' });
+this.postMessage({
+  type: MSG_LOCAL_ROOT_FOLDER_UPDATED,
+  path: '',
+});
 this.postMessage({
   type: MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
   mappings: this.serviceFolderMappings,
@@ -727,6 +736,16 @@ return (
 );
 }
 
+export function isHandledAppScope(this: any, orgGuid: string, spaceName: string): boolean {
+return (
+  this.isLoadedScope(orgGuid, spaceName) ||
+  (
+    this.lastAppLoadErrorScope?.orgGuid === orgGuid &&
+    this.lastAppLoadErrorScope.spaceName === spaceName
+  )
+);
+}
+
 export async function restoreServiceFolderMappingsForCurrentScope(this: any): Promise<boolean> {
 if (this.currentApps.length === 0) {
   return false;
@@ -890,12 +909,13 @@ export async function handleConfirmScope(this: RegionSidebarProvider, payload: C
     await this.persistConfirmedScopeForCurrentUser(payload);
     const sharedScope = buildSharedScopeFromConfirmPayload(payload);
     const isChangedScope = !areSharedScopesEqual(sharedScope, this.currentConfirmedScope);
+    const hasHandledTargetScope = this.isHandledAppScope(payload.orgGuid, payload.spaceName);
+    const shouldInvalidateHanaAppContexts = options.invalidateHanaAppContexts ?? true;
+    if (isChangedScope && !hasHandledTargetScope) {
+      this.clearScopeBoundRuntimeStateForScopeChange(shouldInvalidateHanaAppContexts);
+    }
     this.lastWrittenScope = sharedScope;
     this.currentConfirmedScope = sharedScope;
-    const shouldInvalidateHanaAppContexts = options.invalidateHanaAppContexts ?? true;
-    if (isChangedScope && shouldInvalidateHanaAppContexts) {
-      this.hanaSqlWorkbench.invalidateAllAppContexts();
-    }
 
     if (isChangedScope) {
       // An open event viewer is bound to the previous scope's app/queue; stop its
@@ -1004,6 +1024,7 @@ export async function handleRegionSelected(this: RegionSidebarProvider, region: 
     this.serviceFolderSelections.clear();
     this.exportInProgress = false;
     this.lastLoadedScope = null;
+    this.lastAppLoadErrorScope = null;
     this.hanaSqlWorkbench.invalidateAllAppContexts();
     this.cfLogsPanel.updateApps([], null);
     this.cfLogsPanel.updateScope(buildScopeLabel(region.code, 'select-org', 'select-space'));
@@ -1097,6 +1118,7 @@ export async function handleOrgSelected(this: RegionSidebarProvider, org: OrgSel
     this.serviceFolderSelections.clear();
     this.exportInProgress = false;
     this.lastLoadedScope = null;
+    this.lastAppLoadErrorScope = null;
     this.hanaSqlWorkbench.invalidateAllAppContexts();
     this.clearRootFolderSelection();
     this.postMessage({
@@ -1158,6 +1180,14 @@ export async function handleSpaceSelected(this: RegionSidebarProvider, payload: 
     const requestId = this.bumpSpaceSelectionRequestId();
     const regionCode = this.selectedRegionCode;
     this.lastLoadedScope = null;
+    this.lastAppLoadErrorScope = null;
+    const selectedScopeState = {
+      regionId: this.selectedRegionId,
+      regionCode,
+      orgGuid: payload.orgGuid,
+      orgName: payload.orgName,
+      spaceName: payload.spaceName,
+    };
     if (isTestMode()) {
       await this.handleTestModeSpaceSelection(payload);
       return;
@@ -1257,14 +1287,14 @@ export async function handleSpaceSelected(this: RegionSidebarProvider, payload: 
       this.outputChannel.appendLine(
         `[apps] Refresh ${refresh.status} for ${sanitizeForLog(payload.spaceName)}: ${sanitizeForLog(reason)}`
       );
-      this.postAppsError(reason);
+      this.postAppsError(reason, selectedScopeState);
     } catch (error) {
       if (!this.isCurrentSpaceRequest(requestId)) {
         return;
       }
       const errorMessage =
         error instanceof Error ? error.message : 'Failed to load apps from Cloud Foundry.';
-      this.postAppsError(errorMessage);
+      this.postAppsError(errorMessage, selectedScopeState);
     }
 }
 
@@ -1274,9 +1304,18 @@ export async function handleTestModeSpaceSelection(this: RegionSidebarProvider, 
       await sleep(appsDelayMs);
     }
 
+    const selectedScopeState = {
+      regionId: this.selectedRegionId,
+      regionCode: this.selectedRegionCode,
+      orgGuid: payload.orgGuid,
+      orgName: payload.orgName,
+      spaceName: payload.spaceName,
+    };
+
     if (payload.spaceName === 'failspace') {
       this.postAppsError(
-        'Simulated CF CLI failure: could not reach API endpoint for failspace.'
+        'Simulated CF CLI failure: could not reach API endpoint for failspace.',
+        selectedScopeState
       );
       return;
     }
@@ -1297,13 +1336,7 @@ export async function handleTestModeSpaceSelection(this: RegionSidebarProvider, 
     this.cfLogsPanel.updateApps(apps, null);
     this.currentApps = apps;
     this.currentLogSessionSeed = null;
-    this.lastLoadedScope = {
-      regionId: this.selectedRegionId,
-      regionCode: this.selectedRegionCode,
-      orgGuid: payload.orgGuid,
-      orgName: payload.orgName,
-      spaceName: payload.spaceName,
-    };
+    this.lastLoadedScope = selectedScopeState;
     this.exportInProgress = false;
     await this.restoreRootFolderForLoadedSpace(payload);
     const restoredMappings = await this.restoreServiceFolderMappingsForCurrentScope();

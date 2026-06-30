@@ -22,6 +22,7 @@ import {
     MSG_APPS_LOADED,
     MSG_APPS_RELOAD_ERROR,
     MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
+    LoadedScopeState,
     SidebarAppEntry,
     SpaceSelectionPayload
 } from '../../sidebarProvider.types';
@@ -124,6 +125,7 @@ this.postMessage({
 });
 this.updateCfLogsForLoadedApps(apps, payload, credentials, cfHomeDir, regionCode);
 this.currentApps = apps;
+this.lastAppLoadErrorScope = null;
 this.lastLoadedScope = {
   regionId: this.selectedRegionId,
   regionCode,
@@ -164,10 +166,11 @@ this.cfLogsPanel.updateApps(apps, sessionSeed);
 this.currentLogSessionSeed = sessionSeed;
 }
 
-export function postAppsError(this: any, message: string): void {
+export function postAppsError(this: any, message: string, failedScope?: LoadedScopeState): void {
 this.postMessage({ type: MSG_APPS_ERROR, message });
 this.cfLogsPanel.updateApps([], null);
 this.lastLoadedScope = null;
+this.lastAppLoadErrorScope = failedScope === undefined ? null : { ...failedScope };
 this.currentApps = [];
 this.currentLogSessionSeed = null;
 this.serviceFolderMappings = [];

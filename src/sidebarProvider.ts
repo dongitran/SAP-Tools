@@ -110,7 +110,7 @@ import { clearRootFolderSelection, deleteMissingRootFolderCache, handleSelectSer
 import { postHanaSqlFileOpenResult, postHanaTableSelectResult, publishHanaTablesForApp, handleOpenHanaSqlFile, handleOpenSqlBackupHistory, handleOpenSqlToolsExtension, handleRefreshHanaTables, handleRunHanaTableSelect } from "./sidebar/handlers/hanaHandlers";
 import { postDetectedLocalPackages, postRegistryState, resolveLocalPackageNamesForReplacement, scanAndOrderLocalPackages, startLocalRegistry, stopLocalRegistry, handleBuildPublishAll, handleReplaceServicePackagePlaceholder } from "./sidebar/handlers/localHandlers";
 import { appendMicrosoftGraphToolLog, appendMicrosoftGraphToolProgress, applyServiceFolderSelections, bumpOrgSelectionRequestId, bumpRegionSelectionRequestId, bumpSpaceSelectionRequestId, confirmSensitiveExport, isCurrentOrgRequest, isCurrentRegionRequest, isCurrentSpaceRequest, logRegionSelection, logWebviewMessageFailure, postBuildResult, postCacheState, postMessage, resolveE2eRootDialogOverride, handleExportServiceArtifacts, handleExportSqlToolsConfig, handleMicrosoftGraphToolRun, handleOpenApisExplorer } from "./sidebar/handlers/miscHandlers";
-import { applyRefreshedAppsForConfirmedScope, bumpExternalScopeChangeRequestId, clearScopeBoundRuntimeStateForScopeChange, establishCurrentScopeResolutionSession, hydrateQuickConfirmedScope, hydrateRestoredScope, isCurrentExternalScopeRequest, isLoadedScope, persistConfirmedScopeForCurrentUser, persistRootFolderForCurrentScope, persistServiceFolderMappingsForCurrentScope, preloadRootFolderForPersistedScope, preloadServiceFolderMappingsForPersistedScope, readConfirmedScopeMap, readPersistedConfirmedScopeForEmail, readServiceMappingCacheByScope, refreshTopologyForConfirmedScope, resolveCachedOrTestOrgGuid, resolveCurrentRootFolderScope, resolveCurrentServiceMappingCacheScope, resolveLiveOrgGuid, resolveOrgGuidByName, resolveQuickScopeOrgGuid, resolveQuickScopeSession, resolveRootFolderScopeForLoadedSpace, restoreConfirmedScopeForCurrentUser, restoreExternalScope, restoreServiceFolderMappingsForCurrentScope, handleConfirmScope, handleExternalScopeChange, handleOrgSelected, handleQuickScopeConfirm, handleRegionSelected, handleSpaceSelected, handleTestModeSpaceSelection } from "./sidebar/handlers/scopeHandlers";
+import { applyRefreshedAppsForConfirmedScope, bumpExternalScopeChangeRequestId, clearScopeBoundRuntimeStateForScopeChange, establishCurrentScopeResolutionSession, hydrateQuickConfirmedScope, hydrateRestoredScope, isCurrentExternalScopeRequest, isHandledAppScope, isLoadedScope, persistConfirmedScopeForCurrentUser, persistRootFolderForCurrentScope, persistServiceFolderMappingsForCurrentScope, preloadRootFolderForPersistedScope, preloadServiceFolderMappingsForPersistedScope, readConfirmedScopeMap, readPersistedConfirmedScopeForEmail, readServiceMappingCacheByScope, refreshTopologyForConfirmedScope, resolveCachedOrTestOrgGuid, resolveCurrentRootFolderScope, resolveCurrentServiceMappingCacheScope, resolveLiveOrgGuid, resolveOrgGuidByName, resolveQuickScopeOrgGuid, resolveQuickScopeSession, resolveRootFolderScopeForLoadedSpace, restoreConfirmedScopeForCurrentUser, restoreExternalScope, restoreServiceFolderMappingsForCurrentScope, handleConfirmScope, handleExternalScopeChange, handleOrgSelected, handleQuickScopeConfirm, handleRegionSelected, handleSpaceSelected, handleTestModeSpaceSelection } from "./sidebar/handlers/scopeHandlers";
 import { ensureRegionSession, establishRegionSession, openApisExplorerSession, postOrgsError, postSpacesError, refreshOrgsFromLiveAfterCachedRender, reloadToLoginView, reloadToMainView, sendSshProxyStatus, handleClearSshProxySettings, handleLoginSubmit, handleLogout, handleRequestInitialState, handleSaveSshProxySettings } from "./sidebar/handlers/sessionHandlers";
 import { postCfTopologySnapshot, pushCfTopology, resolveCfTopologyAsync, resolveCfTopologySync, handleTopologyOrgSelected } from "./sidebar/handlers/topologyHandlers";
 import {
@@ -172,6 +172,7 @@ export class RegionSidebarProvider
   private buildPublishInProgress = false;
   private hasAttemptedConfirmedScopeRestore = false;
   private lastLoadedScope: LoadedScopeState | null = null;
+  private lastAppLoadErrorScope: LoadedScopeState | null = null;
   private lastWrittenScope: SharedCfScope | undefined;
   private currentConfirmedScope: SharedCfScope | undefined;
   private externalScopeChangeRequestId = 0;
@@ -249,6 +250,7 @@ export class RegionSidebarProvider
     this.exportInProgress = false;
     this.hasAttemptedConfirmedScopeRestore = false;
     this.lastLoadedScope = null;
+    this.lastAppLoadErrorScope = null;
     this.lastWrittenScope = undefined;
     this.currentConfirmedScope = undefined;
 
@@ -628,8 +630,8 @@ export class RegionSidebarProvider
       await restoreExternalScope.call(this, scope, requestId);
   }
 
-  private clearScopeBoundRuntimeStateForScopeChange(): void {
-      clearScopeBoundRuntimeStateForScopeChange.call(this);
+  private clearScopeBoundRuntimeStateForScopeChange(invalidateHanaAppContexts = true): void {
+      clearScopeBoundRuntimeStateForScopeChange.call(this, invalidateHanaAppContexts);
   }
 
   private async handleReloadAppList(): Promise<void> {
@@ -849,6 +851,10 @@ export class RegionSidebarProvider
 
   private isLoadedScope(orgGuid: string, spaceName: string): boolean {
       return isLoadedScope.call(this, orgGuid, spaceName);
+  }
+
+  private isHandledAppScope(orgGuid: string, spaceName: string): boolean {
+      return isHandledAppScope.call(this, orgGuid, spaceName);
   }
 
   private clearRootFolderSelection(): void {
@@ -1128,8 +1134,8 @@ export class RegionSidebarProvider
       postSpacesError.call(this, message);
   }
 
-  private postAppsError(message: string): void {
-      postAppsError.call(this, message);
+  private postAppsError(message: string, failedScope?: LoadedScopeState): void {
+      postAppsError.call(this, message, failedScope);
   }
 
   private postAppsReloadError(message: string): void {

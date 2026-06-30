@@ -116,6 +116,7 @@ interface SidebarProviderTestAccess {
     regionCode: string
   ): Promise<void>;
   selectedOrgGuid: string;
+  selectedLocalRootFolderPath: string;
   selectedRegionCode: string;
   selectedRegionId: string;
   spaceSelectionRequestId: number;
@@ -916,6 +917,126 @@ describe('RegionSidebarProvider shared CF scope sync', () => {
       spaces: [{ guid: 'space-guid-1', name: 'dev' }],
     });
     expect(cacheStoreGetExportRootFolderMock).not.toHaveBeenCalled();
+  });
+
+
+  it('keeps loaded Apps state when confirming the selected scope', async () => {
+    const { access } = createProviderFixture();
+    const postMessageSpy = vi.spyOn(access, 'postMessage');
+    const loadedApps = [
+      { id: 'billing-prod-api', name: 'billing-prod-api', runningInstances: 1 },
+    ];
+    access.currentConfirmedScope = {
+      regionCode: 'us10',
+      orgName: 'finance-services-prod',
+      spaceName: 'uat',
+    };
+    access.lastLoadedScope = {
+      regionId: 'eu10',
+      regionCode: 'eu-10',
+      orgGuid: 'org-guid-2',
+      orgName: 'billing-services-prod',
+      spaceName: 'prod',
+    };
+    access.selectedLocalRootFolderPath = '/tmp/new-root';
+    access.currentApps = loadedApps;
+
+    await access.handleConfirmScope({
+      regionId: 'eu10',
+      regionCode: 'eu-10',
+      regionName: 'Europe (Frankfurt)',
+      regionArea: 'Europe',
+      orgGuid: 'org-guid-2',
+      orgName: 'billing-services-prod',
+      spaceName: 'prod',
+    });
+
+    expect(access.selectedLocalRootFolderPath).toBe('/tmp/new-root');
+    expect(access.currentApps).toEqual(loadedApps);
+    expect(postMessageSpy).not.toHaveBeenCalledWith({
+      type: 'sapTools.localRootFolderUpdated',
+      path: '',
+    });
+  });
+
+  it('keeps selected Apps error when confirming a scope whose app load failed', async () => {
+    const { access } = createProviderFixture();
+    const postMessageSpy = vi.spyOn(access, 'postMessage');
+    process.env['SAP_TOOLS_TEST_MODE'] = '1';
+    access.currentConfirmedScope = {
+      regionCode: 'us10',
+      orgName: 'finance-services-prod',
+      spaceName: 'uat',
+    };
+    access.selectedRegionId = 'us10';
+    access.selectedRegionCode = 'us-10';
+
+    await access.handleSpaceSelected({
+      orgGuid: 'org-data-prod',
+      orgName: 'data-foundation-prod',
+      spaceName: 'failspace',
+    });
+
+    expect(postMessageSpy).toHaveBeenCalledWith({
+      type: 'sapTools.appsError',
+      message: 'Simulated CF CLI failure: could not reach API endpoint for failspace.',
+    });
+    postMessageSpy.mockClear();
+
+    await access.handleConfirmScope({
+      regionId: 'us10',
+      regionCode: 'us-10',
+      regionName: 'US East (VA)',
+      regionArea: 'Americas',
+      orgGuid: 'org-data-prod',
+      orgName: 'data-foundation-prod',
+      spaceName: 'failspace',
+    });
+
+    expect(postMessageSpy).not.toHaveBeenCalledWith({
+      type: 'sapTools.appsLoaded',
+      apps: [],
+      scopeKey: '',
+    });
+    expect(postMessageSpy).not.toHaveBeenCalledWith({
+      type: 'sapTools.localRootFolderUpdated',
+      path: '',
+    });
+  });
+
+  it('clears stale Apps root state immediately when confirming a different scope', async () => {
+    const { access } = createProviderFixture();
+    const postMessageSpy = vi.spyOn(access, 'postMessage');
+    access.currentConfirmedScope = {
+      regionCode: 'us10',
+      orgName: 'finance-services-prod',
+      spaceName: 'uat',
+    };
+    access.selectedLocalRootFolderPath = '/tmp/old-root';
+    access.currentApps = [
+      { id: 'finance-uat-api', name: 'finance-uat-api', runningInstances: 1 },
+    ];
+
+    await access.handleConfirmScope({
+      regionId: 'eu10',
+      regionCode: 'eu-10',
+      regionName: 'Europe (Frankfurt)',
+      regionArea: 'Europe',
+      orgGuid: 'org-guid-2',
+      orgName: 'billing-services-prod',
+      spaceName: 'prod',
+    });
+
+    expect(access.selectedLocalRootFolderPath).toBe('');
+    expect(access.currentApps).toEqual([]);
+    expect(postMessageSpy).toHaveBeenCalledWith({
+      type: 'sapTools.localRootFolderUpdated',
+      path: '',
+    });
+    expect(postMessageSpy).toHaveBeenCalledWith({
+      type: 'sapTools.serviceFolderMappingsLoaded',
+      mappings: [],
+    });
   });
 
   it('restores cached Apps root folders by loaded space', async () => {
