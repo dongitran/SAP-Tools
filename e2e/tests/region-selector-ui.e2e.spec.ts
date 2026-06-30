@@ -16,6 +16,7 @@ import {
   THEME_SCENARIOS,
   US10001_REGION_TO_SELECT,
   US10002_REGION_TO_SELECT,
+  clickCustomSelectionOption,
   cleanupExtensionHost,
   clickWithFallback,
   createHeavyServiceRootMappingFixture,
@@ -54,6 +55,13 @@ function getRegionSearchInput(webviewFrame: Frame): Locator {
   return webviewFrame
     .getByRole('region', { name: 'Region list' })
     .getByRole('searchbox', { name: 'Search regions' });
+}
+
+async function clickDefaultArea(webviewFrame: Frame): Promise<void> {
+  await clickCustomSelectionOption(
+    webviewFrame,
+    webviewFrame.getByRole('button', { name: AREA_TO_SELECT })
+  );
 }
 
 function getTopologyOrgRow(
@@ -147,7 +155,7 @@ test.describe('SAP Tools region selector', () => {
         }
 
         await openCustomSelectionMode(webviewFrame);
-        await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
+        await clickDefaultArea(webviewFrame);
         await clickWithFallback(webviewFrame.getByRole('button', { name: REGION_TO_SELECT }));
         await expect(
           getOrgStageOption(webviewFrame, ORG_TO_SELECT)
@@ -179,7 +187,7 @@ test.describe('SAP Tools region selector', () => {
       expect(initialPalette.shellBrightness).toBeLessThan(0.2);
 
       await openCustomSelectionMode(webviewFrame);
-      await webviewFrame.getByRole('button', { name: AREA_TO_SELECT }).click();
+      await clickDefaultArea(webviewFrame);
       await webviewFrame.getByRole('button', { name: REGION_TO_SELECT }).click();
 
       const classesAfterSelection = await readWebviewBodyClasses(webviewFrame);
@@ -200,7 +208,7 @@ test.describe('SAP Tools region selector', () => {
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openCustomSelectionMode(webviewFrame);
-      await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
+      await clickDefaultArea(webviewFrame);
 
       const regionButton = webviewFrame.getByRole('button', { name: REGION_TO_SELECT });
       await expect(regionButton).toBeVisible({ timeout: 10000 });
@@ -415,7 +423,7 @@ test.describe('SAP Tools region selector', () => {
         });
         expect(hasInitialStageSlots).toBe(true);
 
-        await webviewFrame.getByRole('button', { name: AREA_TO_SELECT }).click();
+        await clickDefaultArea(webviewFrame);
         await webviewFrame.getByRole('button', { name: REGION_TO_SELECT }).click();
         await expect(
           getOrgStageOption(webviewFrame, ORG_TO_SELECT)
@@ -479,7 +487,7 @@ test.describe('SAP Tools region selector', () => {
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openCustomSelectionMode(webviewFrame);
-      await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
+      await clickDefaultArea(webviewFrame);
       await clickWithFallback(webviewFrame.getByRole('button', { name: BR10_REGION_TO_SELECT }));
       await expect(getOrgSearchInput(webviewFrame)).toBeVisible({ timeout: 10000 });
       await expect(getOrgSearchInput(webviewFrame)).toHaveValue('');
@@ -503,7 +511,7 @@ test.describe('SAP Tools region selector', () => {
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openCustomSelectionMode(webviewFrame);
-      await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
+      await clickDefaultArea(webviewFrame);
       await clickWithFallback(webviewFrame.getByRole('button', { name: BR10_REGION_TO_SELECT }));
 
       const orgSearchInput = getOrgSearchInput(webviewFrame);
@@ -583,7 +591,7 @@ test.describe('SAP Tools region selector', () => {
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openCustomSelectionMode(webviewFrame);
-      await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
+      await clickDefaultArea(webviewFrame);
 
       const regionSearchInput = getRegionSearchInput(webviewFrame);
       await expect(regionSearchInput).toBeVisible({ timeout: 10000 });
@@ -666,7 +674,7 @@ test.describe('SAP Tools region selector', () => {
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openCustomSelectionMode(webviewFrame);
-      await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
+      await clickDefaultArea(webviewFrame);
       await clickWithFallback(webviewFrame.getByRole('button', { name: REGION_TO_SELECT }));
       await expect(
         getOrgStageOption(webviewFrame, ORG_TO_SELECT)
@@ -709,7 +717,7 @@ test.describe('SAP Tools region selector', () => {
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openCustomSelectionMode(webviewFrame);
-      await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
+      await clickDefaultArea(webviewFrame);
       await clickWithFallback(webviewFrame.getByRole('button', { name: REGION_TO_SELECT }));
       await expect(
         getOrgStageOption(webviewFrame, PROOF_ORG_TO_SELECT)
@@ -752,7 +760,7 @@ test.describe('SAP Tools region selector', () => {
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openCustomSelectionMode(webviewFrame);
-      await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
+      await clickDefaultArea(webviewFrame);
       await clickWithFallback(webviewFrame.getByRole('button', { name: REGION_TO_SELECT }));
       await expect(getOrgStageOption(webviewFrame, DATA_FOUNDATION_ORG)).toBeVisible({
         timeout: 10000,
@@ -792,7 +800,7 @@ test.describe('SAP Tools region selector', () => {
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openCustomSelectionMode(webviewFrame);
-      await webviewFrame.getByRole('button', { name: AREA_TO_SELECT }).click();
+      await clickDefaultArea(webviewFrame);
       await webviewFrame.getByRole('button', { name: REGION_TO_SELECT }).click();
 
       const selectionNotification = session.window
@@ -811,7 +819,7 @@ test.describe('SAP Tools region selector', () => {
       const webviewFrame = await openSapToolsSidebar(session.window);
 
       await openCustomSelectionMode(webviewFrame);
-      await webviewFrame.getByRole('button', { name: AREA_TO_SELECT }).click();
+      await clickDefaultArea(webviewFrame);
       await webviewFrame.getByRole('button', { name: REGION_TO_SELECT }).click();
 
       const regionStateAfterSelect = await webviewFrame.evaluate(() => {
@@ -1244,7 +1252,7 @@ test.describe('SAP Tools region selector', () => {
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openCustomSelectionMode(webviewFrame);
-      await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
+      await clickDefaultArea(webviewFrame);
 
       const regionOption = webviewFrame.locator('.region-layout .region-option').first();
       await expect(regionOption).toBeVisible();
@@ -1299,7 +1307,7 @@ test.describe('SAP Tools region selector', () => {
     try {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await openCustomSelectionMode(webviewFrame);
-      await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
+      await clickDefaultArea(webviewFrame);
       await clickWithFallback(webviewFrame.getByRole('button', { name: REGION_TO_SELECT }));
       await clickWithFallback(getOrgStageOption(webviewFrame, ORG_TO_SELECT));
       await expect(
@@ -2062,7 +2070,7 @@ test.describe('SAP Tools region selector', () => {
           name: /Quick org search pick finance-services-prod in us10/i,
         })
       ).toHaveCount(0);
-      await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
+      await clickDefaultArea(webviewFrame);
       await clickWithFallback(webviewFrame.getByRole('button', { name: REGION_TO_SELECT }));
       await expect(getOrgStageOption(webviewFrame, ORG_TO_SELECT)).toBeVisible({
         timeout: 10000,
@@ -2470,7 +2478,7 @@ test.describe('SAP Tools region selector', () => {
       const webviewFrame = await openSapToolsSidebar(session.window);
       await session.window.setViewportSize({ width: 430, height: 460 });
       await clickWithFallback(getSelectionTab(webviewFrame, 'Custom'));
-      await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
+      await clickDefaultArea(webviewFrame);
       await clickWithFallback(webviewFrame.getByRole('button', { name: REGION_TO_SELECT }));
       await clickWithFallback(getOrgStageOption(webviewFrame, ORG_TO_SELECT));
 

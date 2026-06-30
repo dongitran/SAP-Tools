@@ -569,7 +569,7 @@ async function selectDefaultScopeOnce(webviewFrame: Frame): Promise<void> {
   );
 }
 
-async function clickCustomSelectionOption(
+export async function clickCustomSelectionOption(
   webviewFrame: Frame,
   option: Locator
 ): Promise<void> {
