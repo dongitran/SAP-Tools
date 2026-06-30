@@ -534,16 +534,48 @@ export async function openSapToolsSidebar(
 }
 
 export async function selectDefaultScope(webviewFrame: Frame): Promise<void> {
-  await openCustomSelectionMode(webviewFrame);
-  await clickWithFallback(webviewFrame.getByRole('button', { name: AREA_TO_SELECT }));
-  await clickWithFallback(webviewFrame.getByRole('button', { name: REGION_TO_SELECT }));
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await selectDefaultScopeOnce(webviewFrame);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error('Default scope could not be selected.');
+}
+
+async function selectDefaultScopeOnce(webviewFrame: Frame): Promise<void> {
+  await clickCustomSelectionOption(
+    webviewFrame,
+    webviewFrame.getByRole('button', { name: AREA_TO_SELECT })
+  );
+  await clickCustomSelectionOption(
+    webviewFrame,
+    webviewFrame.getByRole('button', { name: REGION_TO_SELECT })
+  );
   const orgOption = getOrgStageOption(webviewFrame, ORG_TO_SELECT);
-  await expect(orgOption).toBeVisible({ timeout: 10000 });
-  await clickWithFallback(orgOption);
-  await expect(
+  await clickCustomSelectionOption(webviewFrame, orgOption);
+  await clickCustomSelectionOption(
+    webviewFrame,
     webviewFrame.getByRole('button', { name: SPACE_TO_SELECT })
-  ).toBeVisible({ timeout: 10000 });
-  await clickWithFallback(webviewFrame.getByRole('button', { name: SPACE_TO_SELECT }));
+  );
+}
+
+async function clickCustomSelectionOption(
+  webviewFrame: Frame,
+  option: Locator
+): Promise<void> {
+  await openCustomSelectionMode(webviewFrame);
+  await expect(option).toBeVisible({ timeout: 10000 });
+  await clickWithFallback(option);
 }
 
 export function getSelectionTab(
@@ -564,16 +596,16 @@ export async function openCustomSelectionMode(webviewFrame: Frame): Promise<void
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      if (await areaOption.isVisible().catch((): false => false)) {
+      const customTabVisible = await customTab.isVisible().catch((): false => false);
+      if (!customTabVisible) {
+        await expect(areaOption).toBeVisible({ timeout: 10000 });
         return;
       }
-      await expect(customTab).toBeVisible({ timeout: 10000 });
       if ((await customTab.getAttribute('aria-selected')) !== 'true') {
         await clickWithFallback(customTab);
       }
       await expect(customTab).toHaveAttribute('aria-selected', 'true', { timeout: 10000 });
       await expect(getCustomSelectionPanel(webviewFrame)).toBeVisible({ timeout: 10000 });
-      await expect(areaOption).toBeVisible({ timeout: 10000 });
       return;
     } catch (error) {
       lastError = error;
