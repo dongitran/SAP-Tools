@@ -36,6 +36,7 @@ import {
     ConfirmScopeOptions,
     ConfirmScopePayload,
     MSG_APPS_LOADED,
+    MSG_LOCAL_ROOT_FOLDER_UPDATED,
     MSG_ORGS_LOADED,
     MSG_RESTORE_CONFIRMED_SCOPE,
     MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
@@ -113,17 +114,24 @@ await this.hydrateRestoredScope({
 });
 }
 
-export function clearScopeBoundRuntimeStateForScopeChange(this: any): void {
+export function clearScopeBoundRuntimeStateForScopeChange(this: any, invalidateHanaAppContexts = true): void {
 this.bumpRegionSelectionRequestId();
 this.currentApps = [];
 this.currentLogSessionSeed = null;
 this.serviceFolderMappings = [];
 this.serviceFolderSelections.clear();
+this.selectedLocalRootFolderPath = '';
 this.exportInProgress = false;
 this.lastLoadedScope = null;
 this.cfLogsPanel.updateApps([], null);
-this.hanaSqlWorkbench.invalidateAllAppContexts();
+if (invalidateHanaAppContexts) {
+  this.hanaSqlWorkbench.invalidateAllAppContexts();
+}
 this.postMessage({ type: MSG_APPS_LOADED, apps: [], scopeKey: '' });
+this.postMessage({
+  type: MSG_LOCAL_ROOT_FOLDER_UPDATED,
+  path: '',
+});
 this.postMessage({
   type: MSG_SERVICE_FOLDER_MAPPINGS_LOADED,
   mappings: this.serviceFolderMappings,
@@ -890,12 +898,12 @@ export async function handleConfirmScope(this: RegionSidebarProvider, payload: C
     await this.persistConfirmedScopeForCurrentUser(payload);
     const sharedScope = buildSharedScopeFromConfirmPayload(payload);
     const isChangedScope = !areSharedScopesEqual(sharedScope, this.currentConfirmedScope);
+    const shouldInvalidateHanaAppContexts = options.invalidateHanaAppContexts ?? true;
+    if (isChangedScope) {
+      this.clearScopeBoundRuntimeStateForScopeChange(shouldInvalidateHanaAppContexts);
+    }
     this.lastWrittenScope = sharedScope;
     this.currentConfirmedScope = sharedScope;
-    const shouldInvalidateHanaAppContexts = options.invalidateHanaAppContexts ?? true;
-    if (isChangedScope && shouldInvalidateHanaAppContexts) {
-      this.hanaSqlWorkbench.invalidateAllAppContexts();
-    }
 
     if (isChangedScope) {
       // An open event viewer is bound to the previous scope's app/queue; stop its

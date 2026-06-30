@@ -628,8 +628,8 @@ export class RegionSidebarProvider
       await restoreExternalScope.call(this, scope, requestId);
   }
 
-  private clearScopeBoundRuntimeStateForScopeChange(): void {
-      clearScopeBoundRuntimeStateForScopeChange.call(this);
+  private clearScopeBoundRuntimeStateForScopeChange(invalidateHanaAppContexts = true): void {
+      clearScopeBoundRuntimeStateForScopeChange.call(this, invalidateHanaAppContexts);
   }
 
   private async handleReloadAppList(): Promise<void> {

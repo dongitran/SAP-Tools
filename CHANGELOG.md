@@ -1,5 +1,9 @@
 # SAP Tools Extension Changelog
 
+## 0.10.187 (stable)
+
+- Fix stale Apps root and service mapping refreshes when switching confirmed BTP scopes.
+
 ## 0.10.186 (stable)
 
 - Fix e2e test settings layout section count.

@@ -66,6 +66,8 @@ if (this.selectedLocalRootFolderPath.length === 0) {
   return;
 }
 
+const rootFolderPath = this.selectedLocalRootFolderPath;
+const loadedScopeSnapshot = this.lastLoadedScope === null ? null : { ...this.lastLoadedScope };
 const appNames =
   this.currentApps.length > 0
     ? this.currentApps.map((app) => app.name)
@@ -82,10 +84,21 @@ if (appNames.length === 0) {
 
 try {
   const mappings = await buildServiceFolderMappings(
-    this.selectedLocalRootFolderPath,
+    rootFolderPath,
     appNames,
     readSharedAppFolderMappings()
   );
+  const currentLoadedScope = this.lastLoadedScope;
+  const loadedScopeUnchanged =
+    (loadedScopeSnapshot === null && currentLoadedScope === null) ||
+    (loadedScopeSnapshot !== null &&
+      currentLoadedScope !== null &&
+      loadedScopeSnapshot.regionCode === currentLoadedScope.regionCode &&
+      loadedScopeSnapshot.orgGuid === currentLoadedScope.orgGuid &&
+      loadedScopeSnapshot.spaceName === currentLoadedScope.spaceName);
+  if (rootFolderPath !== this.selectedLocalRootFolderPath || !loadedScopeUnchanged) {
+    return;
+  }
   this.serviceFolderMappings = this.applyServiceFolderSelections(mappings);
   await this.persistServiceFolderMappingsForCurrentScope(this.serviceFolderMappings);
   this.postMessage({
